@@ -1,0 +1,34 @@
+# 비밀키·환경변수 (CLAUDE.md: .env·키 커밋 금지)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Claude Code 개인 설정
+.claude/settings.local.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Node / Vite
+node_modules/
+dist/
+
+# 로그
+*.log
+logs/
+
+# 녹음·오디오 산출물 (커밋 금지)
+recordings/
+*.wav
+
+# 로컬 DB (SQLite: WAL/journal 포함)
+*.db
+*.db-*
+*.sqlite3
+*.sqlite3-*
