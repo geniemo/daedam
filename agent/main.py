@@ -26,9 +26,9 @@ logger = logging.getLogger("daedam.metrics")
 
 METRICS_DIR = Path(__file__).resolve().parent.parent / "data" / "metrics"
 
-# 모델 평가 중에는 DAEDAM_LLM_MODEL로 세션별 스왑, 평가 후 승자를 기본값으로 확정.
-# 후보·근거: scripts/bench_llm_ttft.py → data/metrics/bench-llm-*.jsonl
-LLM_MODEL = os.getenv("DAEDAM_LLM_MODEL", "grok-4-1-fast-non-reasoning")
+# 기본 모델은 2026-07-21 평가로 확정 (reports/model-eval-20260721.md).
+# 재평가 시 DAEDAM_LLM_MODEL로 세션별 스왑 가능.
+LLM_MODEL = os.getenv("DAEDAM_LLM_MODEL", "grok-4.20-0309-non-reasoning")
 
 # 면접관 instruction v1 (친절 모드 기준) — 로드맵 2에서 interview/로 이전 예정
 INSTRUCTIONS = """당신은 AI 모의면접 서비스 '대담'의 면접관입니다.
