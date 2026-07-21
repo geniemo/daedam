@@ -27,6 +27,9 @@ logs/
 recordings/
 *.wav
 
+# 계측 원본 데이터 (집계 결과만 별도 커밋)
+data/
+
 # 로컬 DB (SQLite: WAL/journal 포함)
 *.db
 *.db-*
