@@ -1,0 +1,4 @@
+# 개발·리포트 전용 의존성 (런타임 requirements.txt와 분리)
+-r requirements.txt
+matplotlib==3.10.8
+pytest==8.4.2
