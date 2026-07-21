@@ -98,7 +98,7 @@ def chart_live(live):
     ax1.set_ylabel("발화 종료 → 첫 오디오 (초)")
     ax1.set_title(f"라이브 세션 턴별 총 지연 (공통 구간 처음 {common}턴)")
     ax1.axhline(0.78, color="gray", ls="--", lw=0.8)
-    ax1.annotate("Grok 네이티브 TTFA 0.78s", xy=(0.02, 0.80), xycoords=("axes fraction", "data"),
+    ax1.annotate("Grok 네이티브 TTFA 0.78s (xAI 발표 수치)", xy=(0.02, 0.80), xycoords=("axes fraction", "data"),
                  va="bottom", fontsize=8, color="gray")
     ax1.legend(fontsize=8)
     ax1.grid(alpha=0.3)
