@@ -44,7 +44,9 @@ async def entrypoint(ctx: agents.JobContext):
     session = AgentSession(
         vad=ctx.proc.userdata["vad"],
         stt=xai.STT(language="ko"),
-        llm=xai.responses.LLM(),
+        # 모델 선정 근거: scripts/bench_llm_ttft.py 실측 — med 0.52s/p95 0.68s
+        # (기본 별칭 grok-4-1-fast-non-reasoning은 med 0.90/p95 2.48, reasoning 계열은 2.4s+)
+        llm=xai.responses.LLM(model="grok-4.20-0309-non-reasoning"),
         tts=xai.TTS(voice="ara"),
     )
 
