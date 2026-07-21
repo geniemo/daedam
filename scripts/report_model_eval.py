@@ -43,8 +43,12 @@ def load(path):
     return [json.loads(l) for l in path.open(encoding="utf-8")]
 
 
+BENCH_EXCLUDE = {"grok-build-0.1"}  # 용도 불명(코딩용 추정)·음성 부적합 확정 → 리포트에서 제외
+
+
 def bench_stats():
-    rows = [r for r in load(BENCH) if not r["warmup"] and r.get("ttft") is not None]
+    rows = [r for r in load(BENCH) if not r["warmup"] and r.get("ttft") is not None
+            and r["model"] not in BENCH_EXCLUDE]
     out = {}
     for m in dict.fromkeys(r["model"] for r in rows):  # 등장 순서 유지
         ts = [r["ttft"] for r in rows if r["model"] == m]
@@ -87,11 +91,12 @@ def chart_bench(bench):
 
 def chart_live(live):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4.5))
+    common = min(len(s["totals"]) for s in live.values())  # 세션 길이가 달라 공통 구간만 비교
     for m, s in live.items():
-        ax1.plot(range(1, s["n"] + 1), s["totals"], marker="o", ms=4, label=SHORT[m])
+        ax1.plot(range(1, common + 1), s["totals"][:common], marker="o", ms=4, label=SHORT[m])
     ax1.set_xlabel("턴 순서")
     ax1.set_ylabel("발화 종료 → 첫 오디오 (초)")
-    ax1.set_title("라이브 세션 턴별 총 지연")
+    ax1.set_title(f"라이브 세션 턴별 총 지연 (공통 구간 처음 {common}턴)")
     ax1.axhline(0.78, color="gray", ls="--", lw=0.8)
     ax1.annotate("Grok 네이티브 TTFA 0.78s", xy=(0.02, 0.80), xycoords=("axes fraction", "data"),
                  va="bottom", fontsize=8, color="gray")
