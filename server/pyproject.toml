@@ -1,0 +1,23 @@
+[project]
+name = "daedam-server"
+version = "0.1.0"
+description = "대담 — AI 음성 모의면접 백엔드 (ADK + Gemini Live)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "google-adk>=2.6.3",
+    "rank-bm25>=0.2.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+# `daedam`(순수 로직)과 `interviewer`(ADK 어댑터)를 둘 다 설치해,
+# adk web / uvicorn 어디서 실행하든 cwd에 의존하지 않고 import되게 한다.
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["daedam", "interviewer"]
