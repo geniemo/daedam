@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f0eee9;font-family:'Gaegu','Nanum Pen Script',system-ui,sans-serif}
+a{color:#2b2b2b}a:hover{color:#000}
+.dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(0,0,0,.08);scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 20px}
+.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#1a1a1a;color:#fff;border-radius:4px;text-decoration:none}
+.dv-tname{font:700 15px/1.2 'Gaegu',system-ui,sans-serif;color:#1a1a1a}
+.dv-opts{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}
+.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 15px/1.3 'Gaegu',system-ui,sans-serif;color:rgba(0,0,0,.6)}
+.dv-card{max-width:100%;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden}
+.dv-opt:target .dv-oid{background:#9C7F4E;color:#fff}
+.dv-next{margin:22px 0 0;font:15px/1.5 'Gaegu',system-ui,sans-serif;color:rgba(0,0,0,.55)}
+.grid{display:grid;grid-template-columns:repeat(2,380px);gap:18px;padding:18px}
+.f{display:flex;flex-direction:column;border:1.5px solid #2b2b2b;background:#fff;min-height:268px;overflow:hidden}
+.fc{font:700 13px/1 'Gaegu',sans-serif;color:#8a857c;letter-spacing:.02em;padding:0 0 6px}
+.fw{display:flex;flex-direction:column;gap:0}
+.bar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1.2px solid #2b2b2b;font:700 13px/1 'Gaegu',sans-serif;color:#2b2b2b}
+.body{flex:1;display:flex;flex-direction:column;gap:10px;padding:14px}
+.t{height:6px;background:#d9d6d0;border-radius:4px}
+.box{border:1.2px solid #b6b1a8;background:#faf9f7}
+.sk{border:1.5px solid #2b2b2b;border-radius:200px 10px 180px 12px/12px 160px 10px 190px}
+.btn{display:flex;align-items:center;justify-content:center;font:700 13px/1 'Gaegu',sans-serif;color:#2b2b2b;padding:7px 10px}
+.btnp{background:#9C7F4E;color:#fff;border-color:#7d6539}
+.lbl{font:400 13px/1.25 'Gaegu',sans-serif;color:#6d685f}
+.lb2{font:700 13px/1.25 'Gaegu',sans-serif;color:#2b2b2b}
+.note{font:400 12px/1.2 'Gaegu',sans-serif;color:#9C7F4E}
+.dot{width:7px;height:7px;border-radius:50%;border:1.2px solid #2b2b2b}
+.row{display:flex;gap:8px;align-items:center}
+.col{display:flex;flex-direction:column;gap:8px}
+</style></helmet>
+
+<section class="dv-turn" id="t3">
+<div class="dv-thd"><a class="dv-tid" href="#t3">3</a><span class="dv-tname">면접 진행 화면 2안 · 피드백 리포트 2안 (<a class="dv-oid" href="#2a">2a</a>에 이어서)</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="3a">
+<div class="dv-olabel"><a class="dv-oid" href="#3a">3a</a>면접 진행 · 무대형 — 아바타 풀블리드, 컨트롤은 떠 있음</div>
+<div class="dv-card"><div class="grid" style="grid-template-columns:repeat(3,440px)">
+
+<div class="fw"><div class="fc">면접관이 말하는 중</div><div class="f" style="height:280px;position:relative;background:#f4f2ee">
+<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
+<div class="box" style="width:190px;height:190px;border-radius:50%;border-style:dashed;display:flex;align-items:center;justify-content:center;background:#fff">
+<div class="col" style="align-items:center;gap:4px"><div class="lb2">AVATAR</div><div class="lbl" style="text-align:center;max-width:130px">영상 · 3D · 이미지 무엇이든<br>교체되는 슬롯</div></div>
+</div>
+</div>
+<div style="position:absolute;top:12px;left:14px;right:14px;display:flex;align-items:center;gap:8px">
+<div class="lb2">면접관이 말하고 있습니다</div><span style="flex:1"></span>
+<div class="lbl">12:40 남음</div>
+</div>
+<div style="position:absolute;bottom:44px;left:0;right:0;display:flex;justify-content:center;gap:5px">
+<div class="row" style="gap:4px">
+<div style="width:26px;height:3px;background:#9C7F4E"></div><div style="width:26px;height:3px;background:#d9d6d0"></div><div style="width:26px;height:3px;background:#d9d6d0"></div><div style="width:26px;height:3px;background:#d9d6d0"></div>
+</div>
+</div>
+<div style="position:absolute;bottom:12px;left:14px;right:14px;display:flex;align-items:center;gap:10px">
+<div class="lbl">1 / 4 자기소개</div><span style="flex:1"></span>
+<div class="sk btn" style="padding:5px 9px;font-size:12px">일시정지</div>
+<div class="sk btn" style="padding:5px 9px;font-size:12px">종료</div>
+</div>
+</div></div>
+
+<div class="fw"><div class="fc">내가 답하는 중</div><div class="f" style="height:280px;position:relative;background:#fff">
+<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
+<div class="box" style="width:150px;height:150px;border-radius:50%;border-style:dashed;opacity:.55;display:flex;align-items:center;justify-content:center"><div class="lbl">AVATAR (듣는 상태)</div></div>
+</div>
+<div style="position:absolute;top:12px;left:14px;right:14px;display:flex;align-items:center"><div class="lb2">듣고 있습니다</div><span style="flex:1"></span><div class="lbl">12:04 남음</div></div>
+<div style="position:absolute;bottom:46px;left:0;right:0;display:flex;justify-content:center;align-items:flex-end;gap:3px;height:38px">
+<div style="width:4px;height:10px;background:#9C7F4E"></div><div style="width:4px;height:22px;background:#9C7F4E"></div><div style="width:4px;height:34px;background:#9C7F4E"></div><div style="width:4px;height:18px;background:#9C7F4E"></div><div style="width:4px;height:28px;background:#9C7F4E"></div><div style="width:4px;height:12px;background:#9C7F4E"></div><div style="width:4px;height:24px;background:#9C7F4E"></div><div style="width:4px;height:36px;background:#9C7F4E"></div><div style="width:4px;height:16px;background:#9C7F4E"></div><div style="width:4px;height:26px;background:#9C7F4E"></div><div style="width:4px;height:9px;background:#9C7F4E"></div><div style="width:4px;height:20px;background:#9C7F4E"></div>
+</div>
+<div style="position:absolute;bottom:12px;left:14px;right:14px;display:flex;align-items:center"><div class="lbl">2 / 4 직무역량</div><span style="flex:1"></span><div class="sk btn" style="padding:5px 9px;font-size:12px">일시정지</div><div class="sk btn" style="padding:5px 9px;font-size:12px;margin-left:8px">종료</div></div>
+</div></div>
+
+<div class="fw"><div class="fc">일시정지 · 종료 확인</div><div class="f" style="height:280px;position:relative;background:#fff">
+<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:.2"><div class="box" style="width:150px;height:150px;border-radius:50%;border-style:dashed"></div></div>
+<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
+<div class="box sk" style="width:250px;padding:14px;background:#fff"><div class="col" style="gap:8px;align-items:center;text-align:center">
+<div class="lb2" style="font-size:15px">면접을 잠시 멈췄습니다</div>
+<div class="lbl">이어서 진행하거나, 지금까지의<br>답변으로 리포트를 받을 수 있습니다</div>
+<div class="sk btn btnp" style="width:150px;margin-top:4px">이어서 진행</div>
+<div class="lbl">종료하고 리포트 받기</div>
+<div class="lbl" style="opacity:.6">면접 취소 (기록 삭제)</div>
+</div></div>
+</div>
+</div></div>
+
+</div></div></div>
+
+<div class="dv-opt" id="3b">
+<div class="dv-olabel"><a class="dv-oid" href="#3b">3b</a>면접 진행 · 통화형 — 상단 단계 레일 + 고정 컨트롤 바</div>
+<div class="dv-card"><div class="grid" style="grid-template-columns:repeat(3,440px)">
+
+<div class="fw"><div class="fc">면접관이 말하는 중</div><div class="f" style="height:280px">
+<div class="bar" style="gap:10px"><div class="lbl">○○ 모의면접</div><span style="flex:1"></span>
+<div class="row" style="gap:5px">
+<div class="box" style="padding:3px 7px;background:#9C7F4E;border-color:#7d6539"><div style="font:700 12px 'Gaegu';color:#fff">자기소개</div></div>
+<div class="box" style="padding:3px 7px"><div class="lbl">직무역량</div></div>
+<div class="box" style="padding:3px 7px"><div class="lbl">인성</div></div>
+<div class="box" style="padding:3px 7px"><div class="lbl">마무리</div></div>
+</div>
+<span style="flex:1"></span><div class="lbl">12:40</div>
+</div>
+<div style="flex:1;display:flex;align-items:center;justify-content:center;padding:14px">
+<div class="box" style="flex:1;align-self:stretch;border-style:dashed;display:flex;align-items:center;justify-content:center">
+<div class="col" style="align-items:center;gap:4px"><div class="lb2">AVATAR SLOT</div><div class="lbl">말하는 중 · 립싱크</div></div>
+</div>
+</div>
+<div style="border-top:1.2px solid #2b2b2b;padding:9px 14px;display:flex;align-items:center;gap:10px">
+<div class="row" style="gap:2px;align-items:flex-end;height:16px"><div style="width:3px;height:5px;background:#c9c5bd"></div><div style="width:3px;height:9px;background:#c9c5bd"></div><div style="width:3px;height:6px;background:#c9c5bd"></div><div style="width:3px;height:11px;background:#c9c5bd"></div></div>
+<div class="lbl">마이크 대기</div><span style="flex:1"></span>
+<div class="box" style="height:4px;width:120px;padding:0"><div style="width:24%;height:100%;background:#9C7F4E"></div></div>
+<div class="sk btn" style="padding:4px 9px;font-size:12px">일시정지</div>
+<div class="sk btn" style="padding:4px 9px;font-size:12px">종료</div>
+</div>
+</div></div>
+
+<div class="fw"><div class="fc">내가 답하는 중</div><div class="f" style="height:280px">
+<div class="bar" style="gap:10px"><div class="lbl">○○ 모의면접</div><span style="flex:1"></span>
+<div class="row" style="gap:5px">
+<div class="box" style="padding:3px 7px"><div class="lbl">✓</div></div>
+<div class="box" style="padding:3px 7px;background:#9C7F4E;border-color:#7d6539"><div style="font:700 12px 'Gaegu';color:#fff">직무역량</div></div>
+<div class="box" style="padding:3px 7px"><div class="lbl">인성</div></div>
+<div class="box" style="padding:3px 7px"><div class="lbl">마무리</div></div>
+</div>
+<span style="flex:1"></span><div class="lbl">12:04</div>
+</div>
+<div style="flex:1;display:flex;align-items:center;justify-content:center;padding:14px">
+<div class="box" style="flex:1;align-self:stretch;border-style:dashed;opacity:.6;display:flex;align-items:center;justify-content:center"><div class="lbl">AVATAR SLOT · 듣는 상태</div></div>
+</div>
+<div style="border-top:1.2px solid #2b2b2b;padding:9px 14px;display:flex;align-items:center;gap:10px">
+<div class="row" style="gap:2px;align-items:flex-end;height:20px"><div style="width:3px;height:8px;background:#9C7F4E"></div><div style="width:3px;height:18px;background:#9C7F4E"></div><div style="width:3px;height:12px;background:#9C7F4E"></div><div style="width:3px;height:20px;background:#9C7F4E"></div><div style="width:3px;height:9px;background:#9C7F4E"></div><div style="width:3px;height:15px;background:#9C7F4E"></div><div style="width:3px;height:6px;background:#9C7F4E"></div></div>
+<div class="lb2">듣고 있습니다</div><span style="flex:1"></span>
+<div class="box" style="height:4px;width:120px;padding:0"><div style="width:46%;height:100%;background:#9C7F4E"></div></div>
+<div class="sk btn" style="padding:4px 9px;font-size:12px">일시정지</div>
+<div class="sk btn" style="padding:4px 9px;font-size:12px">종료</div>
+</div>
+</div></div>
+
+<div class="fw"><div class="fc">면접 종료 직후</div><div class="f" style="height:280px">
+<div class="bar"><div class="lbl">○○ 모의면접</div><span style="flex:1"></span><div class="lbl">00:00</div></div>
+<div class="body" style="align-items:center;justify-content:center;text-align:center;gap:10px">
+<div class="box" style="width:76px;height:76px;border-radius:50%;border-style:dashed;display:flex;align-items:center;justify-content:center"><div class="lbl">AVATAR</div></div>
+<div class="lb2" style="font-size:16px">면접이 끝났습니다. 수고하셨습니다</div>
+<div class="lbl">답변을 분석하고 있습니다 · 약 1분</div>
+<div class="box" style="width:200px;height:5px;padding:0"><div style="width:40%;height:100%;background:#9C7F4E"></div></div>
+<div class="lbl" style="margin-top:2px">완료되면 내 면접 목록에서 볼 수 있습니다</div>
+</div>
+</div></div>
+
+</div></div></div>
+
+<div class="dv-opt" id="3c">
+<div class="dv-olabel"><a class="dv-oid" href="#3c">3c</a>리포트 · 한 페이지 스크롤 — 점수에서 답변 코칭으로 내려감</div>
+<div class="dv-card"><div class="grid" style="grid-template-columns:460px">
+
+<div class="fw"><div class="fc">피드백 리포트 (전체 스크롤)</div><div class="f" style="height:auto">
+<div class="bar"><span class="lbl">← 내 면접</span><span style="flex:1"></span><div class="lbl">공유</div><div class="lbl">PDF</div></div>
+<div class="body" style="gap:14px">
+
+<div class="col" style="gap:6px">
+<div class="lbl">○○ · △△직무 · 8월 5일 · 18분</div>
+<div class="row" style="align-items:flex-end;gap:8px"><div style="font:700 40px/1 'Gaegu';color:#2b2b2b">82</div><div class="lbl" style="padding-bottom:5px">/ 100 · 상위 24%</div></div>
+<div class="lbl">직무 경험은 구체적이었고, 회사 이해도에서 점수가 갈렸습니다</div>
+</div>
+
+<div class="col" style="gap:7px">
+<div class="lb2">단계별 점수</div>
+<div class="col" style="gap:6px">
+<div class="row"><div class="lbl" style="width:82px">자기소개</div><div class="box" style="flex:1;height:7px;padding:0"><div style="width:86%;height:100%;background:#9C7F4E"></div></div><div class="lbl" style="width:24px">86</div></div>
+<div class="row"><div class="lbl" style="width:82px">직무역량</div><div class="box" style="flex:1;height:7px;padding:0"><div style="width:78%;height:100%;background:#9C7F4E"></div></div><div class="lbl" style="width:24px">78</div></div>
+<div class="row"><div class="lbl" style="width:82px">인성·컬처핏</div><div class="box" style="flex:1;height:7px;padding:0"><div style="width:84%;height:100%;background:#9C7F4E"></div></div><div class="lbl" style="width:24px">84</div></div>
+<div class="row"><div class="lbl" style="width:82px">마무리</div><div class="box" style="flex:1;height:7px;padding:0"><div style="width:80%;height:100%;background:#9C7F4E"></div></div><div class="lbl" style="width:24px">80</div></div>
+</div>
+</div>
+
+<div class="col" style="gap:7px">
+<div class="lb2">음성 지표</div>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:7px">
+<div class="box" style="padding:8px"><div class="col" style="gap:3px"><div class="lbl">말하기 속도</div><div class="lb2">128 WPM</div><div class="note">적정</div></div></div>
+<div class="box" style="padding:8px"><div class="col" style="gap:3px"><div class="lbl">필러 워드</div><div class="lb2">14회</div><div class="lbl">다소 많음</div></div></div>
+<div class="box" style="padding:8px"><div class="col" style="gap:3px"><div class="lbl">답변 길이</div><div class="lb2">평균 62초</div><div class="note">적정</div></div></div>
+<div class="box" style="padding:8px"><div class="col" style="gap:3px"><div class="lbl">답변 시작</div><div class="lb2">2.4초</div><div class="note">적정</div></div></div>
+<div class="box" style="padding:8px"><div class="col" style="gap:3px"><div class="lbl">침묵·머뭇거림</div><div class="lb2">8%</div><div class="lbl">주의</div></div></div>
+<div class="box" style="padding:8px"><div class="col" style="gap:3px"><div class="lbl">목소리 안정성</div><div class="lb2">안정</div><div class="note">양호</div></div></div>
+</div>
+</div>
+
+<div class="col" style="gap:7px">
+<div class="lb2">내용 평가</div>
+<div class="box" style="padding:9px"><div class="col" style="gap:5px">
+<div class="lbl">잘한 점</div>
+<div class="t" style="width:100%"></div><div class="t" style="width:88%"></div>
+<div class="lbl" style="margin-top:4px">아쉬운 점</div>
+<div class="t" style="width:100%"></div><div class="t" style="width:72%"></div>
+</div></div>
+</div>
+
+<div class="col" style="gap:7px">
+<div class="row"><div class="lb2">답변별 피드백</div><span style="flex:1"></span><div class="lbl">8개 질문</div></div>
+
+<div class="box" style="padding:10px;border-color:#9C7F4E"><div class="col" style="gap:7px">
+<div class="row"><div class="lbl">Q1 · 자기소개</div><span style="flex:1"></span><div class="lb2">84</div></div>
+<div class="lb2">"간단히 자기소개 부탁드립니다"</div>
+<div class="row sk" style="padding:6px 8px;gap:8px;align-items:center">
+<div class="lb2">▶</div><div class="box" style="flex:1;height:4px;padding:0"><div style="width:30%;height:100%;background:#9C7F4E"></div></div><div class="lbl">0:58</div>
+</div>
+<div class="lbl">내 답변 (요약)</div>
+<div class="t" style="width:100%"></div><div class="t" style="width:80%"></div>
+<div class="col" style="gap:5px;padding-left:8px;border-left:1.2px dashed #9C7F4E;margin-top:2px">
+<div class="note">이렇게 바꿔보세요</div>
+<div class="t" style="width:96%"></div><div class="t" style="width:88%"></div><div class="t" style="width:60%"></div>
+</div>
+<div class="lbl">전체 스크립트 보기 ▾</div>
+</div></div>
+
+<div class="box" style="padding:9px"><div class="col" style="gap:5px">
+<div class="row"><div class="lbl">Q2 · 직무역량</div><span style="flex:1"></span><div class="lb2">76</div><div class="lbl">▾</div></div>
+<div class="t" style="width:70%"></div>
+</div></div>
+<div class="box" style="padding:9px"><div class="col" style="gap:5px">
+<div class="row"><div class="lbl">Q3 · 직무역량</div><span style="flex:1"></span><div class="lb2">80</div><div class="lbl">▾</div></div>
+<div class="t" style="width:62%"></div>
+</div></div>
+<div class="box" style="padding:9px;opacity:.6"><div class="row"><div class="lbl">Q4 · 인성·컬처핏</div><span style="flex:1"></span><div class="lbl">▾</div></div></div>
+</div>
+
+<div class="row sk" style="padding:9px;justify-content:center;background:#9C7F4E;border-color:#7d6539"><div style="font:700 14px 'Gaegu';color:#fff">이 회사로 다시 면접 보기</div></div>
+</div>
+</div></div>
+
+</div></div></div>
+
+<div class="dv-opt" id="3d">
+<div class="dv-olabel"><a class="dv-oid" href="#3d">3d</a>리포트 · 2단 — 좌측 점수 고정, 우측에서 답변을 하나씩 복기</div>
+<div class="dv-card"><div class="grid" style="grid-template-columns:repeat(2,470px)">
+
+<div class="fw"><div class="fc">리포트 첫 화면</div><div class="f" style="height:400px">
+<div class="bar"><span class="lbl">← 내 면접</span><span style="flex:1"></span><div class="lbl">공유</div><div class="lbl">PDF</div></div>
+<div style="flex:1;display:flex;min-height:0">
+<div style="width:180px;border-right:1.2px solid #2b2b2b;padding:12px 11px" class="col">
+<div class="lbl">○○ · △△직무</div>
+<div class="row" style="align-items:flex-end;gap:6px"><div style="font:700 34px/1 'Gaegu'">82</div><div class="lbl" style="padding-bottom:4px">/100</div></div>
+<div class="lbl">상위 24% · 18분</div>
+<div class="col" style="gap:5px;margin-top:6px">
+<div class="row"><div class="lbl" style="flex:1">자기소개</div><div class="lb2">86</div></div>
+<div class="row"><div class="lbl" style="flex:1">직무역량</div><div class="lb2">78</div></div>
+<div class="row"><div class="lbl" style="flex:1">인성·컬처핏</div><div class="lb2">84</div></div>
+<div class="row"><div class="lbl" style="flex:1">마무리</div><div class="lb2">80</div></div>
+</div>
+<div class="box" style="padding:8px;margin-top:6px"><div class="col" style="gap:4px">
+<div class="lbl">음성 지표</div>
+<div class="lbl">128 WPM · 필러 14회</div>
+<div class="lbl">평균 62초 · 시작 2.4초</div>
+<div class="lbl">침묵 8% · 안정</div>
+<div class="note">자세히 보기 →</div>
+</div></div>
+<div style="flex:1"></div>
+<div class="sk btn btnp" style="font-size:12px">다시 면접 보기</div>
+</div>
+<div class="body" style="gap:9px;min-height:0">
+<div class="lb2" style="font-size:15px">총평</div>
+<div class="t" style="width:100%"></div><div class="t" style="width:94%"></div><div class="t" style="width:66%"></div>
+<div class="row" style="gap:6px;margin-top:2px">
+<div class="box" style="flex:1;padding:8px"><div class="col" style="gap:4px"><div class="note">강점 3</div><div class="t" style="width:80%"></div><div class="t" style="width:64%"></div></div></div>
+<div class="box" style="flex:1;padding:8px"><div class="col" style="gap:4px"><div class="lbl">보완 2</div><div class="t" style="width:76%"></div><div class="t" style="width:58%"></div></div></div>
+</div>
+<div class="lb2" style="margin-top:4px">답변 8개</div>
+<div class="box" style="padding:8px;border-color:#9C7F4E"><div class="row"><div class="lbl" style="flex:1">Q1 자기소개</div><div class="lb2">84</div></div></div>
+<div class="box" style="padding:8px"><div class="row"><div class="lbl" style="flex:1">Q2 직무역량</div><div class="lb2">76</div></div></div>
+<div class="box" style="padding:8px"><div class="row"><div class="lbl" style="flex:1">Q3 직무역량</div><div class="lb2">80</div></div></div>
+<div class="box" style="padding:8px"><div class="row"><div class="lbl" style="flex:1">Q4 인성·컬처핏</div><div class="lb2">88</div></div></div>
+</div>
+</div>
+</div></div>
+
+<div class="fw"><div class="fc">답변 하나를 열었을 때</div><div class="f" style="height:400px">
+<div class="bar"><span class="lbl">← 내 면접</span><span style="flex:1"></span><div class="lbl">Q1 / 8</div><div class="lbl">← →</div></div>
+<div style="flex:1;display:flex;min-height:0">
+<div style="width:150px;border-right:1.2px solid #2b2b2b;padding:11px 10px" class="col">
+<div class="lbl">답변 목록</div>
+<div class="box" style="padding:7px;border-color:#9C7F4E"><div class="col" style="gap:3px"><div class="lb2">Q1 자기소개</div><div class="lbl">84 · 0:58</div></div></div>
+<div class="box" style="padding:7px"><div class="col" style="gap:3px"><div class="lbl">Q2 직무역량</div><div class="lbl">76 · 1:12</div></div></div>
+<div class="box" style="padding:7px"><div class="col" style="gap:3px"><div class="lbl">Q3 직무역량</div><div class="lbl">80 · 1:04</div></div></div>
+<div class="box" style="padding:7px;opacity:.6"><div class="lbl">Q4 인성·컬처핏</div></div>
+<div class="box" style="padding:7px;opacity:.6"><div class="lbl">Q5 인성·컬처핏</div></div>
+</div>
+<div class="body" style="gap:9px;min-height:0">
+<div class="lbl">Q1 · 자기소개 · 84점</div>
+<div class="lb2" style="font-size:15px">"간단히 자기소개 부탁드립니다"</div>
+<div class="row sk" style="padding:7px 9px;gap:8px;align-items:center">
+<div class="lb2">▶</div>
+<div class="row" style="flex:1;gap:2px;align-items:center;height:16px">
+<div style="width:3px;height:6px;background:#9C7F4E"></div><div style="width:3px;height:12px;background:#9C7F4E"></div><div style="width:3px;height:8px;background:#9C7F4E"></div><div style="width:3px;height:14px;background:#9C7F4E"></div><div style="width:3px;height:5px;background:#9C7F4E"></div><div style="width:3px;height:11px;background:#9C7F4E"></div><div style="width:3px;height:16px;background:#9C7F4E"></div><div style="width:3px;height:7px;background:#c9c5bd"></div><div style="width:3px;height:13px;background:#c9c5bd"></div><div style="width:3px;height:9px;background:#c9c5bd"></div><div style="width:3px;height:6px;background:#c9c5bd"></div>
+</div>
+<div class="lbl">0:58</div>
+</div>
+<div class="lbl">질문 음성도 함께 듣기 ▸</div>
+<div class="box" style="flex:1;padding:9px;min-height:0"><div class="col" style="gap:5px">
+<div class="lbl">스크립트 · 필러 워드 표시</div>
+<div class="t" style="width:100%"></div><div class="t" style="width:96%"></div><div class="t" style="width:100%"></div><div class="t" style="width:70%"></div>
+</div></div>
+<div class="col" style="gap:5px;padding-left:8px;border-left:1.2px dashed #9C7F4E">
+<div class="note">개선 제안</div>
+<div class="t" style="width:94%"></div><div class="t" style="width:86%"></div>
+</div>
+</div>
+</div>
+</div></div>
+
+</div></div></div>
+
+</div>
+<p class="dv-next">Try next: "<a class="dv-oid" href="#3a">3a</a> + <a class="dv-oid" href="#3c">3c</a>로 확정" · "<a class="dv-oid" href="#3b">3b</a>에서 질문 자막도 넣어보기" · "리포트에 회차별 점수 추이 추가"</p>
+</section>
+
+<section class="dv-turn" id="t2">
+<div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">혼합안 — 대시보드는 <a class="dv-oid" href="#1d">1d</a>, 등록·완료는 <a class="dv-oid" href="#1a">1a</a>의 집중 화면</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="2a">
+<div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a>대시보드가 홈 · 등록은 전체화면 스텝 · 리서치는 카드 안에서 계속</div>
+<div class="dv-card"><div class="grid" style="grid-template-columns:repeat(3,380px)">
+
+<div class="fw"><div class="fc">① 홈 = 대시보드</div><div class="f">
+<div class="bar"><span>대담</span><span style="flex:1"></span><span class="lbl">계정</span><div class="sk btn btnp" style="font-size:12px;padding:5px 9px">+ 회사 등록</div></div>
+<div class="body" style="gap:9px">
+<div class="row"><div class="lb2">내 면접 4</div><span style="flex:1"></span><div class="lbl">최근순 ▾</div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+<div class="box" style="padding:9px;border-color:#9C7F4E"><div class="col" style="gap:5px"><div class="t" style="width:56px"></div><div class="t" style="width:40px"></div><div class="note">준비 완료 · 시작하기 →</div></div></div>
+<div class="box" style="padding:9px"><div class="col" style="gap:5px"><div class="t" style="width:50px"></div><div class="t" style="width:44px"></div><div class="lbl">리서치 62%</div></div></div>
+<div class="box" style="padding:9px"><div class="col" style="gap:5px"><div class="t" style="width:60px"></div><div class="t" style="width:36px"></div><div class="lbl">면접 완료 · 82점</div></div></div>
+<div class="box" style="padding:9px"><div class="col" style="gap:5px"><div class="t" style="width:46px"></div><div class="t" style="width:52px"></div><div class="lbl">면접 완료 · 74점</div></div></div>
+</div>
+<div class="lbl" style="margin-top:2px">카드 하나 = 회사 하나. 상태가 카드에 그대로 보입니다</div>
+</div>
+</div></div>
+
+<div class="fw"><div class="fc">② 등록 1/3 — 회사 · 직무</div><div class="f">
+<div class="bar"><span class="lbl">✕ 나가기</span><span style="flex:1"></span><div class="row"><div class="dot" style="background:#9C7F4E;border-color:#9C7F4E"></div><div class="dot"></div><div class="dot"></div></div></div>
+<div class="body" style="align-items:center;justify-content:center;gap:11px">
+<div class="lbl">STEP 1</div>
+<div class="lb2" style="font-size:17px">어느 회사에 지원하시나요</div>
+<div class="box" style="width:250px;padding:9px 10px"><div class="t" style="width:110px"></div></div>
+<div class="lbl" style="align-self:center">직무</div>
+<div class="box" style="width:250px;padding:9px 10px"><div class="t" style="width:80px"></div></div>
+<div class="lbl">채용공고 링크가 있으면 더 정확해집니다</div>
+<div class="box" style="width:250px;padding:9px 10px"><div class="t" style="width:150px"></div></div>
+<div class="lbl" style="margin-top:2px">직무 소개서 (JD)가 있으면 넣어 주세요 · 선택</div>
+<div class="box" style="width:250px;padding:9px 10px;height:38px"><div class="row" style="gap:6px"><div class="lbl">붙여넣기</div><div class="lbl">/</div><div class="lbl">파일 첨부</div></div></div>
+<div class="sk btn btnp" style="width:120px;margin-top:4px">다음</div>
+</div>
+</div></div>
+
+<div class="fw"><div class="fc">③ 등록 3/3 — 지원서 (파트 → 항목)</div><div class="f">
+<div class="bar"><span class="lbl">← 이전</span><span style="flex:1"></span><div class="row"><div class="dot" style="background:#2b2b2b"></div><div class="dot" style="background:#2b2b2b"></div><div class="dot" style="background:#9C7F4E;border-color:#9C7F4E"></div></div></div>
+<div class="body" style="gap:9px">
+<div class="lb2" style="font-size:16px">지원서를 넣어 주세요</div>
+<div class="lbl">회사 양식 그대로 파트를 만들고, 그 안에 항목을 나눠 넣습니다</div>
+<div class="box" style="flex:1;padding:10px"><div class="col" style="gap:8px">
+
+<div class="col" style="gap:6px">
+<div class="row"><div class="lb2">경험</div><div class="lbl">2</div><span style="flex:1"></span><div class="lbl">▾</div></div>
+<div class="col" style="gap:6px;padding-left:9px;border-left:1.2px dashed #b6b1a8">
+<div class="box" style="padding:8px"><div class="col" style="gap:5px">
+<div class="row"><div class="lbl">경험 1 — 제목</div><span style="flex:1"></span><div class="lbl">✕</div></div>
+<div class="t" style="width:100%"></div><div class="t" style="width:92%"></div><div class="t" style="width:58%"></div>
+</div></div>
+<div class="box" style="padding:7px 8px"><div class="row"><div class="lbl">경험 2 — 제목</div><span style="flex:1"></span><div class="lbl">▾</div></div></div>
+<div class="lbl">+ 항목 추가</div>
+</div>
+</div>
+
+<div class="col" style="gap:6px">
+<div class="row"><div class="lb2">자격증</div><div class="lbl">2</div><span style="flex:1"></span><div class="lbl">▾</div></div>
+<div class="col" style="gap:5px;padding-left:9px;border-left:1.2px dashed #b6b1a8">
+<div class="box" style="padding:7px 8px"><div class="row"><div class="lbl">자격증 1</div><span style="flex:1"></span><div class="lbl">▾</div></div></div>
+<div class="box" style="padding:7px 8px"><div class="row"><div class="lbl">자격증 2</div><span style="flex:1"></span><div class="lbl">▾</div></div></div>
+</div>
+</div>
+
+<div class="col" style="gap:6px">
+<div class="row"><div class="lb2">자기소개서</div><div class="lbl">3</div><span style="flex:1"></span><div class="lbl">▾</div></div>
+<div class="col" style="gap:5px;padding-left:9px;border-left:1.2px dashed #b6b1a8">
+<div class="box" style="padding:7px 8px"><div class="row"><div class="lbl">문항 1</div><span style="flex:1"></span><div class="lbl">▾</div></div></div>
+<div class="box" style="padding:7px 8px"><div class="row"><div class="lbl">문항 2</div><span style="flex:1"></span><div class="lbl">▾</div></div></div>
+<div class="box" style="padding:7px 8px"><div class="row"><div class="lbl">문항 3</div><span style="flex:1"></span><div class="lbl">▾</div></div></div>
+</div>
+</div>
+
+<div class="row sk" style="padding:6px 8px;justify-content:center"><div class="lbl">+ 파트 추가 (경력 · 포트폴리오 · 기타)</div></div>
+</div></div>
+<div class="row"><div class="lbl">파일로 올리기 (PDF · DOCX)</div><span style="flex:1"></span><div class="sk btn btnp" style="width:130px">등록하고 준비 시작</div></div>
+</div>
+</div></div>
+
+<div class="fw"><div class="fc">④ 리서치 진행 — 홈 카드 안에서</div><div class="f">
+<div class="bar"><span>대담</span><span style="flex:1"></span><span class="lbl">+ 회사 등록</span></div>
+<div class="body" style="gap:9px">
+<div class="box" style="padding:10px;border-color:#9C7F4E"><div class="col" style="gap:7px">
+<div class="row"><div class="lb2">○○ · △△직무</div><span style="flex:1"></span><div class="note">준비 중 62% · 약 2분</div></div>
+<div class="box" style="height:5px;padding:0"><div style="width:62%;height:100%;background:#9C7F4E"></div></div>
+<div class="col" style="gap:5px;padding-left:7px;border-left:1.2px dashed #b6b1a8">
+<div class="lbl">✓ 채용공고에서 요구역량 12개 추출</div>
+<div class="lbl">✓ 최근 1년 뉴스 · IR 자료 확인</div>
+<div class="lbl">✓ 인재상 · 조직문화 정리</div>
+<div class="lb2">◐ 자기소개서와 대조 중</div>
+<div class="lbl" style="opacity:.55">○ 질문 준비</div>
+</div>
+<div class="lbl">접기 ▴ · 완료되면 알려드립니다</div>
+</div></div>
+<div class="box" style="padding:9px;opacity:.45"><div class="t" style="width:70px"></div></div>
+<div class="box" style="padding:9px;opacity:.45"><div class="t" style="width:58px"></div></div>
+<div class="lbl">나가도 계속 진행됩니다</div>
+</div>
+</div></div>
+
+<div class="fw"><div class="fc">⑤ 준비 완료 — 상세 화면</div><div class="f">
+<div class="bar"><span class="lbl">← 내 면접</span><span style="flex:1"></span><span class="note">READY</span></div>
+<div class="body" style="align-items:center;text-align:center;gap:9px">
+<div class="lb2" style="font-size:17px">면접 준비가 끝났습니다</div>
+<div class="lbl">○○ · △△직무 · 15~20분 · 한국어 음성</div>
+<div class="row" style="gap:6px;width:100%;margin-top:4px">
+<div class="box" style="flex:1;padding:8px 4px"><div class="col" style="gap:3px"><div class="lbl">1</div><div class="lbl">자기소개</div></div></div>
+<div class="box" style="flex:1;padding:8px 4px"><div class="col" style="gap:3px"><div class="lbl">2</div><div class="lbl">직무역량</div></div></div>
+<div class="box" style="flex:1;padding:8px 4px"><div class="col" style="gap:3px"><div class="lbl">3</div><div class="lbl">인성·컬처핏</div></div></div>
+<div class="box" style="flex:1;padding:8px 4px"><div class="col" style="gap:3px"><div class="lbl">4</div><div class="lbl">마무리</div></div></div>
+</div>
+<div class="box" style="width:100%;padding:9px;text-align:left"><div class="col" style="gap:5px">
+<div class="lbl">✓ 마이크 연결됨 — 테스트하기</div>
+<div class="lbl">✓ 조용한 환경을 권합니다</div>
+<div class="lbl">✓ 중간에 멈추면 이어서 진행할 수 있습니다</div>
+</div></div>
+<div style="flex:1"></div>
+<div class="row" style="width:100%"><div class="sk btn" style="width:100px">지원서 수정</div><div class="sk btn btnp" style="flex:1">면접 시작하기</div></div>
+</div>
+</div></div>
+
+</div></div></div>
+
+</div>
+<p class="dv-next">Try next: "<a class="dv-oid" href="#2a">2a</a>로 확정하고 면접 진행 화면·리포트 그리기" · "등록을 2스텝으로 줄이기" · "홈 카드에 지난 점수 추이 넣기"</p>
+</section>
+
+<section class="dv-turn" id="t1">
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">등록 → 리서치 → 준비 완료 플로우 · 구조 4안</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="1a">
+<div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>센터 컬럼 위저드 — 한 번에 한 가지만 묻는 전체화면 스텝</div>
+<div class="dv-card"><div class="grid">
+
+<div class="fw"><div class="fc">① 첫 진입</div><div class="f">
+<div class="bar"><span>대담</span><span style="flex:1"></span><span class="lbl">내 면접</span><span class="lbl">계정</span></div>
+<div class="body" style="align-items:center;justify-content:center;text-align:center;gap:14px">
+<div class="t" style="width:200px;height:12px"></div>
+<div class="t" style="width:260px"></div>
+<div class="sk btn btnp" style="width:150px">회사 등록하기</div>
+<div class="lbl" style="margin-top:4px">지원할 회사 · 직무 · 자기소개서</div>
+</div>
+<div style="border-top:1.2px dashed #b6b1a8;padding:10px 14px" class="col">
+<div class="lb2">내 면접 3</div>
+<div class="row"><div class="box" style="flex:1;padding:7px 9px" ><div class="t" style="width:70px"></div></div><div class="note">준비 완료</div></div>
+<div class="row"><div class="box" style="flex:1;padding:7px 9px"><div class="t" style="width:90px"></div></div><div class="lbl">리서치 중</div></div>
+</div>
+</div></div>
+
+<div class="fw"><div class="fc">② 등록 (3스텝)</div><div class="f">
+<div class="bar"><span class="lbl">← 나가기</span><span style="flex:1"></span><div class="row"><div class="dot" style="background:#2b2b2b"></div><div class="dot"></div><div class="dot"></div></div></div>
+<div class="body" style="align-items:center;gap:12px">
+<div class="lb2" style="font-size:16px">어느 회사에 지원하시나요</div>
+<div class="box" style="width:250px;padding:9px 10px"><div class="t" style="width:120px"></div></div>
+<div class="lbl">직무</div>
+<div class="box" style="width:250px;padding:9px 10px"><div class="t" style="width:90px"></div></div>
+<div class="lbl">자기소개서 (붙여넣기 · 파일)</div>
+<div class="box" style="width:250px;height:44px;padding:9px 10px"><div class="t" style="width:200px"></div></div>
+<div class="sk btn btnp" style="width:120px;margin-top:2px">다음</div>
+</div>
+</div></div>
+
+<div class="fw"><div class="fc">③ 리서치 진행</div><div class="f">
+<div class="bar"><span>면접 준비 중</span><span style="flex:1"></span><span class="lbl">약 3분</span></div>
+<div class="body" style="align-items:center;gap:10px">
+<div class="lb2" style="font-size:15px">○○ 을(를) 조사하고 있습니다</div>
+<div class="col" style="width:270px;gap:9px;margin-top:2px">
+<div class="row"><span class="note">✓</span><span class="lbl">채용공고 · 직무기술서 분석</span></div>
+<div class="row"><span class="note">✓</span><span class="lbl">인재상 · 최근 뉴스 수집</span></div>
+<div class="row"><span class="note">◐</span><span class="lb2">자기소개서와 대조 중</span></div>
+<div class="row"><span class="lbl">○</span><span class="lbl">질문 풀 생성</span></div>
+</div>
+<div class="box" style="width:270px;height:5px;padding:0;margin-top:6px"><div style="width:62%;height:100%;background:#9C7F4E"></div></div>
+<div class="lbl" style="margin-top:2px">창을 닫아도 계속 진행됩니다</div>
+</div>
+</div></div>
+
+<div class="fw"><div class="fc">④ 준비 완료</div><div class="f">
+<div class="bar"><span>대담</span><span style="flex:1"></span><span class="lbl">내 면접</span></div>
+<div class="body" style="align-items:center;text-align:center;gap:10px">
+<div class="note">READY</div>
+<div class="lb2" style="font-size:16px">면접 준비가 끝났습니다</div>
+<div class="lbl">○○ · △△직무 · 15~20분</div>
+<div class="row" style="gap:6px;margin-top:4px">
+<div class="box" style="padding:6px 8px"><div class="lbl">자기소개</div></div>
+<div class="box" style="padding:6px 8px"><div class="lbl">직무역량</div></div>
+<div class="box" style="padding:6px 8px"><div class="lbl">인성</div></div>
+<div class="box" style="padding:6px 8px"><div class="lbl">마무리</div></div>
+</div>
+<div class="sk btn btnp" style="width:150px;margin-top:8px">면접 시작하기</div>
+<div class="lbl">마이크 · 조용한 환경을 확인해 주세요</div>
+</div>
+</div></div>
+
+</div></div></div>
+
+<div class="dv-opt" id="1b">
+<div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>좌측 스텝 레일 — 전체 과정이 항상 왼쪽에 보이는 2단 구조</div>
+<div class="dv-card"><div class="grid">
+
+<div class="fw"><div class="fc">① 첫 진입</div><div class="f">
+<div class="bar"><span>대담</span><span style="flex:1"></span><span class="lbl">계정</span></div>
+<div style="flex:1;display:flex">
+<div style="width:120px;border-right:1.2px solid #2b2b2b;padding:12px 10px" class="col">
+<div class="lb2">내 면접</div>
+<div class="box" style="padding:6px 7px"><div class="t" style="width:52px"></div></div>
+<div class="box" style="padding:6px 7px"><div class="t" style="width:60px"></div></div>
+<div class="sk btn" style="margin-top:4px;font-size:12px">+ 회사 등록</div>
+</div>
+<div class="body" style="align-items:center;justify-content:center;text-align:center">
+<div class="t" style="width:170px;height:11px"></div>
+<div class="t" style="width:210px"></div>
+<div class="sk btn btnp" style="width:150px;margin-top:6px">회사 등록하기</div>
+</div>
+</div>
+</div></div>
+
+<div class="fw"><div class="fc">② 등록</div><div class="f">
+<div class="bar"><span class="lbl">← 내 면접</span></div>
+<div style="flex:1;display:flex">
+<div style="width:120px;border-right:1.2px solid #2b2b2b;padding:12px 10px" class="col">
+<div class="row"><div class="dot" style="background:#9C7F4E;border-color:#9C7F4E"></div><span class="lb2">회사 · 직무</span></div>
+<div class="row"><div class="dot"></div><span class="lbl">자기소개서</span></div>
+<div class="row"><div class="dot"></div><span class="lbl">리서치</span></div>
+<div class="row"><div class="dot"></div><span class="lbl">준비 완료</span></div>
+</div>
+<div class="body">
+<div class="lb2" style="font-size:15px">지원 정보</div>
+<div class="lbl">회사명</div><div class="box" style="padding:8px 9px"><div class="t" style="width:110px"></div></div>
+<div class="lbl">직무</div><div class="box" style="padding:8px 9px"><div class="t" style="width:80px"></div></div>
+<div class="lbl">채용공고 링크 (선택)</div><div class="box" style="padding:8px 9px"><div class="t" style="width:140px"></div></div>
+<div class="row" style="justify-content:flex-end"><div class="sk btn btnp" style="width:90px">다음</div></div>
+</div>
+</div>
+</div></div>
+
+<div class="fw"><div class="fc">③ 리서치 진행</div><div class="f">
+<div class="bar"><span class="lbl">○○ · △△직무</span></div>
+<div style="flex:1;display:flex">
+<div style="width:120px;border-right:1.2px solid #2b2b2b;padding:12px 10px" class="col">
+<div class="row"><span class="note">✓</span><span class="lbl">회사 · 직무</span></div>
+<div class="row"><span class="note">✓</span><span class="lbl">자기소개서</span></div>
+<div class="row"><div class="dot" style="background:#9C7F4E;border-color:#9C7F4E"></div><span class="lb2">리서치</span></div>
+<div class="row"><div class="dot"></div><span class="lbl">준비 완료</span></div>
+</div>
+<div class="body" style="gap:8px">
+<div class="lb2" style="font-size:15px">조사 로그</div>
+<div class="lbl">✓ 채용공고에서 요구역량 12개 추출</div>
+<div class="lbl">✓ 최근 1년 뉴스 · IR 자료 확인</div>
+<div class="lbl">✓ 인재상 · 조직문화 정리</div>
+<div class="lb2">◐ 자기소개서 대조 중…</div>
+<div class="box" style="height:5px;padding:0"><div style="width:70%;height:100%;background:#9C7F4E"></div></div>
+</div>
+</div>
+</div></div>
+
+<div class="fw"><div class="fc">④ 준비 완료</div><div class="f">
+<div class="bar"><span class="lbl">○○ · △△직무</span><span style="flex:1"></span><span class="note">READY</span></div>
+<div style="flex:1;display:flex">
+<div style="width:120px;border-right:1.2px solid #2b2b2b;padding:12px 10px" class="col">
+<div class="row"><span class="note">✓</span><span class="lbl">회사 · 직무</span></div>
+<div class="row"><span class="note">✓</span><span class="lbl">자기소개서</span></div>
+<div class="row"><span class="note">✓</span><span class="lbl">리서치</span></div>
+<div class="row"><div class="dot" style="background:#9C7F4E;border-color:#9C7F4E"></div><span class="lb2">준비 완료</span></div>
+</div>
+<div class="body" style="gap:9px">
+<div class="lb2" style="font-size:15px">면접 준비가 끝났습니다</div>
+<div class="lbl">4단계 · 15~20분 · 한국어 음성</div>
+<div class="box" style="padding:8px 9px" ><div class="col" style="gap:5px">
+<div class="lbl">1 자기소개 · 2 직무역량</div><div class="lbl">3 인성 · 컬처핏 · 4 마무리</div>
+</div></div>
+<div class="sk btn btnp">면접 시작하기</div>
+<div class="lbl">마이크 테스트하기 →</div>
+</div>
+</div>
+</div></div>
+
+</div></div></div>
+
+<div class="dv-opt" id="1c">
+<div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a>대화형 등록 — 면접처럼 한 마디씩 주고받으며 입력</div>
+<div class="dv-card"><div class="grid">
+
+<div class="fw"><div class="fc">① 첫 진입</div><div class="f">
+<div class="bar"><span>대담</span><span style="flex:1"></span><span class="lbl">내 면접</span></div>
+<div class="body" style="justify-content:center;gap:12px">
+<div class="lb2" style="font-size:16px">안녕하세요. 어느 회사에</div>
+<div class="lb2" style="font-size:16px;margin-top:-8px">지원하시나요</div>
+<div class="lbl">회사와 직무를 알려주시면 준비를 시작합니다</div>
+<div class="row sk" style="padding:8px 10px;margin-top:6px"><div class="t" style="flex:1"></div><div class="lb2">→</div></div>
+<div class="row" style="gap:6px"><div class="box" style="padding:5px 8px"><div class="lbl">최근: ○○</div></div><div class="box" style="padding:5px 8px"><div class="lbl">△△</div></div></div>
+</div>
+</div></div>
+
+<div class="fw"><div class="fc">② 등록</div><div class="f">
+<div class="bar"><span class="lbl">등록 2 / 3</span></div>
+<div class="body" style="gap:9px">
+<div class="box" style="align-self:flex-start;padding:7px 9px;max-width:75%"><div class="lbl">어떤 직무에 지원하시나요</div></div>
+<div class="box sk" style="align-self:flex-end;padding:7px 9px;background:#efece5"><div class="lb2">△△직무</div></div>
+<div class="box" style="align-self:flex-start;padding:7px 9px;max-width:80%"><div class="lbl">자기소개서를 붙여넣어 주세요</div></div>
+<div style="flex:1"></div>
+<div class="box" style="padding:9px;height:46px"><div class="t" style="width:180px"></div></div>
+<div class="row"><div class="lbl">파일 첨부</div><span style="flex:1"></span><div class="sk btn btnp" style="width:70px">보내기</div></div>
+</div>
+</div></div>
+
+<div class="fw"><div class="fc">③ 리서치 진행</div><div class="f">
+<div class="bar"><span class="lbl">준비 중</span></div>
+<div class="body" style="gap:9px">
+<div class="box" style="align-self:flex-start;padding:7px 9px;max-width:85%"><div class="lbl">받았습니다. 지금부터 조사합니다</div></div>
+<div class="col" style="gap:7px;padding-left:6px;border-left:1.2px dashed #b6b1a8">
+<div class="lbl">✓ 채용공고 분석</div>
+<div class="lbl">✓ 회사 인재상 · 뉴스</div>
+<div class="lb2">◐ 자기소개서 대조 중</div>
+</div>
+<div style="flex:1"></div>
+<div class="box" style="padding:8px 9px"><div class="row"><div class="lbl">예상 3분 · 알림 받기</div><span style="flex:1"></span><div class="note">62%</div></div></div>
+</div>
+</div></div>
+
+<div class="fw"><div class="fc">④ 준비 완료</div><div class="f">
+<div class="bar"><span class="lbl">준비 완료</span></div>
+<div class="body" style="gap:9px">
+<div class="col" style="gap:7px;padding-left:6px;border-left:1.2px dashed #b6b1a8">
+<div class="lbl">✓ 리서치 완료</div><div class="lbl">✓ 질문 준비 완료</div>
+</div>
+<div class="box" style="align-self:flex-start;padding:7px 9px;max-width:85%"><div class="lb2">준비가 끝났습니다. 시작할까요</div></div>
+<div style="flex:1"></div>
+<div class="box sk" style="padding:10px"><div class="col" style="gap:6px">
+<div class="lb2">○○ · △△직무 · 15~20분</div>
+<div class="lbl">자기소개 → 직무역량 → 인성 → 마무리</div>
+<div class="sk btn btnp" style="margin-top:2px">면접 시작하기</div>
+</div></div>
+</div>
+</div></div>
+
+</div></div></div>
+
+<div class="dv-opt" id="1d">
+<div class="dv-olabel"><a class="dv-oid" href="#1d">1d</a>대시보드 + 드로어 — 회사 카드가 준비 상태를 그대로 보여줌</div>
+<div class="dv-card"><div class="grid">
+
+<div class="fw"><div class="fc">① 첫 진입 (대시보드)</div><div class="f">
+<div class="bar"><span>대담</span><span style="flex:1"></span><div class="sk btn btnp" style="font-size:12px;padding:5px 9px">+ 회사 등록</div></div>
+<div class="body" style="gap:9px">
+<div class="lb2">내 면접</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+<div class="box" style="padding:9px" ><div class="col" style="gap:5px"><div class="t" style="width:56px"></div><div class="t" style="width:40px"></div><div class="note">준비 완료</div></div></div>
+<div class="box" style="padding:9px"><div class="col" style="gap:5px"><div class="t" style="width:50px"></div><div class="t" style="width:44px"></div><div class="lbl">리서치 62%</div></div></div>
+<div class="box" style="padding:9px"><div class="col" style="gap:5px"><div class="t" style="width:60px"></div><div class="t" style="width:36px"></div><div class="lbl">면접 완료 · 82점</div></div></div>
+<div class="box sk" style="padding:9px;display:flex;align-items:center;justify-content:center"><div class="lbl">+ 새 회사</div></div>
+</div>
+</div>
+</div></div>
+
+<div class="fw"><div class="fc">② 등록 (우측 드로어)</div><div class="f">
+<div class="bar"><span>대담</span></div>
+<div style="flex:1;display:flex">
+<div style="flex:1;padding:12px;opacity:.35" class="col">
+<div class="box" style="height:34px"></div><div class="box" style="height:34px"></div><div class="box" style="height:34px"></div>
+</div>
+<div style="width:190px;border-left:1.5px solid #2b2b2b;padding:12px 11px;background:#fff" class="col">
+<div class="row"><div class="lb2">회사 등록</div><span style="flex:1"></span><div class="lbl">✕</div></div>
+<div class="lbl">회사명</div><div class="box" style="padding:7px 8px"><div class="t" style="width:80px"></div></div>
+<div class="lbl">직무</div><div class="box" style="padding:7px 8px"><div class="t" style="width:64px"></div></div>
+<div class="lbl">자기소개서</div><div class="box" style="padding:7px 8px;height:50px"><div class="t" style="width:120px"></div></div>
+<div class="sk btn btnp" style="margin-top:2px">등록하고 준비 시작</div>
+</div>
+</div>
+</div></div>
+
+<div class="fw"><div class="fc">③ 리서치 진행 (카드 인라인)</div><div class="f">
+<div class="bar"><span>대담</span><span style="flex:1"></span><span class="lbl">+ 회사 등록</span></div>
+<div class="body" style="gap:9px">
+<div class="box" style="padding:10px;border-color:#9C7F4E"><div class="col" style="gap:7px">
+<div class="row"><div class="lb2">○○ · △△직무</div><span style="flex:1"></span><div class="note">준비 중 62%</div></div>
+<div class="box" style="height:5px;padding:0"><div style="width:62%;height:100%;background:#9C7F4E"></div></div>
+<div class="lbl">✓ 채용공고 분석 · ✓ 인재상 · 뉴스</div>
+<div class="lb2">◐ 자기소개서 대조 중</div>
+<div class="lbl">자세히 보기 ▾</div>
+</div></div>
+<div class="box" style="padding:9px;opacity:.5"><div class="t" style="width:70px"></div></div>
+<div class="box" style="padding:9px;opacity:.5"><div class="t" style="width:58px"></div></div>
+</div>
+</div></div>
+
+<div class="fw"><div class="fc">④ 준비 완료 (상세)</div><div class="f">
+<div class="bar"><span class="lbl">← 내 면접</span><span style="flex:1"></span><span class="note">READY</span></div>
+<div class="body" style="gap:9px">
+<div class="lb2" style="font-size:16px">○○ · △△직무</div>
+<div class="lbl">15~20분 · 한국어 음성 · 4단계</div>
+<div class="row" style="gap:6px">
+<div class="box" style="flex:1;padding:7px;text-align:center"><div class="lbl">자기소개</div></div>
+<div class="box" style="flex:1;padding:7px;text-align:center"><div class="lbl">직무역량</div></div>
+<div class="box" style="flex:1;padding:7px;text-align:center"><div class="lbl">인성</div></div>
+<div class="box" style="flex:1;padding:7px;text-align:center"><div class="lbl">마무리</div></div>
+</div>
+<div class="box" style="padding:9px"><div class="col" style="gap:5px"><div class="lbl">✓ 마이크 연결됨</div><div class="lbl">✓ 조용한 환경 권장</div></div></div>
+<div style="flex:1"></div>
+<div class="row"><div class="sk btn" style="width:100px">다시 등록</div><div class="sk btn btnp" style="flex:1">면접 시작하기</div></div>
+</div>
+</div></div>
+
+</div></div></div>
+
+</div>
+<p class="dv-next">Try next: "<a class="dv-oid" href="#1b">1b</a>로 가되 리서치 로그는 <a class="dv-oid" href="#1d">1d</a>처럼 카드 안에" · "<a class="dv-oid" href="#1a">1a</a> 등록 스텝을 더 자세히" · "면접 진행 화면과 리포트도 와이어프레임으로"</p>
+</section>
+
+</x-dc>
+</body>
+</html>

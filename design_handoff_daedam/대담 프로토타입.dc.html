@@ -1,0 +1,1174 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#F4F5F7;font-family:'Pretendard','Spoqa Han Sans Neo',-apple-system,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#16233A;text-decoration:none}a:hover{color:#B57F1C}
+input,textarea,button{font-family:inherit}
+input:focus,textarea:focus{outline:none;border-color:#16233A}
+@keyframes dm-pulse{0%,100%{transform:scale(1);opacity:.5}50%{transform:scale(1.14);opacity:.14}}
+@keyframes dm-pulse2{0%,100%{transform:scale(1);opacity:.32}50%{transform:scale(1.26);opacity:.06}}
+@keyframes dm-breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.035)}}
+@keyframes dm-wave{0%,100%{transform:scaleY(.22)}50%{transform:scaleY(1)}}
+@keyframes dm-spin{to{transform:rotate(360deg)}}
+@keyframes dm-fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes dm-grow{from{width:0}}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#D3D8E0;border:3px solid #F4F5F7}
+</style></helmet>
+
+<div style="min-height:100vh;background:#F4F5F7;color:#16233A">
+
+<sc-if value="{{ showChrome }}" hint-placeholder-val="{{ true }}">
+<header style="position:sticky;top:0;z-index:40;background:rgba(244,245,247,.92);backdrop-filter:blur(8px);border-bottom:1px solid #E2E6ED">
+<div style="max-width:1160px;margin:0 auto;padding:0 32px;height:64px;display:flex;align-items:center;gap:32px">
+<div onClick="{{ goHome }}" style="display:flex;align-items:center;gap:9px;cursor:pointer">
+<div style="width:22px;height:22px;border:1.5px solid #16233A;display:flex;align-items:center;justify-content:center">
+<div style="width:8px;height:8px;background:#B57F1C"></div></div>
+<div style="font-size:17px;font-weight:700;letter-spacing:-.02em">대담</div>
+</div>
+<nav style="display:flex;gap:22px;font-size:14px;color:#5F6B7E">
+<span onClick="{{ goHome }}" style="cursor:pointer;color:#16233A;font-weight:600">내 면접</span>
+</nav>
+<div style="flex:1"></div>
+<div style="display:flex;align-items:center;gap:10px">
+<div style="font-size:13px;color:#5F6B7E">김서연</div>
+<div style="width:30px;height:30px;border:1px solid #C9D0DB;background:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#5F6B7E">서</div>
+</div>
+</div>
+</header>
+</sc-if>
+
+<sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+<main style="max-width:1160px;margin:0 auto;padding:44px 32px 80px">
+<div style="display:flex;align-items:flex-end;gap:16px;margin-bottom:28px">
+<div style="display:flex;flex-direction:column;gap:7px">
+<h1 style="margin:0;font-size:27px;font-weight:700;letter-spacing:-.03em">내 면접</h1>
+<p style="margin:0;font-size:14px;color:#5F6B7E">회사를 등록하면 그 회사에 맞춘 질문으로 면접을 준비합니다.</p>
+</div>
+<div style="flex:1"></div>
+<button onClick="{{ openRegister }}" style="border:1px solid #16233A;background:#16233A;color:#fff;font-size:14px;font-weight:600;padding:11px 20px;cursor:pointer;border-radius:3px">회사 등록하기</button>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px">
+<sc-for list="{{ cards }}" as="c" hint-placeholder-count="4">
+<div onClick="{{ c.onOpen }}" style="background:#fff;border:1px solid #E2E6ED;border-radius:4px;padding:20px;cursor:pointer;display:flex;flex-direction:column;gap:14px;min-height:172px">
+<div style="display:flex;align-items:flex-start;gap:12px">
+<div style="display:flex;flex-direction:column;gap:4px">
+<div style="font-size:17px;font-weight:700;letter-spacing:-.02em">{{ c.company }}</div>
+<div style="font-size:13px;color:#5F6B7E">{{ c.role }}</div>
+</div>
+<div style="flex:1"></div>
+<div style="font-size:11.5px;color:#8E98A8">{{ c.date }}</div>
+</div>
+
+<div style="flex:1"></div>
+
+<sc-if value="{{ c.isReady }}">
+<div style="display:flex;flex-direction:column;gap:11px">
+<div style="display:flex;align-items:center;gap:7px">
+<div style="width:5px;height:5px;background:#B57F1C;border-radius:50%"></div>
+<div style="font-size:12.5px;font-weight:600;color:#B57F1C;letter-spacing:.01em">면접 준비 완료</div>
+</div>
+<div style="display:flex;align-items:center;justify-content:space-between;border-top:1px solid #EEF0F4;padding-top:11px">
+<div style="font-size:12.5px;color:#5F6B7E">4단계 · 15~20분</div>
+<div style="font-size:13px;font-weight:600">시작하기 →</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ c.isResearching }}">
+<div style="display:flex;flex-direction:column;gap:9px">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<div style="font-size:12.5px;color:#5F6B7E">면접 준비 중 · {{ c.pctLabel }}</div>
+<div style="font-size:12px;color:#8E98A8">자세히 보기 →</div>
+</div>
+<div style="height:3px;background:#EEF0F4"><div style="height:100%;background:#B57F1C;transition:width .4s ease;width:{{ c.pctWidth }}"></div></div>
+<div style="font-size:12.5px;color:#5F6B7E">{{ c.activeLabel }}</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ c.isDone }}">
+<div style="display:flex;align-items:flex-end;justify-content:space-between;border-top:1px solid #EEF0F4;padding-top:12px">
+<div style="display:flex;flex-direction:column;gap:3px">
+<div style="font-size:12px;color:#8E98A8">면접 완료</div>
+<div style="font-size:12.5px;color:#5F6B7E">리포트 보기 →</div>
+</div>
+<div style="display:flex;align-items:baseline;gap:2px">
+<div style="font-size:28px;font-weight:700;letter-spacing:-.04em">{{ c.score }}</div>
+<div style="font-size:12px;color:#8E98A8">점</div>
+</div>
+</div>
+</sc-if>
+</div>
+</sc-for>
+
+<div onClick="{{ openRegister }}" style="border:1px dashed #C9D0DB;border-radius:4px;padding:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;min-height:172px;color:#8E98A8;font-size:13.5px">+ 새 회사 등록</div>
+</div>
+</main>
+</sc-if>
+
+<sc-if value="{{ isResearch }}">
+<main style="max-width:760px;margin:0 auto;padding:44px 32px 80px">
+<div onClick="{{ goHome }}" style="font-size:13px;color:#5F6B7E;cursor:pointer;margin-bottom:20px">← 내 면접</div>
+<div style="background:#fff;border:1px solid #E2E6ED;border-radius:4px;padding:28px">
+<div style="display:flex;align-items:flex-start;gap:16px;margin-bottom:22px">
+<div style="display:flex;flex-direction:column;gap:5px">
+<div style="font-size:20px;font-weight:700;letter-spacing:-.02em">{{ activeCompany }}</div>
+<div style="font-size:13.5px;color:#5F6B7E">{{ activeRole }}</div>
+</div>
+<div style="flex:1"></div>
+<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+<div style="font-size:22px;font-weight:700;letter-spacing:-.03em;color:#B57F1C">{{ researchPctLabel }}</div>
+<div style="font-size:12px;color:#8E98A8">{{ researchEta }}</div>
+</div>
+</div>
+<div style="height:3px;background:#EEF0F4;margin-bottom:26px"><div style="height:100%;background:#B57F1C;transition:width .5s ease;width:{{ researchWidth }}"></div></div>
+
+<div style="font-size:12px;font-weight:600;color:#8E98A8;letter-spacing:.04em;margin-bottom:14px">조사 진행 상황</div>
+<div style="display:flex;flex-direction:column;gap:0">
+<sc-for list="{{ researchLog }}" as="s" hint-placeholder-count="5">
+<div style="display:flex;gap:13px;padding:13px 0;border-bottom:1px solid #F1F3F6">
+<div style="width:16px;flex:none;display:flex;justify-content:center;padding-top:2px">
+<sc-if value="{{ s.done }}"><div style="width:14px;height:14px;border-radius:50%;background:#16233A;color:#fff;font-size:9px;display:flex;align-items:center;justify-content:center">✓</div></sc-if>
+<sc-if value="{{ s.active }}"><div style="width:13px;height:13px;border:1.5px solid #B57F1C;border-top-color:transparent;border-radius:50%;animation:dm-spin 1s linear infinite"></div></sc-if>
+<sc-if value="{{ s.todo }}"><div style="width:13px;height:13px;border:1.5px solid #E2E6ED;border-radius:50%"></div></sc-if>
+</div>
+<div style="display:flex;flex-direction:column;gap:4px;flex:1">
+<div style="font-size:14px;font-weight:600;color:{{ s.color }}">{{ s.label }}</div>
+<sc-if value="{{ s.showDetail }}">
+<div style="font-size:12.5px;color:#8E98A8;line-height:1.5">{{ s.detail }}</div>
+</sc-if>
+</div>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:22px;padding:13px 15px;background:#FAFBFC;border:1px solid #EEF0F4;font-size:12.5px;color:#5F6B7E;line-height:1.55">창을 닫아도 준비는 계속됩니다. 완료되면 알려드립니다.</div>
+</div>
+</main>
+</sc-if>
+
+<sc-if value="{{ isRegister }}">
+<main style="max-width:1160px;margin:0 auto;padding:0 32px">
+<div style="display:flex;align-items:center;gap:16px;padding:26px 0 34px">
+<div onClick="{{ goHome }}" style="font-size:13px;color:#5F6B7E;cursor:pointer">✕ 나가기</div>
+<div style="flex:1"></div>
+<div style="display:flex;align-items:center;gap:9px">
+<div style="font-size:12.5px;color:#5F6B7E">{{ stepLabel }}</div>
+<div style="display:flex;gap:5px">
+<div style="width:22px;height:2.5px;background:#16233A"></div>
+<div style="width:22px;height:2.5px;background:{{ step2Color }}"></div>
+</div>
+</div>
+</div>
+
+<sc-if value="{{ isStep1 }}">
+<div style="max-width:520px;margin:0 auto;padding-bottom:90px;animation:dm-fade .3s ease">
+<div style="font-size:12px;font-weight:600;color:#B57F1C;letter-spacing:.05em;margin-bottom:10px">STEP 1</div>
+<h2 style="margin:0 0 9px;font-size:25px;font-weight:700;letter-spacing:-.03em">어느 회사에 지원하시나요</h2>
+<p style="margin:0 0 32px;font-size:14px;color:#5F6B7E;line-height:1.6">회사와 직무를 알려주시면 그 회사의 채용공고와 최근 소식을 조사해 질문을 준비합니다.</p>
+
+<div style="display:flex;flex-direction:column;gap:20px">
+<div style="display:flex;flex-direction:column;gap:7px">
+<label style="font-size:13px;font-weight:600">회사명</label>
+<input value="{{ fCompany }}" onChange="{{ setCompany }}" placeholder="예) 누리테크" style="border:1px solid #C9D0DB;border-radius:3px;padding:12px 13px;font-size:14.5px;background:#fff;color:#16233A">
+</div>
+<div style="display:flex;flex-direction:column;gap:7px">
+<label style="font-size:13px;font-weight:600">직무</label>
+<input value="{{ fRole }}" onChange="{{ setRole }}" placeholder="예) 서비스기획" style="border:1px solid #C9D0DB;border-radius:3px;padding:12px 13px;font-size:14.5px;background:#fff;color:#16233A">
+</div>
+<div style="display:flex;flex-direction:column;gap:7px">
+<div style="display:flex;align-items:baseline;gap:8px">
+<label style="font-size:13px;font-weight:600">채용공고 링크</label>
+<span style="font-size:12px;color:#8E98A8">선택</span>
+</div>
+<input placeholder="https://" style="border:1px solid #C9D0DB;border-radius:3px;padding:12px 13px;font-size:14.5px;background:#fff;color:#16233A">
+</div>
+<div style="display:flex;flex-direction:column;gap:7px">
+<div style="display:flex;align-items:baseline;gap:8px">
+<label style="font-size:13px;font-weight:600">직무 소개서 (JD)</label>
+<span style="font-size:12px;color:#8E98A8">선택 · 있으면 질문이 더 정확해집니다</span>
+</div>
+<div style="border:1px dashed #C9D0DB;border-radius:3px;padding:18px;background:#fff;display:flex;align-items:center;gap:12px">
+<div style="font-size:13px;color:#5F6B7E">파일을 끌어다 놓거나</div>
+<div style="border:1px solid #C9D0DB;border-radius:3px;padding:6px 12px;font-size:12.5px;cursor:pointer;background:#FAFBFC">파일 선택</div>
+<div style="flex:1"></div>
+<div style="font-size:12.5px;color:#5F6B7E;cursor:pointer;border-bottom:1px solid #C9D0DB">직접 붙여넣기</div>
+</div>
+</div>
+</div>
+
+<div style="display:flex;justify-content:flex-end;margin-top:32px">
+<button onClick="{{ nextStep }}" style="border:1px solid #16233A;background:#16233A;color:#fff;font-size:14px;font-weight:600;padding:12px 30px;cursor:pointer;border-radius:3px">다음</button>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isStep2 }}">
+<div style="max-width:760px;margin:0 auto;padding-bottom:90px;animation:dm-fade .3s ease">
+<div style="font-size:12px;font-weight:600;color:#B57F1C;letter-spacing:.05em;margin-bottom:10px">STEP 2</div>
+<h2 style="margin:0 0 9px;font-size:25px;font-weight:700;letter-spacing:-.03em">지원서를 넣어 주세요</h2>
+<p style="margin:0 0 28px;font-size:14px;color:#5F6B7E;line-height:1.6">회사 양식 그대로 파트를 만들고 그 안에 항목을 나눠 넣으면, 항목 하나하나를 파고드는 질문이 만들어집니다.</p>
+
+<div style="display:flex;flex-direction:column;gap:14px">
+<sc-for list="{{ parts }}" as="p" hint-placeholder-count="3">
+<div style="background:#fff;border:1px solid #E2E6ED;border-radius:4px">
+<div onClick="{{ p.onToggle }}" style="display:flex;align-items:center;gap:10px;padding:15px 18px;cursor:pointer;border-bottom:1px solid #F1F3F6">
+<div style="font-size:15px;font-weight:700;letter-spacing:-.01em">{{ p.name }}</div>
+<div style="font-size:11.5px;color:#8E98A8;border:1px solid #E2E6ED;border-radius:2px;padding:1px 6px">{{ p.count }}</div>
+<div style="flex:1"></div>
+<div style="font-size:12px;color:#8E98A8">{{ p.caret }}</div>
+</div>
+<sc-if value="{{ p.open }}">
+<div style="padding:16px 18px;display:flex;flex-direction:column;gap:10px">
+<sc-for list="{{ p.items }}" as="it" hint-placeholder-count="2">
+<div style="border:1px solid #E8EBF0;border-radius:3px;background:#FAFBFC">
+<div onClick="{{ it.onToggle }}" style="display:flex;align-items:center;gap:10px;padding:11px 13px;cursor:pointer">
+<div style="font-size:13px;font-weight:600;color:#2A3A55">{{ it.headTitle }}</div>
+<div style="flex:1"></div>
+<div style="font-size:11.5px;color:#8E98A8">{{ it.meta }}</div>
+<div style="font-size:11px;color:#8E98A8">{{ it.caret }}</div>
+</div>
+<sc-if value="{{ it.open }}">
+<div style="padding:0 13px 13px;display:flex;flex-direction:column;gap:9px">
+<textarea value="{{ it.body }}" onChange="{{ it.onEdit }}" style="border:1px solid #D8DDE5;border-radius:3px;padding:10px 11px;font-size:13.5px;line-height:1.65;background:#fff;color:#16233A;min-height:96px;resize:vertical" placeholder="내용을 붙여넣어 주세요"></textarea>
+<div style="display:flex;align-items:center;gap:12px">
+<div style="font-size:11.5px;color:#8E98A8">{{ it.hint }}</div>
+<div style="flex:1"></div>
+<div style="font-size:12px;color:#8E98A8;cursor:pointer">삭제</div>
+</div>
+</div>
+</sc-if>
+</div>
+</sc-for>
+<div onClick="{{ p.onAdd }}" style="border:1px dashed #D8DDE5;border-radius:3px;padding:10px;text-align:center;font-size:12.5px;color:#8E98A8;cursor:pointer">+ 항목 추가</div>
+</div>
+</sc-if>
+</div>
+</sc-for>
+
+<div onClick="{{ addPart }}" style="border:1px dashed #C9D0DB;border-radius:4px;padding:15px;text-align:center;font-size:13px;color:#8E98A8;cursor:pointer;background:#fff">+ 파트 추가 <span style="color:#B7C0CD">경력 · 포트폴리오 · 기타</span></div>
+</div>
+
+<div style="display:flex;align-items:center;margin-top:30px;gap:14px">
+<div onClick="{{ prevStep }}" style="font-size:13.5px;color:#5F6B7E;cursor:pointer">← 이전</div>
+<div style="font-size:12.5px;color:#8E98A8">파일로 올리기 (PDF · DOCX)</div>
+<div style="flex:1"></div>
+<button onClick="{{ submitRegister }}" style="border:1px solid #16233A;background:#16233A;color:#fff;font-size:14px;font-weight:600;padding:12px 26px;cursor:pointer;border-radius:3px">등록하고 준비 시작</button>
+</div>
+</div>
+</sc-if>
+</main>
+</sc-if>
+
+<sc-if value="{{ isReady }}">
+<main style="max-width:760px;margin:0 auto;padding:44px 32px 80px;animation:dm-fade .3s ease">
+<div onClick="{{ goHome }}" style="font-size:13px;color:#5F6B7E;cursor:pointer;margin-bottom:26px">← 내 면접</div>
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+<div style="width:5px;height:5px;background:#B57F1C;border-radius:50%"></div>
+<div style="font-size:12px;font-weight:600;color:#B57F1C;letter-spacing:.05em">면접 준비 완료</div>
+</div>
+<h2 style="margin:0 0 8px;font-size:27px;font-weight:700;letter-spacing:-.03em">{{ activeCompany }} · {{ activeRole }}</h2>
+<p style="margin:0 0 30px;font-size:14px;color:#5F6B7E;line-height:1.6">채용공고와 최근 소식, 지원서를 함께 읽고 질문을 준비했습니다. 한국어 음성으로 15~20분간 진행됩니다.</p>
+
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+<sc-for list="{{ stages }}" as="st" hint-placeholder-count="4">
+<div style="background:#fff;border:1px solid #E2E6ED;border-radius:4px;padding:15px 14px;display:flex;flex-direction:column;gap:8px">
+<div style="font-size:11.5px;color:#B7C0CD;font-weight:600">{{ st.no }}</div>
+<div style="font-size:14px;font-weight:700;letter-spacing:-.01em">{{ st.name }}</div>
+<div style="font-size:11.5px;color:#8E98A8">{{ st.count }}</div>
+</div>
+</sc-for>
+</div>
+
+<div style="background:#fff;border:1px solid #E2E6ED;border-radius:4px;padding:20px;display:flex;flex-direction:column;gap:14px;margin-bottom:16px">
+<div style="display:flex;align-items:center;gap:10px">
+<div style="font-size:12px;font-weight:600;color:#8E98A8;letter-spacing:.04em">리서치 리포트</div>
+<div style="flex:1"></div>
+<div style="font-size:11.5px;color:#B7C0CD">8월 4일 생성</div>
+</div>
+<sc-if value="{{ hasEdits }}">
+<div style="font-size:12.5px;color:#3E4C63;background:#FBF7EF;border:1px solid #EFE2CB;padding:10px 12px;line-height:1.55">남기신 정정 사항 {{ editCount }}건을 함께 넘겨 질문을 다시 뽑았습니다.</div>
+</sc-if>
+<div style="display:flex;align-items:flex-start;gap:16px;border-top:1px solid #F1F3F6;padding-top:14px">
+<div style="flex:1;display:flex;flex-direction:column;gap:6px">
+<div style="font-size:14.5px;font-weight:700;letter-spacing:-.02em">{{ reportDocTitle }}</div>
+<div style="font-size:12.5px;color:#B57F1C;font-weight:600">확인이 필요한 대목 {{ uncertainCount }}곳</div>
+</div>
+<div onClick="{{ goReview }}" style="flex:none;font-size:12.5px;font-weight:600;color:#16233A;border:1px solid #C9D0DB;border-radius:3px;padding:9px 14px;cursor:pointer;background:#fff">리포트 열기</div>
+</div>
+</div>
+
+<div style="background:#fff;border:1px solid #E2E6ED;border-radius:4px;padding:20px;display:flex;flex-direction:column;gap:12px;margin-bottom:26px">
+<div style="font-size:12px;font-weight:600;color:#8E98A8;letter-spacing:.04em">시작 전 확인</div>
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;align-items:center;gap:10px">
+<div style="width:15px;height:15px;border-radius:50%;background:#16233A;color:#fff;font-size:9px;display:flex;align-items:center;justify-content:center">✓</div>
+<div style="font-size:13.5px">마이크가 연결되어 있습니다</div>
+<div style="flex:1"></div>
+<div style="font-size:12.5px;color:#5F6B7E;cursor:pointer;border-bottom:1px solid #C9D0DB">테스트하기</div>
+</div>
+<div style="display:flex;align-items:center;gap:10px">
+<div style="width:15px;height:15px;border-radius:50%;border:1.5px solid #C9D0DB"></div>
+<div style="font-size:13.5px;color:#5F6B7E">조용한 곳에서 진행하시길 권합니다</div>
+</div>
+<div style="display:flex;align-items:center;gap:10px">
+<div style="width:15px;height:15px;border-radius:50%;border:1.5px solid #C9D0DB"></div>
+<div style="font-size:13.5px;color:#5F6B7E">중간에 멈추면 이어서 진행할 수 있습니다</div>
+</div>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;gap:14px">
+<div style="font-size:13px;color:#5F6B7E;cursor:pointer">지원서 수정</div>
+<div style="flex:1"></div>
+<button onClick="{{ startInterview }}" style="border:1px solid #16233A;background:#16233A;color:#fff;font-size:15px;font-weight:600;padding:14px 34px;cursor:pointer;border-radius:3px">면접 시작하기</button>
+</div>
+</main>
+</sc-if>
+
+<sc-if value="{{ isReview }}">
+<main style="max-width:1180px;margin:0 auto;padding:34px 32px 130px;animation:dm-fade .3s ease">
+<div onClick="{{ backToReady }}" style="font-size:13px;color:#5F6B7E;cursor:pointer;margin-bottom:22px">← 준비 완료로</div>
+<div style="display:flex;gap:36px;align-items:flex-start">
+
+<aside style="width:236px;flex:none;position:sticky;top:88px;display:flex;flex-direction:column;gap:20px">
+<div style="display:flex;flex-direction:column;gap:9px">
+<div style="font-size:11.5px;font-weight:600;color:#B57F1C;letter-spacing:.04em">확인이 필요한 대목 {{ uncertainCount }}</div>
+<sc-for list="{{ uncertain }}" as="u" hint-placeholder-count="3">
+<div onClick="{{ u.onJump }}" style="border:1px solid #EFE2CB;background:#FBF7EF;border-radius:3px;padding:11px 12px;cursor:pointer;display:flex;flex-direction:column;gap:5px">
+<div style="font-size:12.5px;font-weight:600;line-height:1.5">{{ u.title }}</div>
+<div style="font-size:11.5px;color:#8E98A8;line-height:1.55">{{ u.reason }}</div>
+</div>
+</sc-for>
+</div>
+<div style="display:flex;flex-direction:column;gap:9px;border-top:1px solid #E2E6ED;padding-top:17px">
+<div style="font-size:11.5px;font-weight:600;color:#8E98A8;letter-spacing:.04em">목차</div>
+<sc-for list="{{ toc }}" as="t" hint-placeholder-count="7">
+<div onClick="{{ t.onJump }}" style="font-size:12.5px;color:#5F6B7E;cursor:pointer;line-height:1.5">{{ t.title }}</div>
+</sc-for>
+</div>
+</aside>
+
+<div style="flex:1;min-width:0;background:#fff;border:1px solid #E2E6ED;border-radius:4px;padding:36px 40px">
+<div style="font-size:11.5px;color:#B7C0CD;margin-bottom:9px">8월 4일 생성</div>
+<h1 style="margin:0 0 12px;font-size:23px;font-weight:700;letter-spacing:-.03em;line-height:1.4">{{ reportDocTitle }}</h1>
+<p style="margin:0 0 8px;font-size:13px;color:#5F6B7E;line-height:1.7">사실과 다른 대목에 표시하거나, 알고 계신 내용을 메모로 남겨 주세요.</p>
+
+<sc-for list="{{ docSections }}" as="sec" hint-placeholder-count="6">
+<div id="{{ sec.id }}" style="scroll-margin-top:90px">
+<h2 style="margin:30px 0 6px;font-size:16px;font-weight:700;letter-spacing:-.02em;padding-bottom:10px;border-bottom:1px solid #EEF0F4">{{ sec.title }}</h2>
+<sc-for list="{{ sec.blocks }}" as="b" hint-placeholder-count="3">
+<div id="{{ b.id }}" style="display:flex;gap:14px;align-items:flex-start;padding:9px 10px 9px 12px;border-left:2px solid {{ b.markColor }};background:{{ b.markBg }};scroll-margin-top:90px">
+<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:8px">
+
+<sc-if value="{{ b.isP }}">
+<div style="font-size:14px;line-height:1.9;color:{{ b.color }}">{{ b.text }}</div>
+</sc-if>
+
+<sc-if value="{{ b.isLi }}">
+<div style="display:flex;gap:10px">
+<div style="color:#C9D0DB;font-size:12px;padding-top:6px">—</div>
+<div style="font-size:14px;line-height:1.85;color:{{ b.color }}">{{ b.text }}</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ b.isTable }}">
+<div style="border:1px solid #EEF0F4;border-radius:3px;overflow:hidden">
+<div style="display:grid;grid-template-columns:96px 1fr 120px;background:#FAFBFC;border-bottom:1px solid #EEF0F4">
+<sc-for list="{{ b.head }}" as="h" hint-placeholder-count="3">
+<div style="font-size:11.5px;font-weight:600;color:#5F6B7E;padding:9px 12px">{{ h }}</div>
+</sc-for>
+</div>
+<sc-for list="{{ b.rows }}" as="r" hint-placeholder-count="3">
+<div style="display:grid;grid-template-columns:96px 1fr 120px;border-bottom:1px solid #F4F6F9">
+<div style="font-size:12.5px;color:{{ b.color }};padding:9px 12px;font-variant-numeric:tabular-nums">{{ r.a }}</div>
+<div style="font-size:12.5px;color:{{ b.color }};padding:9px 12px">{{ r.b }}</div>
+<div style="font-size:12.5px;color:#8E98A8;padding:9px 12px">{{ r.c }}</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ b.isRefs }}">
+<div style="display:flex;flex-direction:column;gap:7px">
+<sc-for list="{{ b.refs }}" as="rf" hint-placeholder-count="9">
+<div style="display:flex;gap:9px;align-items:baseline">
+<div style="font-size:11.5px;color:#B7C0CD;width:20px;flex:none">{{ rf.n }}</div>
+<div style="font-size:12.5px;color:#5F6B7E;line-height:1.6">{{ rf.label }}</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ b.flagged }}">
+<div style="display:flex;align-items:center;gap:7px">
+<div style="font-size:11px;font-weight:600;color:#B57F1C;background:#FBF7EF;border:1px solid #EFE2CB;border-radius:2px;padding:3px 8px">사실과 다름으로 표시함</div>
+</div>
+</sc-if>
+
+<sc-for list="{{ b.memos }}" as="m" hint-placeholder-count="0">
+<div style="display:flex;gap:9px;align-items:flex-start;background:#FAFBFC;border:1px solid #EEF0F4;border-radius:3px;padding:10px 12px">
+<div style="font-size:11px;color:#B57F1C;font-weight:600;flex:none;padding-top:2px">메모</div>
+<div style="flex:1;font-size:13px;line-height:1.65;color:#3E4C63">{{ m.text }}</div>
+<div onClick="{{ m.onRemove }}" style="font-size:11.5px;color:#8E98A8;cursor:pointer;flex:none">삭제</div>
+</div>
+</sc-for>
+
+<sc-if value="{{ b.memoOpen }}">
+<div style="display:flex;gap:8px">
+<input value="{{ memoDraft }}" onChange="{{ onMemoDraft }}" placeholder="아는 내용이나 정정할 내용을 적어 주세요" style="flex:1;border:1px solid #D8DDE5;border-radius:3px;padding:9px 11px;font-size:13px;background:#fff;color:#16233A">
+<div onClick="{{ b.onSaveMemo }}" style="flex:none;font-size:12.5px;font-weight:600;color:#fff;background:#16233A;border:1px solid #16233A;border-radius:3px;padding:9px 14px;cursor:pointer">남기기</div>
+</div>
+</sc-if>
+</div>
+
+<sc-if value="{{ b.annotatable }}">
+<div style="flex:none;display:flex;gap:6px;padding-top:3px">
+<div onClick="{{ b.onFlag }}" style="font-size:11.5px;font-weight:600;color:{{ b.flagColor }};border:1px solid {{ b.flagBorder }};background:{{ b.flagBg }};border-radius:2px;padding:5px 9px;cursor:pointer;white-space:nowrap">{{ b.flagLabel }}</div>
+<div onClick="{{ b.onMemo }}" style="font-size:11.5px;color:#8E98A8;border:1px solid #E2E6ED;background:#fff;border-radius:2px;padding:5px 9px;cursor:pointer;white-space:nowrap">메모</div>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+</div>
+</main>
+
+<div style="position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,.94);backdrop-filter:blur(8px);border-top:1px solid #E2E6ED;z-index:30">
+<div style="max-width:1180px;margin:0 auto;padding:14px 32px;display:flex;align-items:center;gap:14px">
+<div style="font-size:13px;color:#5F6B7E">{{ editSummary }}</div>
+<div style="flex:1"></div>
+<div onClick="{{ backToReady }}" style="font-size:13px;color:#5F6B7E;cursor:pointer">돌아가기</div>
+<button onClick="{{ applyEdits }}" style="border:1px solid {{ applyBorder }};background:{{ applyBg }};color:{{ applyColor }};font-size:14px;font-weight:600;padding:11px 22px;cursor:pointer;border-radius:3px">{{ applyLabel }}</button>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isRegen }}">
+<main style="max-width:520px;margin:0 auto;padding:120px 32px;display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center;animation:dm-fade .3s ease">
+<div style="width:34px;height:34px;border:2px solid #E2E6ED;border-top-color:#B57F1C;border-radius:50%;animation:dm-spin .9s linear infinite"></div>
+<div style="font-size:18px;font-weight:700;letter-spacing:-.02em">고치신 내용으로 질문을 다시 뽑고 있습니다</div>
+<div style="font-size:13.5px;color:#5F6B7E;line-height:1.65">{{ editSummary }} · 잠시만 기다려 주세요</div>
+<div style="width:220px;height:2.5px;background:#EAEDF2;margin-top:6px"><div style="height:100%;background:#B57F1C;transition:width .3s ease;width:{{ regenWidth }}"></div></div>
+</main>
+</sc-if>
+
+<sc-if value="{{ isInterview }}">
+<div style="position:fixed;inset:0;background:#0E1726;display:flex;flex-direction:column;z-index:60">
+
+<div style="position:absolute;top:0;left:0;right:0;padding:22px 30px;display:flex;align-items:center;gap:14px;z-index:3">
+<div style="display:flex;align-items:center;gap:9px">
+<div style="width:6px;height:6px;border-radius:50%;background:{{ liveDot }}"></div>
+<div style="font-size:13.5px;color:#E8ECF3;font-weight:500">{{ liveLabel }}</div>
+</div>
+<div style="flex:1"></div>
+<div style="font-size:13px;color:#8896AC">{{ stageLabel }}</div>
+<div style="width:1px;height:12px;background:#2A3A55"></div>
+<div style="font-size:13px;color:#E8ECF3;font-variant-numeric:tabular-nums">{{ remain }} 남음</div>
+</div>
+
+<div style="flex:1;display:flex;align-items:center;justify-content:center;position:relative">
+<div style="position:relative;width:340px;height:340px;display:flex;align-items:center;justify-content:center">
+<sc-if value="{{ speaking }}">
+<div style="position:absolute;width:340px;height:340px;border-radius:50%;background:radial-gradient(circle,rgba(181,127,28,.5),transparent 68%);animation:dm-pulse2 2.6s ease-in-out infinite"></div>
+<div style="position:absolute;width:270px;height:270px;border-radius:50%;border:1px solid rgba(181,127,28,.34);animation:dm-pulse 2.2s ease-in-out infinite"></div>
+</sc-if>
+<div data-avatar-slot="true" style="position:relative;width:206px;height:206px;border-radius:50%;background:linear-gradient(160deg,#233047,#16223A);border:1px solid #2E3F5C;display:flex;align-items:center;justify-content:center;overflow:hidden;animation:dm-breathe 4.5s ease-in-out infinite">
+<div style="position:absolute;inset:0;background:radial-gradient(circle at 34% 28%,rgba(255,255,255,.07),transparent 58%)"></div>
+<div style="width:96px;height:96px;border-radius:50%;border:1px solid rgba(232,236,243,.22);display:flex;align-items:center;justify-content:center">
+<div style="width:44px;height:44px;border-radius:50%;background:rgba(181,127,28,.85)"></div>
+</div>
+</div>
+</div>
+</div>
+
+<sc-if value="{{ showCaption }}">
+<div style="padding:0 30px 6px;display:flex;justify-content:center">
+<div style="max-width:660px;text-align:center;font-size:17px;line-height:1.65;color:#E8ECF3;font-weight:500;letter-spacing:-.01em;animation:dm-fade .4s ease">{{ currentQuestion }}</div>
+</div>
+</sc-if>
+
+<div style="height:104px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px">
+<sc-if value="{{ listening }}">
+<div style="display:flex;align-items:center;gap:3px;height:38px">
+<div style="width:3px;height:38px;background:#B57F1C;transform-origin:center;animation:dm-wave 1.1s ease-in-out infinite;animation-delay:0s"></div>
+<div style="width:3px;height:38px;background:#B57F1C;transform-origin:center;animation:dm-wave 1.1s ease-in-out infinite;animation-delay:.09s"></div>
+<div style="width:3px;height:38px;background:#B57F1C;transform-origin:center;animation:dm-wave 1.1s ease-in-out infinite;animation-delay:.21s"></div>
+<div style="width:3px;height:38px;background:#B57F1C;transform-origin:center;animation:dm-wave 1.1s ease-in-out infinite;animation-delay:.05s"></div>
+<div style="width:3px;height:38px;background:#B57F1C;transform-origin:center;animation:dm-wave 1.1s ease-in-out infinite;animation-delay:.33s"></div>
+<div style="width:3px;height:38px;background:#B57F1C;transform-origin:center;animation:dm-wave 1.1s ease-in-out infinite;animation-delay:.14s"></div>
+<div style="width:3px;height:38px;background:#B57F1C;transform-origin:center;animation:dm-wave 1.1s ease-in-out infinite;animation-delay:.27s"></div>
+<div style="width:3px;height:38px;background:#B57F1C;transform-origin:center;animation:dm-wave 1.1s ease-in-out infinite;animation-delay:.02s"></div>
+<div style="width:3px;height:38px;background:#B57F1C;transform-origin:center;animation:dm-wave 1.1s ease-in-out infinite;animation-delay:.19s"></div>
+<div style="width:3px;height:38px;background:#B57F1C;transform-origin:center;animation:dm-wave 1.1s ease-in-out infinite;animation-delay:.36s"></div>
+<div style="width:3px;height:38px;background:#B57F1C;transform-origin:center;animation:dm-wave 1.1s ease-in-out infinite;animation-delay:.11s"></div>
+<div style="width:3px;height:38px;background:#B57F1C;transform-origin:center;animation:dm-wave 1.1s ease-in-out infinite;animation-delay:.3s"></div>
+<div style="width:3px;height:38px;background:#B57F1C;transform-origin:center;animation:dm-wave 1.1s ease-in-out infinite;animation-delay:.07s"></div>
+<div style="width:3px;height:38px;background:#B57F1C;transform-origin:center;animation:dm-wave 1.1s ease-in-out infinite;animation-delay:.24s"></div>
+<div style="width:3px;height:38px;background:#B57F1C;transform-origin:center;animation:dm-wave 1.1s ease-in-out infinite;animation-delay:.16s"></div>
+<div style="width:3px;height:38px;background:#B57F1C;transform-origin:center;animation:dm-wave 1.1s ease-in-out infinite;animation-delay:.39s"></div>
+</div>
+</sc-if>
+<sc-if value="{{ speaking }}">
+<div style="display:flex;align-items:center;gap:9px;height:38px">
+<div style="font-size:12.5px;color:#8395AF">답변이 끝나면 마이크가 열립니다</div>
+</div>
+</sc-if>
+</div>
+
+<div style="padding:0 30px 26px;display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;gap:5px">
+<sc-for list="{{ stageBars }}" as="b" hint-placeholder-count="4">
+<div style="flex:1;height:2.5px;background:#22314A;position:relative;overflow:hidden">
+<div style="position:absolute;inset:0;background:#B57F1C;transition:width .5s ease;width:{{ b.w }}"></div>
+</div>
+</sc-for>
+</div>
+<div style="display:flex;align-items:center;gap:14px">
+<div style="font-size:12.5px;color:#8395AF">질문 {{ qNo }} / 8</div>
+<div style="flex:1"></div>
+<button onClick="{{ pause }}" style="border:1px solid #2E3F5C;background:transparent;color:#C7D0DE;font-size:13px;padding:9px 18px;cursor:pointer;border-radius:3px">일시정지</button>
+<button onClick="{{ endInterview }}" style="border:1px solid #2E3F5C;background:transparent;color:#C7D0DE;font-size:13px;padding:9px 18px;cursor:pointer;border-radius:3px">종료</button>
+</div>
+</div>
+
+<sc-if value="{{ paused }}">
+<div style="position:absolute;inset:0;background:rgba(14,23,38,.86);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:5">
+<div style="width:390px;background:#16233A;border:1px solid #2E3F5C;border-radius:4px;padding:28px;display:flex;flex-direction:column;gap:9px;animation:dm-fade .25s ease">
+<div style="font-size:19px;font-weight:700;color:#F2F5F9;letter-spacing:-.02em">면접을 잠시 멈췄습니다</div>
+<div style="font-size:13.5px;color:#8896AC;line-height:1.65;margin-bottom:10px">이어서 진행하거나, 지금까지의 답변만으로 리포트를 받을 수 있습니다.</div>
+<button onClick="{{ resume }}" style="border:1px solid #B57F1C;background:#B57F1C;color:#fff;font-size:14px;font-weight:600;padding:12px;cursor:pointer;border-radius:3px">이어서 진행</button>
+<div onClick="{{ endInterview }}" style="text-align:center;font-size:13px;color:#C7D0DE;padding:9px;cursor:pointer">종료하고 리포트 받기</div>
+<div onClick="{{ goHome }}" style="text-align:center;font-size:12.5px;color:#8395AF;cursor:pointer">면접 취소 · 기록을 남기지 않습니다</div>
+</div>
+</div>
+</sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{ isAnalyzing }}">
+<div style="position:fixed;inset:0;background:#0E1726;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;z-index:60">
+<div style="width:96px;height:96px;border-radius:50%;background:linear-gradient(160deg,#233047,#16223A);border:1px solid #2E3F5C;animation:dm-breathe 3s ease-in-out infinite"></div>
+<div style="font-size:19px;font-weight:600;color:#F2F5F9;letter-spacing:-.02em">면접이 끝났습니다. 수고하셨습니다</div>
+<div style="font-size:13.5px;color:#8896AC">답변을 분석하고 있습니다 · {{ analyzeLabel }}</div>
+<div style="width:240px;height:2.5px;background:#22314A"><div style="height:100%;background:#B57F1C;transition:width .4s ease;width:{{ analyzeWidth }}"></div></div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isReport }}">
+<main style="max-width:860px;margin:0 auto;padding:40px 32px 90px;animation:dm-fade .3s ease">
+<div style="display:flex;align-items:center;gap:14px;margin-bottom:30px">
+<div onClick="{{ goHome }}" style="font-size:13px;color:#5F6B7E;cursor:pointer">← 내 면접</div>
+<div style="flex:1"></div>
+<div style="font-size:12.5px;color:#5F6B7E;cursor:pointer">공유</div>
+<div style="font-size:12.5px;color:#5F6B7E;cursor:pointer">PDF로 저장</div>
+</div>
+
+<div style="display:flex;align-items:flex-start;gap:34px;padding-bottom:30px;border-bottom:1px solid #E2E6ED">
+<div style="display:flex;flex-direction:column;gap:9px;flex:1">
+<div style="font-size:12.5px;color:#8E98A8">{{ reportMeta }}</div>
+<h2 style="margin:0;font-size:25px;font-weight:700;letter-spacing:-.03em">{{ reportTitle }}</h2>
+<p style="margin:6px 0 0;font-size:14px;color:#3E4C63;line-height:1.7;max-width:480px">직무 경험은 사실 관계가 분명하고 구체적이었습니다. 다만 회사와 직무를 연결해 설명하는 대목에서 준비가 덜 된 인상을 주었습니다.</p>
+</div>
+<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+<div style="display:flex;align-items:baseline;gap:4px">
+<div style="font-size:52px;font-weight:700;letter-spacing:-.05em;line-height:1">80</div>
+<div style="font-size:15px;color:#8E98A8">/ 100</div>
+</div>
+<div style="font-size:12.5px;color:#B57F1C;font-weight:600">같은 직무 지원자 중 상위 24%</div>
+</div>
+</div>
+
+<section style="padding:30px 0;border-bottom:1px solid #E2E6ED">
+<div style="font-size:12px;font-weight:600;color:#8E98A8;letter-spacing:.04em;margin-bottom:18px">단계별 점수</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<sc-for list="{{ stageScores }}" as="s" hint-placeholder-count="4">
+<div style="display:flex;align-items:center;gap:16px">
+<div style="width:96px;font-size:13.5px;font-weight:600">{{ s.name }}</div>
+<div style="flex:1;height:6px;background:#EAEDF2"><div style="height:100%;background:{{ s.color }};width:{{ s.w }};animation:dm-grow .7s ease"></div></div>
+<div style="width:34px;text-align:right;font-size:15px;font-weight:700;font-variant-numeric:tabular-nums">{{ s.score }}</div>
+<div style="width:76px;font-size:12px;color:#8E98A8;text-align:right">{{ s.note }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:30px 0;border-bottom:1px solid #E2E6ED">
+<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:18px">
+<div style="font-size:12px;font-weight:600;color:#8E98A8;letter-spacing:.04em">음성 지표</div>
+<div style="font-size:12px;color:#B7C0CD">전체 8개 답변 기준</div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+<sc-for list="{{ metrics }}" as="m" hint-placeholder-count="6">
+<div style="background:#fff;border:1px solid #E2E6ED;border-radius:4px;padding:16px;display:flex;flex-direction:column;gap:7px">
+<div style="font-size:12.5px;color:#5F6B7E">{{ m.label }}</div>
+<div style="display:flex;align-items:baseline;gap:4px">
+<div style="font-size:23px;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums">{{ m.value }}</div>
+<div style="font-size:12px;color:#8E98A8">{{ m.unit }}</div>
+</div>
+<div style="height:3px;background:#EEF0F4;position:relative">
+<div style="position:absolute;left:0;top:0;bottom:0;background:{{ m.color }};width:{{ m.w }}"></div>
+</div>
+<div style="display:flex;align-items:center;gap:6px">
+<div style="font-size:11.5px;font-weight:600;color:{{ m.color }}">{{ m.verdict }}</div>
+<div style="font-size:11.5px;color:#B7C0CD">{{ m.range }}</div>
+</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:30px 0;border-bottom:1px solid #E2E6ED">
+<div style="font-size:12px;font-weight:600;color:#8E98A8;letter-spacing:.04em;margin-bottom:18px">내용 평가</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+<div style="background:#fff;border:1px solid #E2E6ED;border-radius:4px;padding:20px;display:flex;flex-direction:column;gap:12px">
+<div style="font-size:13px;font-weight:700;color:#2F6B55">잘한 점</div>
+<sc-for list="{{ strengths }}" as="t" hint-placeholder-count="3">
+<div style="display:flex;gap:9px">
+<div style="color:#2F6B55;font-size:12px;padding-top:2px">✓</div>
+<div style="font-size:13.5px;line-height:1.65;color:#3E4C63">{{ t }}</div>
+</div>
+</sc-for>
+</div>
+<div style="background:#fff;border:1px solid #E2E6ED;border-radius:4px;padding:20px;display:flex;flex-direction:column;gap:12px">
+<div style="font-size:13px;font-weight:700;color:#B57F1C">보완할 점</div>
+<sc-for list="{{ weaknesses }}" as="t" hint-placeholder-count="2">
+<div style="display:flex;gap:9px">
+<div style="color:#B57F1C;font-size:12px;padding-top:2px">→</div>
+<div style="font-size:13.5px;line-height:1.65;color:#3E4C63">{{ t }}</div>
+</div>
+</sc-for>
+</div>
+</div>
+</section>
+
+<section style="padding:30px 0">
+<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:18px">
+<div style="font-size:12px;font-weight:600;color:#8E98A8;letter-spacing:.04em">답변별 피드백</div>
+<div style="font-size:12px;color:#B7C0CD">질문 8개 · 녹음 다시 듣기</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px">
+<sc-for list="{{ answers }}" as="a" hint-placeholder-count="8">
+<div style="background:#fff;border:1px solid {{ a.border }};border-radius:4px">
+<div onClick="{{ a.onToggle }}" style="display:flex;align-items:center;gap:13px;padding:15px 18px;cursor:pointer">
+<div style="font-size:11.5px;font-weight:600;color:#B7C0CD;width:22px">{{ a.no }}</div>
+<div style="font-size:11.5px;color:#8E98A8;width:74px">{{ a.stage }}</div>
+<div style="font-size:13.5px;font-weight:600;flex:1;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:{{ a.headColor }}">{{ a.headline }}</div>
+<div style="font-size:11.5px;color:#B7C0CD">{{ a.dur }}</div>
+<div style="font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;width:28px;text-align:right">{{ a.score }}</div>
+<div style="font-size:11px;color:#B7C0CD;width:12px;text-align:right">{{ a.caret }}</div>
+</div>
+<sc-if value="{{ a.open }}">
+<div style="padding:4px 18px 20px;display:flex;flex-direction:column;gap:16px;animation:dm-fade .25s ease">
+<div style="border-top:1px solid #F1F3F6;padding-top:16px;display:flex;flex-direction:column;gap:12px">
+<div style="font-size:15px;font-weight:600;line-height:1.6;letter-spacing:-.01em">{{ a.question }}</div>
+<div style="display:flex;align-items:center;gap:12px;border:1px solid #E8EBF0;border-radius:3px;padding:10px 13px;background:#FAFBFC">
+<div style="width:26px;height:26px;border-radius:50%;background:#16233A;color:#fff;display:flex;align-items:center;justify-content:center;font-size:9px;cursor:pointer">▶</div>
+<div style="flex:1;display:flex;align-items:center;gap:2px;height:20px">
+<sc-for list="{{ a.wave }}" as="h" hint-placeholder-count="30">
+<div style="flex:1;background:#C9D0DB;height:{{ h }}"></div>
+</sc-for>
+</div>
+<div style="font-size:11.5px;color:#8E98A8;font-variant-numeric:tabular-nums">{{ a.dur }}</div>
+<div style="font-size:11.5px;color:#5F6B7E;cursor:pointer;border-left:1px solid #E2E6ED;padding-left:12px">질문 음성</div>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="font-size:11.5px;font-weight:600;color:#8E98A8;letter-spacing:.03em">내 답변</div>
+<div style="font-size:13.5px;line-height:1.85;color:#3E4C63">{{ a.transcript }}</div>
+<div style="font-size:11.5px;color:#B7C0CD;cursor:pointer">전체 스크립트 보기 · 필러 워드 {{ a.filler }}회 표시</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:9px;border-left:2px solid #B57F1C;padding:2px 0 2px 15px">
+<div style="font-size:11.5px;font-weight:700;color:#B57F1C;letter-spacing:.03em">이렇게 바꿔보세요</div>
+<div style="font-size:13.5px;line-height:1.8;color:#2A3A55">{{ a.coach }}</div>
+</div>
+
+<div style="display:flex;gap:8px">
+<sc-for list="{{ a.tags }}" as="t" hint-placeholder-count="3">
+<div style="font-size:11.5px;color:#5F6B7E;border:1px solid #E8EBF0;border-radius:2px;padding:4px 9px;background:#FAFBFC">{{ t }}</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</div>
+</section>
+
+<div style="display:flex;align-items:center;gap:14px;padding-top:8px">
+<div onClick="{{ goHome }}" style="font-size:13px;color:#5F6B7E;cursor:pointer">내 면접으로</div>
+<div style="flex:1"></div>
+<button onClick="{{ replay }}" style="border:1px solid #16233A;background:#16233A;color:#fff;font-size:14px;font-weight:600;padding:13px 28px;cursor:pointer;border-radius:3px">이 회사로 다시 면접 보기</button>
+</div>
+</main>
+</sc-if>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;showCaption&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;면접 화면&quot;}}">
+class Component extends DCLogic {
+  state = {
+    screen: 'home', regStep: 1,
+    company: '', role: '',
+    openPart: 0, openItem: 0,
+    researchPct: 0, activeCard: null,
+    elapsed: 0, qIndex: 0, phase: 'speaking', paused: false,
+    analyzePct: 0, openQ: 0,
+    flags: {}, memos: {}, memoOpenId: null, memoDraft: '', regenPct: 0,
+    cards: [
+      { id: 'nuri', company: '누리테크', role: '서비스기획 · 신입', date: '8월 4일 등록', status: 'ready' },
+      { id: 'sejong', company: '세종바이오', role: '마케팅 · 신입', date: '8월 6일 등록', status: 'researching', pct: 62 },
+      { id: 'hanbit', company: '한빛금융', role: 'IT기획 · 신입', date: '7월 28일 면접', status: 'done', score: 80 },
+      { id: 'oreum', company: '오름소프트', role: '백엔드 개발 · 신입', date: '7월 19일 등록', status: 'ready' }
+    ],
+    parts: [
+      { name: '경험', items: [
+        { title: '경험 1 — 교내 물류 데이터 분석 프로젝트', body: '재고 회전율이 낮은 품목을 찾기 위해 3개월치 출고 데이터를 정리했습니다. 분류 기준을 다시 잡아 상위 20개 품목을 추렸고, 발주 주기를 조정하자는 제안을 정리해 발표했습니다.', len: '312자' },
+        { title: '경험 2 — 스타트업 서비스기획 인턴 4개월', body: '', len: '작성 필요' }
+      ] },
+      { name: '자격증', items: [
+        { title: 'SQLD (SQL 개발자)', body: '2025년 3월 취득', len: '18자' },
+        { title: 'ADsP (데이터분석 준전문가)', body: '2024년 11월 취득', len: '21자' }
+      ] },
+      { name: '자기소개서', items: [
+        { title: '문항 1 — 지원 동기와 입사 후 포부', body: '', len: '작성 필요' },
+        { title: '문항 2 — 협업 과정에서 갈등을 해결한 경험', body: '', len: '작성 필요' },
+        { title: '문항 3 — 직무를 위해 준비한 노력', body: '', len: '작성 필요' }
+      ] }
+    ]
+  };
+
+  questions = [
+    { s: 0, q: '먼저 간단히 자기소개 부탁드립니다.', short: '먼저 간단히 자기소개 부탁드립니다.' },
+    { s: 0, q: '여러 회사 중 저희 {C}에 지원하신 이유가 무엇인가요?', short: '여러 회사 중 저희 {C}에 지원하신 이유가 무엇인가요?' },
+    { s: 1, q: '지원서에 적으신 물류 데이터 분석 프로젝트에서 본인이 맡은 역할을 설명해 주세요.', short: '물류 데이터 분석 프로젝트에서 맡은 역할을 설명해 주세요.' },
+    { s: 1, q: '그 프로젝트에서 가장 어려웠던 판단은 무엇이었고, 어떤 근거로 결정하셨나요?', short: '가장 어려웠던 판단은 무엇이었고, 어떤 근거로 결정하셨나요?' },
+    { s: 1, q: '저희가 올해 공개한 {P}를 써보셨다면, 어떤 점을 먼저 개선하시겠습니까?', short: '{P}에서 어떤 점을 먼저 개선하시겠습니까?' },
+    { s: 2, q: '동료와 의견이 부딪혔을 때 어떻게 풀어가시는 편인가요?', short: '동료와 의견이 부딪혔을 때 어떻게 풀어가시는 편인가요?' },
+    { s: 2, q: '실패했다고 생각하는 경험과, 그때 배운 점을 말씀해 주세요.', short: '실패했다고 생각하는 경험과 그때 배운 점을 말씀해 주세요.' },
+    { s: 3, q: '마지막으로 궁금한 점이나 하고 싶은 말씀이 있으신가요?', short: '마지막으로 궁금한 점이나 하고 싶은 말씀이 있으신가요?' }
+  ];
+
+  ctxByCompany = {
+    '누리테크': { product: '파트너 정산 서비스', news: '올해 공개한 파트너 정산 서비스와 물류 자회사 인수 건을 확인했습니다.' },
+    '세종바이오': { product: '건강기능식품 구독 서비스', news: '올해 출시한 건강기능식품 구독 서비스와 해외 임상 진행 상황을 확인했습니다.' },
+    '한빛금융': { product: '오픈뱅킹 자산관리 앱', news: '올해 개편한 오픈뱅킹 자산관리 앱과 마이데이터 사업 확대 건을 확인했습니다.' },
+    '오름소프트': { product: '클라우드 배포 자동화 도구', news: '올해 공개한 클라우드 배포 자동화 도구와 신규 투자 유치 건을 확인했습니다.' }
+  };
+
+  doc = [
+    { title: 'Executive Summary', blocks: [
+      { type: 'p', text: '{C}는 {P}를 중심으로 사업 구조를 재편하는 중이며, 최근 1년간 조직과 제품 양쪽에서 변화가 있었습니다. 지원 직무인 {R}은 이 변화가 진행되는 조직에 속해 있어, 면접에서는 회사의 최근 방향을 얼마나 이해하고 있는지가 비중 있게 다뤄질 가능성이 높습니다. [1]' }
+    ] },
+    { title: '1. 회사와 사업 구조', blocks: [
+      { type: 'p', text: '{C}의 매출은 크게 세 축으로 나뉘며, 그중 {P} 부문이 올해 상반기 기준 전체의 절반 이상을 차지합니다. 나머지는 기존 주력 사업과 신규 투자 부문에서 발생합니다. [1]' },
+      { type: 'li', text: '기업 고객 대상 계약이 전체 계약의 약 70%를 차지합니다. [2]' },
+      { type: 'li', text: '개인 사용자 대응보다 파트너사 운영 프로세스가 조직 구조의 중심에 있습니다. [2]' },
+      { type: 'li', text: '지난해 데이터 조직을 별도 본부로 분리해 전사 지표 관리를 맡기고 있습니다. [3]' }
+    ] },
+    { title: '2. 최근 1년의 변화', blocks: [
+      { type: 'p', text: '{N} 이 변화는 채용 규모와 조직 개편에도 이어지고 있습니다. [4]' },
+      { type: 'table', head: ['시점', '내용', '관련 조직'], rows: [
+        { a: '2025.09', b: '데이터 본부 신설', c: '전사' },
+        { a: '2026.03', b: '{P} 공개', c: '프로덕트 부문' },
+        { a: '2026.05', b: '신입 채용 확대 발표', c: '인사' }
+      ] },
+      { type: 'p', text: '개발자 콘퍼런스에서는 내부 데이터 파이프라인 개편 사례를 공개했으며, 지표 정의를 팀 단위로 옮긴 점을 성과로 제시했습니다. [4]' }
+    ] },
+    { title: '3. 인재상과 조직문화', blocks: [
+      { type: 'p', text: '채용 페이지와 재직자 인터뷰에서 반복되는 표현을 정리하면 다음과 같습니다.' },
+      { type: 'li', text: '"스스로 문제를 정의하는 사람"이라는 표현이 채용 페이지 세 곳에 반복됩니다. [5]' },
+      { type: 'li', text: '문서와 회의록으로 일하는 문화가 재직자 인터뷰 3건에서 공통으로 언급됩니다. [6]' },
+      { type: 'li', text: '호칭은 수평적이나 의사결정은 팀 리드 중심이라는 후기가 있습니다. 출처가 익명 게시글이어서 신뢰도는 낮습니다. [7]' }
+    ] },
+    { title: '4. 직무 요구역량', blocks: [
+      { type: 'li', text: 'SQL을 이용한 데이터 추출이 자격요건에 명시되어 있습니다. [8]' },
+      { type: 'li', text: '지표를 정의하고 그 근거를 설명하는 능력을 우대사항으로 둡니다. [8]' },
+      { type: 'li', text: '유관 부서와의 협업 경험을 직무 소개서에서 세 차례 언급합니다. [9]' }
+    ] },
+    { title: '5. 면접에서 검증될 가능성이 높은 지점', blocks: [
+      { type: 'p', text: '지원서에 기재된 물류 데이터 분석 프로젝트는 요구역량과 직접 맞닿아 있어, 본인 기여도와 판단 근거를 확인하는 질문이 나올 가능성이 높습니다. 반대로 {P}에 대한 이해는 지원서에서 확인되지 않아, 회사 이해도를 묻는 질문에서 변별이 일어날 수 있습니다.' }
+    ] },
+    { title: '출처', blocks: [
+      { type: 'refs', refs: [
+        { n: '[1]', label: '2026 상반기 실적 발표 자료' },
+        { n: '[2]', label: '회사 소개서 (2025년판)' },
+        { n: '[3]', label: '채용 페이지 · 조직 소개' },
+        { n: '[4]', label: '2026년 3월 보도자료 및 기술 블로그' },
+        { n: '[5]', label: '채용 페이지 · 인재상' },
+        { n: '[6]', label: '재직자 인터뷰 3건' },
+        { n: '[7]', label: '채용 커뮤니티 게시글' },
+        { n: '[8]', label: '채용공고 자격요건 · 우대사항' },
+        { n: '[9]', label: '직무 소개서' }
+      ] }
+    ] }
+  ];
+
+  uncertainRefs = [
+    { si: 3, bi: 3, title: '팀 리드 중심 의사결정', reason: '익명 커뮤니티 게시글 한 건이 근거입니다' },
+    { si: 1, bi: 1, title: '기업 고객 비중 70%', reason: '2025년판 소개서 기준이라 현재와 다를 수 있습니다' },
+    { si: 2, bi: 1, title: '변화 시점 표', reason: '보도 시점 기준이며 실제 적용일과 다를 수 있습니다' }
+  ];
+
+  ctxFor(name) {
+    return this.ctxByCompany[name] || { product: '최근 공개한 서비스', news: '최근 1년 보도자료와 채용 페이지에서 반복되는 사업 방향을 확인했습니다.' };
+  }
+
+  fill(str, ctx, company) {
+    return String(str).split('{C}').join(company).split('{P}').join(ctx.product);
+  }
+
+  stageNames = ['자기소개', '직무역량', '인성·컬처핏', '마무리'];
+
+  researchSteps = [
+    { label: '채용공고와 직무기술서 분석', detail: '요구 역량 12개를 추출하고 우선순위를 매겼습니다.' },
+    { label: '최근 1년 뉴스 · IR · 기술 블로그 수집', detail: '{N}' },
+    { label: '인재상 · 조직문화 정리', detail: '채용 페이지와 재직자 인터뷰에서 반복되는 표현을 모았습니다.' },
+    { label: '지원서와 대조 · 검증이 필요한 항목 추출', detail: '경험 1의 성과 수치와 본인 기여도를 확인할 질문이 필요합니다.' },
+    { label: '질문 준비', detail: '4단계에 걸쳐 8개 질문과 꼬리질문을 준비합니다.' }
+  ];
+
+  answerData = [
+    { score: 84, dur: '0:58', filler: 2,
+      transcript: '네, 저는 데이터를 근거로 판단하는 기획자가 되고 싶은 김서연입니다. 학부에서 산업공학을 전공하면서 물류 데이터를 다루는 프로젝트를 세 번 진행했고, 그중 하나는 실제 교내 매점 발주에 반영되었습니다. 음… 이런 경험을 바탕으로 {C}에서도 현장 데이터를 읽는 기획자가 되고 싶습니다.',
+      coach: '전공과 프로젝트 횟수를 나열하는 대신, 발주에 실제 반영된 그 한 가지를 앞에 두고 시작하세요. "제 제안이 실제 발주 주기에 반영된 경험이 있습니다"로 열면 첫 문장에서 이미 검증된 사람이라는 인상을 줍니다. 나머지 두 프로젝트는 다음 질문에서 꺼내도 늦지 않습니다.',
+      tags: ['두괄식', '성과 먼저', '30초 이내 권장'] },
+    { score: 71, dur: '1:06', filler: 6,
+      transcript: '어… {C}는 이 분야에서 데이터를 가장 잘 활용하는 회사라고 생각했습니다. 성장하는 회사이고, 제가 배울 것이 많을 것 같아서 지원하게 되었습니다. 어… 그리고 사내 문화도 수평적이라고 들었습니다.',
+      coach: '"성장하는 회사라 배울 게 많다"는 어느 회사에나 붙는 문장입니다. 올해 공개된 {P}처럼 이름을 댈 수 있는 사실을 하나 넣고, 그것이 본인 경험과 어디서 만나는지까지 이어가세요. 지원 동기는 회사 칭찬이 아니라 본인과 회사의 접점을 증명하는 자리입니다.',
+      tags: ['회사 조사 부족', '필러 워드 6회', '접점 제시'] },
+    { score: 88, dur: '1:24', filler: 1,
+      transcript: '3개월치 출고 데이터를 정리하는 일을 제가 맡았습니다. 기존 분류 기준이 품목 대분류 단위여서 회전율이 낮은 품목이 가려지는 문제가 있었고, 그래서 소분류 단위로 다시 나눴습니다. 그 결과 상위 20개 품목을 추릴 수 있었고, 발주 주기를 2주에서 1주로 줄이자고 제안했습니다.',
+      coach: '구조가 좋습니다. 문제 인식, 조치, 결과가 순서대로 나왔습니다. 여기에 결과의 크기를 한 줄만 더하면 완성됩니다. 재고가 몇 퍼센트 줄었는지, 아니면 그 제안이 몇 개 매장에 적용되었는지 같은 숫자를 마지막에 붙이세요.',
+      tags: ['구조 우수', '수치 보강'] },
+    { score: 79, dur: '1:12', filler: 3,
+      transcript: '분류 기준을 바꾸는 게 가장 어려웠습니다. 팀원들은 기존 기준을 유지하자고 했는데, 저는 바꿔야 한다고 생각했습니다. 결국 제가 두 가지 방식으로 다 분석해서 비교 자료를 만들어 설득했습니다.',
+      coach: '설득한 방법까지는 나왔는데, 판단의 근거가 빠졌습니다. 왜 소분류가 맞다고 확신했는지, 비교 자료에서 어떤 차이가 드러났는지를 한 문장으로 넣으세요. 면접관이 이 질문에서 보려는 것은 결단력이 아니라 판단의 재료입니다.',
+      tags: ['근거 부족', '의사결정 과정'] },
+    { score: 68, dur: '0:47', filler: 5,
+      transcript: '음… {P}는 아직 자세히 써보지는 못했습니다. 다만 이용자가 내역을 확인하기 어렵다는 이야기를 들은 적이 있어서, 그 부분을 개선하면 좋을 것 같습니다.',
+      coach: '모른다고 인정한 것 자체는 나쁘지 않습니다. 다만 거기서 멈췄습니다. 써보지 못했다면 "제가 아는 범위에서 말씀드리면"으로 전제를 깔고, 비슷한 서비스에서 본 화면을 근거로 삼아 구체적인 안을 하나 제시하세요. 답변이 47초로 가장 짧았던 것도 준비가 덜 됐다는 신호로 읽힙니다.',
+      tags: ['답변 길이 부족', '사전 조사', '가장 낮은 점수'] },
+    { score: 86, dur: '1:08', filler: 2,
+      transcript: '먼저 상대가 왜 그렇게 생각하는지를 듣는 편입니다. 프로젝트에서도 팀원이 기존 기준을 고수한 이유가 작업량 때문이라는 걸 알고 나서, 제가 데이터 정리를 맡는 조건으로 합의했습니다.',
+      coach: '추상적인 태도를 말하고 곧바로 사례로 증명하는 흐름이 좋습니다. 다만 사례가 3번 질문과 같은 프로젝트입니다. 면접 전체에서 같은 경험이 반복되면 소재가 하나뿐인 지원자로 보입니다. 인턴 경험을 여기에 배치하세요.',
+      tags: ['사례 중복', '소재 분산'] },
+    { score: 83, dur: '1:16', filler: 3,
+      transcript: '인턴 때 맡았던 사용자 설문 기획이 실패했습니다. 응답률이 예상보다 훨씬 낮았고, 문항이 너무 많았던 게 원인이었습니다. 이후에는 설문을 만들 때 문항 수를 먼저 정하고 시작합니다.',
+      coach: '실패와 배운 점이 명확하게 이어졌습니다. 한 단계만 더 나가면 좋겠습니다. 그 이후에 같은 방식으로 다시 설문을 만들어 결과가 어땠는지까지 붙이면, 배웠다는 말이 실제로 증명됩니다.',
+      tags: ['개선 후 결과 추가'] },
+    { score: 80, dur: '0:41', filler: 2,
+      transcript: '입사하면 첫 6개월 동안 어떤 일을 맡게 되는지 궁금합니다. 그리고 기획자가 데이터에 직접 접근할 수 있는 환경인지도 여쭙고 싶습니다.',
+      coach: '두 번째 질문이 좋습니다. 직무를 실제로 상상해 본 사람만 할 수 있는 질문입니다. 첫 번째 질문은 채용공고에 이미 적혀 있는 내용이라 조사를 덜 한 인상을 줍니다. 하나를 덜어내고 더 구체적인 것 하나로 바꾸세요.',
+      tags: ['역질문 활용', '공고 확인'] }
+  ];
+
+  componentWillUnmount() { this.clearAll(); }
+  clearAll() { [this.rt, this.it, this.at, this.gt].forEach(t => t && clearInterval(t)); }
+
+  set = (o) => this.setState(o);
+  goHome = () => { this.clearAll(); this.setState({ screen: 'home', paused: false }); };
+  openRegister = () => this.setState({ screen: 'register', regStep: 1, company: '', role: '' });
+  nextStep = () => this.setState({ regStep: 2 });
+  prevStep = () => this.setState({ regStep: 1 });
+
+  submitRegister = () => {
+    const name = this.state.company.trim() || '누리테크';
+    const role = this.state.role.trim() || '서비스기획 · 신입';
+    const id = 'new' + Date.now();
+    const cards = [{ id, company: name, role, date: '방금 등록', status: 'researching', pct: 0 }, ...this.state.cards];
+    this.setState({ cards, screen: 'research', activeCard: id, researchPct: 0 });
+    clearInterval(this.rt);
+    this.rt = setInterval(() => {
+      const pct = Math.min(100, this.state.researchPct + 2);
+      const cs = this.state.cards.map(c => c.id === id ? { ...c, pct, status: pct >= 100 ? 'ready' : 'researching' } : c);
+      this.setState({ researchPct: pct, cards: cs });
+      if (pct >= 100) { clearInterval(this.rt); this.setState({ screen: 'ready' }); }
+    }, 120);
+  };
+
+  startInterview = () => {
+    this.clearAll();
+    this.setState({ screen: 'interview', elapsed: 0, qIndex: 0, phase: 'speaking', paused: false });
+    this.it = setInterval(() => {
+      if (this.state.paused) return;
+      const e = this.state.elapsed + 1;
+      const speakSec = 5, listenSec = 9, cycle = speakSec + listenSec;
+      const inCycle = e % cycle;
+      const q = Math.floor(e / cycle);
+      if (q >= 8) { this.endInterview(); return; }
+      this.setState({ elapsed: e, qIndex: q, phase: inCycle < speakSec ? 'speaking' : 'listening' });
+    }, 1000);
+  };
+
+  pause = () => this.setState({ paused: true });
+  resume = () => this.setState({ paused: false });
+
+  endInterview = () => {
+    this.clearAll();
+    this.setState({ screen: 'analyzing', analyzePct: 0, paused: false });
+    this.at = setInterval(() => {
+      const p = Math.min(100, this.state.analyzePct + 4);
+      this.setState({ analyzePct: p });
+      if (p >= 100) { clearInterval(this.at); this.setState({ screen: 'report', openQ: 0 }); }
+    }, 70);
+  };
+
+  replay = () => this.setState({ screen: 'ready' });
+  goReview = () => this.setState({ screen: 'review' });
+  backToReady = () => this.setState({ screen: 'ready' });
+
+  applyEdits = () => {
+    if (this.editCount() === 0) { this.setState({ screen: 'ready' }); return; }
+    clearInterval(this.gt);
+    this.setState({ screen: 'regen', regenPct: 0 });
+    this.gt = setInterval(() => {
+      const p = Math.min(100, this.state.regenPct + 5);
+      this.setState({ regenPct: p });
+      if (p >= 100) { clearInterval(this.gt); this.setState({ screen: 'ready' }); }
+    }, 90);
+  };
+
+  flagCount() { return Object.keys(this.state.flags).filter(k => this.state.flags[k]).length; }
+  memoCount() { return Object.values(this.state.memos).reduce((n, v) => n + v.length, 0); }
+  editCount() { return this.flagCount() + this.memoCount(); }
+
+  jumpTo(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const y = el.getBoundingClientRect().top + window.pageYOffset - 96;
+    window.scrollTo({ top: y, behavior: 'smooth' });
+  }
+
+  fmt(s) { const m = Math.floor(s / 60), r = s % 60; return m + ':' + String(r).padStart(2, '0'); }
+
+  wave(seed) {
+    const a = [];
+    for (let i = 0; i < 34; i++) {
+      const v = (Math.sin(seed * 2.3 + i * 0.9) + Math.sin(seed + i * 2.1)) / 2;
+      a.push(Math.round(24 + Math.abs(v) * 74) + '%');
+    }
+    return a;
+  }
+
+  renderVals() {
+    const s = this.state, screen = s.screen;
+    const active = s.cards.find(c => c.id === s.activeCard) || s.cards[0];
+    const total = 900, remainSec = Math.max(0, total - s.elapsed);
+    const qi = Math.min(s.qIndex, 7);
+    const cur = this.questions[qi];
+    const stageIdx = cur ? cur.s : 0;
+    const ctx = this.ctxFor(active.company);
+    const F = (t) => this.fill(t, ctx, active.company);
+
+    const done = s.screen === 'research' ? Math.floor(s.researchPct / 20) : 5;
+
+    return {
+      showChrome: screen !== 'interview' && screen !== 'analyzing' && screen !== 'regen',
+      isHome: screen === 'home', isRegister: screen === 'register', isResearch: screen === 'research',
+      isReady: screen === 'ready', isInterview: screen === 'interview',
+      isReview: screen === 'review', isRegen: screen === 'regen',
+      isAnalyzing: screen === 'analyzing', isReport: screen === 'report',
+      isStep1: s.regStep === 1, isStep2: s.regStep === 2,
+      stepLabel: s.regStep + ' / 2',
+      step2Color: s.regStep === 2 ? '#16233A' : '#D8DDE5',
+      goHome: this.goHome, openRegister: this.openRegister, nextStep: this.nextStep,
+      prevStep: this.prevStep, submitRegister: this.submitRegister,
+      startInterview: this.startInterview, endInterview: this.endInterview,
+      pause: this.pause, resume: this.resume, replay: this.replay,
+      fCompany: s.company, fRole: s.role,
+      setCompany: (e) => this.setState({ company: e.target.value }),
+      setRole: (e) => this.setState({ role: e.target.value }),
+
+      cards: s.cards.map(c => ({
+        ...c,
+        isReady: c.status === 'ready', isResearching: c.status === 'researching', isDone: c.status === 'done',
+        pctLabel: (c.pct || 0) + '%', pctWidth: (c.pct || 0) + '%',
+        activeLabel: (this.researchSteps[Math.min(4, Math.floor((c.pct || 0) / 20))] || {}).label || '',
+        onOpen: () => {
+          if (c.status === 'ready') this.setState({ screen: 'ready', activeCard: c.id });
+          else if (c.status === 'researching') { this.setState({ screen: 'research', activeCard: c.id, researchPct: c.pct || 0 }); }
+          else this.setState({ screen: 'report', activeCard: c.id, openQ: 0 });
+        }
+      })),
+
+      activeCompany: active.company, activeRole: active.role,
+      researchPctLabel: s.researchPct + '%', researchWidth: s.researchPct + '%',
+      researchEta: s.researchPct >= 100 ? '완료' : '약 ' + Math.max(1, Math.ceil((100 - s.researchPct) / 34)) + '분 남음',
+      researchLog: this.researchSteps.map((r, i) => ({
+        label: r.label, detail: F(r.detail).split('{N}').join(ctx.news),
+        done: i < done, active: i === done, todo: i > done, showDetail: i < done,
+        color: i > done ? '#B7C0CD' : (i === done ? '#B57F1C' : '#16233A')
+      })),
+
+      parts: s.parts.map((p, pi) => ({
+        name: p.name, count: p.items.length + '개', open: s.openPart === pi,
+        caret: s.openPart === pi ? '▲' : '▼',
+        onToggle: () => this.setState({ openPart: s.openPart === pi ? -1 : pi, openItem: 0 }),
+        onAdd: () => {
+          const parts = s.parts.map((x, i) => i === pi ? { ...x, items: [...x.items, { title: p.name + ' ' + (x.items.length + 1), body: '', len: '작성 필요' }] } : x);
+          this.setState({ parts, openItem: p.items.length });
+        },
+        items: p.items.map((it, ii) => ({
+          title: it.title, body: it.body,
+          headTitle: it.title,
+          meta: it.body ? (it.body.length + '자') : '비어 있음',
+          hint: it.body ? '이 항목을 근거로 꼬리질문이 만들어집니다' : '비워 두어도 등록할 수 있습니다',
+          open: s.openPart === pi && s.openItem === ii,
+          caret: s.openPart === pi && s.openItem === ii ? '▲' : '▼',
+          onToggle: () => this.setState({ openItem: s.openItem === ii ? -1 : ii }),
+          onEdit: (e) => {
+            const v = e.target.value;
+            const parts = s.parts.map((x, i) => i === pi
+              ? { ...x, items: x.items.map((y, j) => j === ii ? { ...y, body: v, len: v.length + '자' } : y) }
+              : x);
+            this.setState({ parts });
+          }
+        }))
+      })),
+      addPart: () => this.setState({ parts: [...s.parts, { name: '새 파트', items: [] }], openPart: s.parts.length }),
+
+      goReview: this.goReview, backToReady: this.backToReady, applyEdits: this.applyEdits,
+      hasEdits: this.editCount() > 0,
+      editCount: this.editCount(),
+      editSummary: this.editCount() === 0
+        ? '표시하거나 메모한 대목이 없습니다'
+        : '정정 ' + this.flagCount() + '건 · 메모 ' + this.memoCount() + '건',
+      applyLabel: this.editCount() === 0 ? '이대로 진행' : '질문 다시 뽑기',
+      applyBg: this.editCount() === 0 ? '#fff' : '#16233A',
+      applyColor: this.editCount() === 0 ? '#16233A' : '#fff',
+      applyBorder: this.editCount() === 0 ? '#C9D0DB' : '#16233A',
+      regenWidth: s.regenPct + '%',
+      reportDocTitle: active.company + ' 면접 준비 리서치 · ' + active.role.split(' · ')[0],
+      reportDocSub: active.company + ' · ' + active.role.split(' · ')[0],
+      uncertainCount: this.uncertainRefs.length,
+      memoDraft: s.memoDraft,
+      onMemoDraft: (e) => this.setState({ memoDraft: e.target.value }),
+      uncertain: this.uncertainRefs.map(u => ({
+        title: u.title, reason: u.reason,
+        onJump: () => this.jumpTo('blk-' + u.si + '-' + u.bi)
+      })),
+      toc: this.doc.map((sec, si) => ({
+        title: sec.title,
+        onJump: () => this.jumpTo('sec-' + si)
+      })),
+      docSections: this.doc.map((sec, si) => ({
+        id: 'sec-' + si, title: sec.title,
+        blocks: sec.blocks.map((b, bi) => {
+          const id = 'blk-' + si + '-' + bi;
+          const flagged = !!s.flags[id];
+          const memos = s.memos[id] || [];
+          const txt = b.text ? F(b.text).split('{N}').join(ctx.news).split('{R}').join(active.role.split(' · ')[0]) : '';
+          return {
+            id, isP: b.type === 'p', isLi: b.type === 'li', isTable: b.type === 'table', isRefs: b.type === 'refs',
+            annotatable: b.type !== 'refs',
+            text: txt,
+            head: b.head || [], refs: b.refs || [],
+            rows: (b.rows || []).map(r => ({ a: r.a, b: F(r.b), c: r.c })),
+            color: flagged ? '#A9B2C0' : '#2A3A55',
+            markColor: flagged ? '#B57F1C' : 'transparent',
+            markBg: flagged ? '#FDFBF7' : 'transparent',
+            flagged, memoOpen: s.memoOpenId === id,
+            flagLabel: flagged ? '표시 해제' : '사실과 다름',
+            flagColor: flagged ? '#B57F1C' : '#8E98A8',
+            flagBorder: flagged ? '#EFE2CB' : '#E2E6ED',
+            flagBg: flagged ? '#FBF7EF' : '#fff',
+            onFlag: () => this.setState({ flags: { ...s.flags, [id]: !flagged } }),
+            onMemo: () => this.setState({ memoOpenId: s.memoOpenId === id ? null : id, memoDraft: '' }),
+            onSaveMemo: () => {
+              const v = s.memoDraft.trim();
+              if (!v) return;
+              this.setState({ memos: { ...s.memos, [id]: [...memos, v] }, memoOpenId: null, memoDraft: '' });
+            },
+            memos: memos.map((t, mi) => ({
+              text: t,
+              onRemove: () => this.setState({ memos: { ...s.memos, [id]: memos.filter((_, j) => j !== mi) } })
+            }))
+          };
+        })
+      })),
+
+      stages: this.stageNames.map((n, i) => ({
+        no: '0' + (i + 1), name: n,
+        count: this.questions.filter(q => q.s === i).length + '개 질문'
+      })),
+
+      remain: this.fmt(remainSec),
+      qNo: qi + 1,
+      stageLabel: (stageIdx + 1) + '단계 · ' + this.stageNames[stageIdx],
+      speaking: s.phase === 'speaking', listening: s.phase === 'listening',
+      liveLabel: s.phase === 'speaking' ? '면접관이 말하고 있습니다' : '듣고 있습니다',
+      liveDot: s.phase === 'speaking' ? '#B57F1C' : '#4E9E7E',
+      showCaption: (this.props.showCaption ?? true) && !!cur,
+      currentQuestion: cur ? F(cur.q) : '',
+      paused: s.paused,
+      stageBars: this.stageNames.map((n, i) => {
+        const qs = this.questions.map((q, idx) => ({ ...q, idx })).filter(q => q.s === i);
+        const first = qs[0].idx, count = qs.length;
+        const prog = Math.max(0, Math.min(1, (qi - first + (s.phase === 'listening' ? 0.6 : 0.2)) / count));
+        return { w: Math.round(prog * 100) + '%' };
+      }),
+
+      analyzeLabel: s.analyzePct >= 100 ? '완료' : '약 1분',
+      analyzeWidth: s.analyzePct + '%',
+
+      reportMeta: (active.date || '').replace(' 면접', '').replace(' 등록', '') + ' 면접 · 18분 · 질문 8개',
+      reportTitle: active.company + ' · ' + active.role,
+      stageScores: [
+        { name: '자기소개', score: 78, w: '78%', color: '#16233A', note: 'Q1~Q2 평균' },
+        { name: '직무역량', score: 78, w: '78%', color: '#16233A', note: 'Q3~Q5 평균' },
+        { name: '인성·컬처핏', score: 85, w: '85%', color: '#16233A', note: 'Q6~Q7 평균' },
+        { name: '마무리', score: 80, w: '80%', color: '#16233A', note: 'Q8' }
+      ],
+      metrics: [
+        { label: '말하기 속도', value: '312', unit: '음절/분', w: '62%', color: '#2F6B55', verdict: '적정', range: '280~340 권장' },
+        { label: '필러 워드', value: '24', unit: '회', w: '78%', color: '#B57F1C', verdict: '다소 많음', range: '답변당 3회' },
+        { label: '답변 길이', value: '62', unit: '초 평균', w: '58%', color: '#2F6B55', verdict: '적정', range: '45~90초 권장' },
+        { label: '답변 시작까지', value: '2.4', unit: '초', w: '40%', color: '#2F6B55', verdict: '적정', range: '3초 이내' },
+        { label: '침묵 · 머뭇거림', value: '8', unit: '%', w: '70%', color: '#B57F1C', verdict: '주의', range: '5% 이하 권장' },
+        { label: '목소리 크기 · 안정성', value: '안정', unit: '', w: '84%', color: '#2F6B55', verdict: '양호', range: '흔들림 적음' }
+      ],
+      strengths: [
+        '경험을 말할 때 문제 인식, 조치, 결과 순서가 지켜졌습니다. 3번과 7번 답변이 특히 그렇습니다.',
+        '모르는 것을 아는 척하지 않았습니다. 면접에서 신뢰를 얻는 태도입니다.',
+        '목소리가 처음부터 끝까지 흔들리지 않았고, 속도도 듣기 편한 범위였습니다.'
+      ],
+      weaknesses: [
+        '회사를 조사한 흔적이 답변에 드러나지 않았습니다. 2번과 5번에서 점수가 크게 깎였습니다.',
+        '여덟 개 답변 중 세 개가 같은 프로젝트를 사례로 썼습니다. 인턴 경험을 분산해 배치하세요.'
+      ],
+      answers: this.answerData.map((a, i) => {
+        const q = this.questions[i];
+        return {
+          ...a, no: 'Q' + (i + 1), stage: this.stageNames[q.s],
+          question: F(q.q),
+          transcript: F(a.transcript), coach: F(a.coach),
+          headline: s.openQ === i ? '' : F(q.short),
+          headColor: '#16233A',
+          open: s.openQ === i, caret: s.openQ === i ? '▲' : '▼',
+          border: s.openQ === i ? '#C9D0DB' : '#E2E6ED',
+          wave: this.wave(i + 1),
+          onToggle: () => this.setState({ openQ: s.openQ === i ? -1 : i })
+        };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>
