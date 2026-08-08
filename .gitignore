@@ -16,6 +16,9 @@ dist/
 .env.*.local
 *.key
 
+# ADK 런타임 세션·아티팩트 저장소
+.adk/
+
 # 녹음·산출물 (§서버 연동 6 — 답변별 녹음은 커밋하지 않는다)
 recordings/
 *.wav
