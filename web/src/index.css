@@ -1,0 +1,196 @@
+@import 'tailwindcss';
+@import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css';
+
+/* ─────────────────────────────────────────────────────────────
+   Design tokens — design_handoff_daedam/README.md §Design Tokens
+   Values are transcribed verbatim. Do not "round" them.
+   ───────────────────────────────────────────────────────────── */
+@theme {
+  --font-sans: 'Pretendard Variable', Pretendard, 'Spoqa Han Sans Neo',
+    -apple-system, system-ui, sans-serif;
+
+  /* Light surface */
+  --color-bg: #f4f5f7;
+  --color-surface: #ffffff;
+  --color-surface-2: #fafbfc;
+
+  /* Text */
+  --color-ink: #16233a;
+  --color-body: #2a3a55;
+  --color-body-2: #3e4c63;
+  --color-muted: #5f6b7e;
+  --color-faint: #8e98a8;
+  --color-faintest: #b7c0cd;
+
+  /* Rules — 연한 구분선 */
+  --color-hair: #f1f3f6;
+  --color-hair-2: #eef0f4;
+  --color-hair-3: #f4f6f9;
+
+  /* Rules — 구분선 */
+  --color-line: #e2e6ed;
+  --color-line-2: #e8ebf0;
+  --color-line-3: #eaedf2;
+
+  /* Input borders */
+  --color-field: #c9d0db;
+  --color-field-2: #d8dde5;
+
+  /* Accent (mustard) */
+  --color-accent: #b57f1c;
+  --color-accent-bg: #fbf7ef;
+  --color-accent-bg-2: #fdfbf7;
+  --color-accent-line: #efe2cb;
+
+  --color-positive: #2f6b55;
+
+  /* Interview stage (dark) */
+  --color-stage: #0e1726;
+  --color-stage-surface: #16233a;
+  --color-stage-line: #2e3f5c;
+  --color-stage-line-2: #22314a;
+  --color-stage-ink: #e8ecf3;
+  --color-stage-ink-2: #f2f5f9;
+  --color-stage-muted: #8896ac;
+  --color-stage-muted-2: #c7d0de;
+  /* §접근성: 어두운 배경 위 작은 텍스트의 하한. #5D6E88은 대비 3.3:1로 AA 미달. */
+  --color-stage-muted-3: #8395af;
+
+  --color-listening: #4e9e7e;
+
+  /* §Border radius */
+  --radius-card: 4px;
+  --radius-control: 3px;
+  --radius-chip: 2px;
+
+  /* §Spacing — 컨테이너 최대 폭 */
+  --container-home: 1160px;
+  --container-reg1: 520px;
+  --container-doc: 760px;
+  --container-report: 860px;
+  --container-review: 1180px;
+
+  /* §애니메이션 */
+  --animate-dm-pulse: dm-pulse 2.2s ease-in-out infinite;
+  --animate-dm-pulse2: dm-pulse2 2.6s ease-in-out infinite;
+  --animate-dm-breathe: dm-breathe 4.5s ease-in-out infinite;
+  --animate-dm-wave: dm-wave 1.1s ease-in-out infinite;
+  --animate-dm-spin: dm-spin 1s linear infinite;
+  --animate-dm-fade: dm-fade 0.3s ease;
+  --animate-dm-fade-slow: dm-fade 0.4s ease;
+  --animate-dm-grow: dm-grow 0.7s ease;
+
+  @keyframes dm-pulse {
+    0%,
+    100% {
+      transform: scale(1);
+      opacity: 0.5;
+    }
+    50% {
+      transform: scale(1.14);
+      opacity: 0.14;
+    }
+  }
+  @keyframes dm-pulse2 {
+    0%,
+    100% {
+      transform: scale(1);
+      opacity: 0.32;
+    }
+    50% {
+      transform: scale(1.26);
+      opacity: 0.06;
+    }
+  }
+  @keyframes dm-breathe {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.035);
+    }
+  }
+  @keyframes dm-wave {
+    0%,
+    100% {
+      transform: scaleY(0.22);
+    }
+    50% {
+      transform: scaleY(1);
+    }
+  }
+  @keyframes dm-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes dm-fade {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes dm-grow {
+    from {
+      width: 0;
+    }
+  }
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    background: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* §Typography — 숫자에는 tabular-nums */
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  /* §접근성 — 면접 화면 버튼 최소 44px 터치 영역 */
+  .tap44 {
+    position: relative;
+  }
+  .tap44::after {
+    content: '';
+    position: absolute;
+    inset: 50% 0 0 0;
+    height: 44px;
+    transform: translateY(-50%);
+    min-width: 44px;
+  }
+  button {
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+  }
+  input,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+  input:focus,
+  textarea:focus {
+    outline: none;
+    border-color: var(--color-ink);
+  }
+}
