@@ -13,8 +13,14 @@ from rank_bm25 import BM25Okapi
 
 from .chunk import Chunk, Source
 
-#: BM25 점수가 이 값 이하인 결과는 무관한 것으로 보고 버린다.
-_MIN_SCORE = 0.0
+#: 질의 토큰 중 이 비율 이상을 포함해야 관련 있다고 본다.
+#:
+#: BM25 점수만으로는 관련성을 판정할 수 없다. 코퍼스가 작으면 IDF가 0으로
+#: 수렴해(N=2, df=1이면 정확히 0) 관련 문서도 0점을 받기 때문이다. 그래서
+#: 순위는 BM25에 맡기고 관련성 판정은 토큰 겹침 비율로 한다.
+#:
+#: 0.35는 실측으로 정했다 — 관련 질의는 57~73%, 무관 질의는 0~27%였다.
+_MIN_OVERLAP_RATIO = 0.35
 
 
 def _tokenize(text: str) -> list[str]:
@@ -46,6 +52,8 @@ class Knowledge:
         # 제목도 본문에 합쳐 색인한다 — 항목 제목이 질의어와 겹치는 경우가 많다.
         corpus = [_tokenize(c.title + c.text) for c in chunks]
         self._bm25 = BM25Okapi(corpus) if corpus else None
+        # 겹침 판정용. 검색마다 다시 만들지 않도록 미리 집합으로 둔다.
+        self._token_sets = [set(tokens) for tokens in corpus]
 
     def search(
         self,
@@ -68,14 +76,19 @@ class Knowledge:
         if self._bm25 is None or not tokens:
             return []
 
+        query_set = set(tokens)
         scores = self._bm25.get_scores(tokens)
-        ranked = sorted(
-            (
-                (score, chunk)
-                for score, chunk in zip(scores, self._chunks)
-                if score > _MIN_SCORE and (source is None or chunk.source == source)
-            ),
-            key=lambda pair: pair[0],
-            reverse=True,
-        )
-        return [chunk for _, chunk in ranked[:k]]
+
+        matched: list[tuple[float, int, Chunk]] = []
+        for score, overlap_set, chunk in zip(scores, self._token_sets, self._chunks):
+            if source is not None and chunk.source != source:
+                continue
+            overlap = len(query_set & overlap_set)
+            if overlap / len(query_set) < _MIN_OVERLAP_RATIO:
+                continue
+            matched.append((score, overlap, chunk))
+
+        # BM25 점수 우선, 동점이면 겹친 토큰 수로 가른다. 코퍼스가 작아
+        # 모든 점수가 0인 경우에도 순위가 정해진다.
+        matched.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        return [chunk for _, _, chunk in matched[:k]]
