@@ -6,7 +6,7 @@
 import asyncio
 from typing import Any
 
-from conftest import ToolContextStub
+from conftest import ContextStub
 from google.adk.models.llm_request import LlmRequest
 from google.genai import types
 
@@ -26,7 +26,7 @@ def _inject(state: dict[str, Any] | None = None) -> LlmRequest:
     request = LlmRequest()
     asyncio.run(
         NextQuestionTool().process_llm_request(
-            tool_context=ToolContextStub(state), llm_request=request
+            tool_context=ContextStub(state), llm_request=request
         )
     )
     return request
@@ -72,7 +72,7 @@ def test_선언과_등록은_한_번만_된다() -> None:
 
 
 def test_tag로_해당_주제의_질문을_고른다() -> None:
-    context = ToolContextStub({STATE_QUESTION_POOL: POOL_RAW, "stage": 1})
+    context = ContextStub({STATE_QUESTION_POOL: POOL_RAW, "stage": 1})
     result = get_next_question(tool_context=context, tag="문제해결")
     assert result["question"] == "가장 어려웠던 판단은 무엇이었나요?"
     assert context.state["asked"] == ["c"]
@@ -80,6 +80,6 @@ def test_tag로_해당_주제의_질문을_고른다() -> None:
 
 def test_note에_단계_태그가_실린다() -> None:
     """모델이 다음 호출에서 고를 태그를 note로 안내받는다."""
-    context = ToolContextStub({STATE_QUESTION_POOL: POOL_RAW, "stage": 1})
+    context = ContextStub({STATE_QUESTION_POOL: POOL_RAW, "stage": 1})
     result = get_next_question(tool_context=context)
     assert "경험상세" in result["note"] and "문제해결" in result["note"]
