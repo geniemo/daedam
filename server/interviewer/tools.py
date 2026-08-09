@@ -1,6 +1,6 @@
-"""면접 툴 — 뼈대질문 배달.
+"""면접 툴 — 뼈대질문 배달과 회사 지식 검색.
 
-툴 선언은 Live 커넥션을 열 때 한 번 실린다. 그 시점에 세션 풀의 태그 어휘를
+`get_next_question`의 선언은 Live 커넥션을 열 때 한 번 실린다. 그 시점에 세션 풀의 태그 어휘를
 tag 파라미터의 enum으로 주입해, 모델이 이 세션에 실제로 존재하는 태그만
 고르게 한다. enum은 단계별이 아니라 풀 전체 어휘다 — 커넥션(~10분)이 단계
 여러 개에 걸치기 때문이다(`QuestionPool.tags` 참고).
@@ -24,6 +24,10 @@ from google.genai import types
 
 from daedam.interview.question_pool import QuestionPool
 from daedam.interview.stages import STAGE_NAMES
+from daedam.knowledge.chunk import Source, from_application, from_report
+from daedam.knowledge.search import Knowledge
+
+# ── 뼈대질문 배달 ────────────────────────────────────────────────────────
 
 #: 세션 생성 시 서버가 이 키로 질문 풀(dict 목록)을 state에 심는다.
 STATE_QUESTION_POOL = "question_pool"
@@ -155,3 +159,125 @@ class NextQuestionTool(FunctionTool):
                 if isinstance(schema, dict):
                     return schema.get("properties", {}).get("tag")
         return None
+
+
+# ── 회사 지식 검색 ───────────────────────────────────────────────────────
+
+#: 세션 생성 시 서버가 리서치 리포트(섹션 목록)를 심는 state 키.
+#: 형태는 `daedam.knowledge.chunk.from_report`의 입력과 같다.
+STATE_RESEARCH_REPORT = "research_report"
+
+#: 세션 생성 시 서버가 지원서(파트 목록)를 심는 state 키.
+#: 형태는 `daedam.knowledge.chunk.from_application`의 입력과 같다.
+STATE_APPLICATION = "application"
+
+#: state에 리포트·지원서가 없을 때(adk web 직접 실행) 검색되는 스모크 코퍼스.
+#: 실제 데이터는 Deep Research 리포트와 지원서에서 온다. 회사는 가상이다.
+_SMOKE_REPORT: list[dict[str, Any]] = [
+    {
+        "title": "회사 개요",
+        "blocks": [
+            {
+                "id": "blk-0-0",
+                "text": "한결물류는 중소 화주와 지역 운송사를 연결하는 미들마일 물류"
+                " 플랫폼 스타트업이다. 2021년 창업해 시리즈 B까지 투자를 유치했고,"
+                " 등록 운송사 1,200곳과 월 12만 건의 운송을 중개한다.",
+                "ref": "회사 소개 페이지",
+            },
+        ],
+    },
+    {
+        "title": "주력 사업과 기술",
+        "blocks": [
+            {
+                "id": "blk-1-0",
+                "text": "주력 제품은 화물 배차 자동화 시스템 '한결로드'다. 배차 추천"
+                " 알고리즘으로 공차 거리를 평균 18% 줄였고, 최근 운임 정산 자동화로"
+                " 사업 영역을 넓히고 있다.",
+                "ref": "보도자료",
+            },
+            {
+                "id": "blk-1-1",
+                "text": "기술 스택은 파이썬 백엔드와 데이터 파이프라인이 중심이고,"
+                " 배차 최적화 팀이 머신러닝 모델을 운영한다.",
+                "ref": "채용 공고",
+            },
+        ],
+    },
+    {
+        "title": "인재상과 조직문화",
+        "blocks": [
+            {
+                "id": "blk-2-0",
+                "text": "인재상은 '현장에서 배우는 사람'이다. 신입에게도 운송사 현장"
+                " 방문을 권하고, 문제를 숫자로 정의해 검증하는 문화를 강조한다.",
+                "ref": "채용 공고",
+            },
+        ],
+    },
+]
+
+_SMOKE_APPLICATION: list[dict[str, Any]] = [
+    {
+        "part": "자기소개서",
+        "items": [
+            {
+                "title": "지원동기",
+                "body": "물류 스타트업 인턴 시절 배차 담당자들이 엑셀로 밤을 새우는"
+                " 모습을 보며 자동화의 가치를 체감했습니다. 한결물류의 배차 자동화가"
+                " 그 문제를 정면으로 다루고 있어 지원했습니다.",
+            },
+            {
+                "title": "프로젝트 경험",
+                "body": "대학 캡스톤에서 지역 마트 배송 경로 최적화를 진행했습니다."
+                " 경로 알고리즘을 파이썬으로 구현해 배송 시간을 평균 22% 단축했고,"
+                " 데이터 검증과 현장 테스트를 직접 맡았습니다.",
+            },
+        ],
+    },
+]
+
+_FALLBACK_KNOWLEDGE = Knowledge(
+    from_report(_SMOKE_REPORT) + from_application(_SMOKE_APPLICATION)
+)
+
+
+def _knowledge_from(state: Mapping[str, Any]) -> Knowledge:
+    """세션 state의 리포트·지원서로 검색 인덱스를 만든다. 둘 다 없으면 스모크 코퍼스.
+
+    호출마다 새로 만든다 — 코퍼스가 청크 35개 안팎이라 색인이 밀리초 수준이고,
+    세션 간 공유되는 툴 인스턴스에는 캐시를 둘 수 없다.
+    """
+    sections = state.get(STATE_RESEARCH_REPORT)
+    parts = state.get(STATE_APPLICATION)
+    if not sections and not parts:
+        return _FALLBACK_KNOWLEDGE
+    return Knowledge(from_report(sections or []) + from_application(parts or []))
+
+
+def search_knowledge(
+    tool_context: ToolContext, query: str, source: Source | None = None
+) -> dict:
+    """회사 리서치 리포트와 지원서에서 관련 정보를 검색합니다.
+
+    회사에 대한 사실이 필요할 때 호출하세요 — 꼬리질문을 만들 때, 지원자의
+    답변을 회사 맥락과 연결할 때, 지원서에 적힌 내용을 확인할 때.
+    검색 결과에 없는 회사 정보를 지어내서 말하지 마세요.
+
+    Args:
+        query: 찾을 내용. 짧은 한국어 구절 (예: "주력 사업", "인재상").
+        source: 검색 범위. "research"는 회사 리서치 리포트, "application"은
+            지원서. 생략하면 둘 다 검색합니다.
+
+    Returns:
+        results: 출처(source)·제목(title)·본문(text)을 담은 결과 목록,
+        관련도 순 최대 3개. 관련 정보가 없으면 results가 비고 note로 알립니다.
+    """
+    found = _knowledge_from(tool_context.state).search(query, source=source)
+    if not found:
+        return {
+            "results": [],
+            "note": "관련 정보가 없습니다. 다른 검색어로 다시 시도하거나,"
+            " 확인되지 않은 사실은 언급하지 마세요.",
+        }
+    return {"results": [chunk.as_result() for chunk in found]}

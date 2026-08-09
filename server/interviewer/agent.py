@@ -1,15 +1,15 @@
 """면접관 에이전트.
 
 instruction은 아직 정적 스모크 프롬프트다 — 동적 instruction(회사·직무·지원서
-목차)은 다음 단계에서 붙는다. 질문 배달은 `NextQuestionTool`이 맡고, 세션 풀의
-태그 어휘가 툴 선언의 enum으로 실린다.
+목차)은 다음 단계에서 붙는다. 뼈대질문 배달은 `NextQuestionTool`이, 회사 지식
+검색은 `search_knowledge`가 맡는다.
 """
 
 from __future__ import annotations
 
 from google.adk.agents import LlmAgent
 
-from .tools import NextQuestionTool
+from .tools import NextQuestionTool, search_knowledge
 
 #: 네이티브 오디오 모델. 함수 호출이 순차 전용이라 툴이 도는 동안 발화가 멈춘다.
 #: 문제가 있으면 gemini-2.5-flash-native-audio-preview-12-2025로 폴백한다.
@@ -31,5 +31,8 @@ root_agent = LlmAgent(
 
 첫 턴에는 짧게 인사하고 바로 첫 질문으로 시작하세요.
 """,
-    tools=[NextQuestionTool()],
+    # search_knowledge는 선언이 정적(enum이 Literal에서 나옴)이라 서브클래스
+    # 없이 콜러블 그대로 넘긴다. ADK가 FunctionTool로 감싼다
+    # (google/adk/agents/llm_agent.py의 _convert_tool_union_to_tools).
+    tools=[NextQuestionTool(), search_knowledge],
 )

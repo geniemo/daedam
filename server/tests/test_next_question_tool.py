@@ -1,13 +1,12 @@
 """태그 enum 툴 선언 테스트.
 
-선언 주입은 네트워크 없이 LlmRequest에 대해 검증한다. ToolContext는 대역으로
-충분하다 — process_llm_request 경로가 컨텍스트에서 읽는 것은 state뿐이고,
-append_tools는 tool_context를 아예 쓰지 않는다(설치된 ADK 소스에서 확인).
+선언 주입은 네트워크 없이 LlmRequest에 대해 검증한다.
 """
 
 import asyncio
 from typing import Any
 
+from conftest import ToolContextStub
 from google.adk.models.llm_request import LlmRequest
 from google.genai import types
 
@@ -23,18 +22,11 @@ POOL_RAW = [
 ]
 
 
-class _ToolContext:
-    """state만 흉내 내는 ToolContext 대역."""
-
-    def __init__(self, state: dict[str, Any] | None = None) -> None:
-        self.state = state if state is not None else {}
-
-
 def _inject(state: dict[str, Any] | None = None) -> LlmRequest:
     request = LlmRequest()
     asyncio.run(
         NextQuestionTool().process_llm_request(
-            tool_context=_ToolContext(state), llm_request=request
+            tool_context=ToolContextStub(state), llm_request=request
         )
     )
     return request
@@ -80,7 +72,7 @@ def test_선언과_등록은_한_번만_된다() -> None:
 
 
 def test_tag로_해당_주제의_질문을_고른다() -> None:
-    context = _ToolContext({STATE_QUESTION_POOL: POOL_RAW, "stage": 1})
+    context = ToolContextStub({STATE_QUESTION_POOL: POOL_RAW, "stage": 1})
     result = get_next_question(tool_context=context, tag="문제해결")
     assert result["question"] == "가장 어려웠던 판단은 무엇이었나요?"
     assert context.state["asked"] == ["c"]
@@ -88,6 +80,6 @@ def test_tag로_해당_주제의_질문을_고른다() -> None:
 
 def test_note에_단계_태그가_실린다() -> None:
     """모델이 다음 호출에서 고를 태그를 note로 안내받는다."""
-    context = _ToolContext({STATE_QUESTION_POOL: POOL_RAW, "stage": 1})
+    context = ToolContextStub({STATE_QUESTION_POOL: POOL_RAW, "stage": 1})
     result = get_next_question(tool_context=context)
     assert "경험상세" in result["note"] and "문제해결" in result["note"]
