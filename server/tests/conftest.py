@@ -1,6 +1,11 @@
 """테스트 공용 스텁."""
 
+import os
 from typing import Any
+
+# 유닛 테스트는 실제 임베딩 모델을 로드하지 않는다 — 모델 다운로드(수 GB)와
+# GPU 없이도 돌아야 한다. 의미 검색 경로는 대역 임베더로 검증한다.
+os.environ.setdefault("SEARCH_EMBEDDINGS", "off")
 
 
 class ContextStub:

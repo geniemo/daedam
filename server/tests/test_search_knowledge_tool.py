@@ -13,6 +13,7 @@ from google.adk.tools import FunctionTool
 from interviewer.tools import (
     STATE_APPLICATION,
     STATE_RESEARCH_REPORT,
+    _knowledge_from,
     search_knowledge,
 )
 
@@ -67,6 +68,13 @@ def test_state가_없으면_스모크_코퍼스에서_찾는다() -> None:
     """adk web에서 세션 state 없이 바로 띄워도 검색이 동작한다."""
     result = search_knowledge(tool_context=ContextStub(), query="배차 자동화")
     assert result["results"]
+
+
+def test_같은_코퍼스는_인덱스를_재사용한다() -> None:
+    """임베딩 인덱스(청크 벡터 인코딩)를 검색마다 다시 만들지 않는다."""
+    first = _knowledge_from({STATE_RESEARCH_REPORT: REPORT, STATE_APPLICATION: APPLICATION})
+    second = _knowledge_from({STATE_RESEARCH_REPORT: list(REPORT), STATE_APPLICATION: list(APPLICATION)})
+    assert first is second
 
 
 # ── 선언 ─────────────────────────────────────────────────────────────────

@@ -7,6 +7,7 @@ dependencies = [
     "google-adk>=2.6.3",
     "rank-bm25>=0.2.2",
     "semantic-text-splitter>=0.32.0",
+    "sentence-transformers>=5.7.0",
 ]
 
 [dependency-groups]

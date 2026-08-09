@@ -16,6 +16,8 @@ tag 파라미터의 enum으로 주입해, 모델이 이 세션에 실제로 존�
 
 from __future__ import annotations
 
+import json
+from functools import lru_cache
 from typing import Any, Mapping, override
 
 from google.adk.models.llm_request import LlmRequest
@@ -25,6 +27,7 @@ from google.genai import types
 from daedam.interview.question_pool import QuestionPool
 from daedam.interview.stages import STAGE_NAMES
 from daedam.knowledge.chunk import Source, from_application, from_report
+from daedam.knowledge.embedding import default_embedder
 from daedam.knowledge.search import Knowledge
 
 # ── 뼈대질문 배달 ────────────────────────────────────────────────────────
@@ -237,22 +240,37 @@ _SMOKE_APPLICATION: list[dict[str, Any]] = [
     },
 ]
 
-_FALLBACK_KNOWLEDGE = Knowledge(
-    from_report(_SMOKE_REPORT) + from_application(_SMOKE_APPLICATION)
-)
+@lru_cache(maxsize=2)
+def _knowledge_cached(corpus_json: str) -> Knowledge:
+    """코퍼스 내용을 키로 인덱스를 재사용한다.
+
+    임베딩 인덱스는 청크 벡터 인코딩이 수십 ms라 한 번 만들고 다시 쓴다.
+    """
+    sections, parts = json.loads(corpus_json)
+    return Knowledge(
+        from_report(sections or []) + from_application(parts or []),
+        embedder=default_embedder(),
+    )
+
+
+@lru_cache(maxsize=1)
+def _fallback_knowledge() -> Knowledge:
+    """스모크 코퍼스 인덱스. 임베딩 모델 로드를 임포트 시점에서 떼어 놓는다."""
+    return Knowledge(
+        from_report(_SMOKE_REPORT) + from_application(_SMOKE_APPLICATION),
+        embedder=default_embedder(),
+    )
 
 
 def _knowledge_from(state: Mapping[str, Any]) -> Knowledge:
-    """세션 state의 리포트·지원서로 검색 인덱스를 만든다. 둘 다 없으면 스모크 코퍼스.
-
-    호출마다 새로 만든다 — 코퍼스가 청크 35개 안팎이라 색인이 밀리초 수준이고,
-    세션 간 공유되는 툴 인스턴스에는 캐시를 둘 수 없다.
-    """
+    """세션 state의 리포트·지원서로 검색 인덱스를 얻는다. 둘 다 없으면 스모크 코퍼스."""
     sections = state.get(STATE_RESEARCH_REPORT)
     parts = state.get(STATE_APPLICATION)
     if not sections and not parts:
-        return _FALLBACK_KNOWLEDGE
-    return Knowledge(from_report(sections or []) + from_application(parts or []))
+        return _fallback_knowledge()
+    return _knowledge_cached(
+        json.dumps([sections, parts], ensure_ascii=False, sort_keys=True)
+    )
 
 
 def search_knowledge(
@@ -265,7 +283,10 @@ def search_knowledge(
     검색 결과에 없는 회사 정보를 지어내서 말하지 마세요.
 
     Args:
-        query: 찾을 내용. 짧은 한국어 구절 (예: "주력 사업", "인재상").
+        query: 찾을 내용. 지원자의 답변이나 지금 파고드는 주제에 나온 구체적
+            표현을 그대로 넣으세요 (예: "공차 거리 단축 기여도", "배차 자동화
+            도입 배경"). "인재상", "직무경험" 같은 카테고리 단어 하나만 넣으면
+            엉뚱한 대목이 나옵니다.
         source: 검색 범위. "research"는 회사 리서치 리포트, "application"은
             지원서. 생략하면 둘 다 검색합니다.
 
