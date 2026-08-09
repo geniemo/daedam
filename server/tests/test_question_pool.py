@@ -7,7 +7,7 @@
 
 import pytest
 
-from daedam.interview.question_pool import STAGE_TAGS, Question, QuestionPool
+from daedam.interview.question_pool import Question, QuestionPool
 
 RAW = [
     # 자기소개(0)
@@ -129,16 +129,28 @@ def test_모두_소진하면_None(pool: QuestionPool) -> None:
 # ── 태그 어휘 ────────────────────────────────────────────────────────────
 
 
-def test_모든_단계에_태그_어휘가_정의돼_있다() -> None:
-    """툴 설명에 그대로 실리는 어휘다."""
-    assert set(STAGE_TAGS) == {0, 1, 2, 3}
-    assert all(tags for tags in STAGE_TAGS.values())
+def test_풀_전체_태그를_단계와_우선순위_순으로_모은다(pool: QuestionPool) -> None:
+    """툴 선언의 파라미터 enum에 그대로 실리는 어휘다."""
+    assert pool.tags() == [
+        "자기소개", "지원동기", "회사이해", "경험상세", "기술역량", "문제해결", "역질문",
+    ]
 
 
-def test_픽스처의_태그는_어휘_안에_있다() -> None:
-    for item in RAW:
-        for tag in item.get("tags", []):
-            assert tag in STAGE_TAGS[item["stage"]], f"{item['id']}의 태그 {tag}"
+def test_단계별_태그를_우선순위_순으로_모은다(pool: QuestionPool) -> None:
+    """질문을 배달할 때 진행 안내(note)에 실려 다음 선택지를 좁힌다."""
+    assert pool.tags_for(1) == ["경험상세", "기술역량", "문제해결"]
+
+
+def test_같은_태그는_한_번만_나온다() -> None:
+    dup = QuestionPool.from_dicts([
+        {"id": "a", "stage": 0, "text": "?", "priority": 1, "tags": ["협업"]},
+        {"id": "b", "stage": 0, "text": "?", "priority": 2, "tags": ["협업", "갈등해결"]},
+    ])
+    assert dup.tags() == ["협업", "갈등해결"]
+
+
+def test_질문이_없는_단계의_태그는_빈_목록(pool: QuestionPool) -> None:
+    assert pool.tags_for(2) == []
 
 
 # ── 직렬화 ───────────────────────────────────────────────────────────────

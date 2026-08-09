@@ -12,15 +12,6 @@ from typing import Any, Collection, Iterable
 
 from .stages import STAGE_NAMES
 
-#: 단계별 질문 주제 태그. 질문 생성 시 여기서 골라 붙이고, 같은 목록이 툴 설명에
-#: 실려 모델이 고를 수 있게 된다. 어휘를 바꾸면 양쪽이 함께 바뀐다.
-STAGE_TAGS: dict[int, tuple[str, ...]] = {
-    0: ("자기소개", "지원동기", "회사이해"),
-    1: ("경험상세", "문제해결", "성과수치", "기술역량", "직무이해"),
-    2: ("협업", "갈등해결", "실패경험", "가치관"),
-    3: ("역질문", "포부"),
-}
-
 
 @dataclass(frozen=True)
 class Question:
@@ -31,7 +22,8 @@ class Question:
         stage: 이 질문이 속한 단계 인덱스(0~3).
         text: 면접관이 읽을 질문 문장.
         priority: 낮을수록 먼저 낸다.
-        tags: 질문 주제 태그. `STAGE_TAGS`에서 고른다.
+        tags: 질문 주제 태그. 고정 어휘가 아니라 질문 생성 시 질문과 함께
+            만들어지며, 풀에 실린 태그가 곧 그 세션의 어휘가 된다.
         source_chunk_ids: 이 질문의 근거가 된 청크 id(지원서 항목·리서치 블록).
             질문을 배달할 때 함께 붙여 보내면 면접 중 검색 호출이 줄어든다.
     """
@@ -112,6 +104,38 @@ class QuestionPool:
             해당 Question. 없으면 None.
         """
         return self._by_id.get(question_id)
+
+    def tags(self) -> list[str]:
+        """풀 전체의 태그 어휘를 단계·우선순위 순으로 돌려준다.
+
+        툴 선언의 파라미터 enum에 실린다. Live 커넥션 하나가 여러 단계에
+        걸쳐 유지되고 툴 선언은 커넥션을 열 때 한 번 실리므로, enum은
+        현재 단계가 아니라 풀 전체 어휘여야 한다.
+
+        Returns:
+            중복을 제거한 태그 목록.
+        """
+        ordered = sorted(
+            self._questions, key=lambda question: (question.stage, question.priority)
+        )
+        return list(dict.fromkeys(tag for question in ordered for tag in question.tags))
+
+    def tags_for(self, stage: int) -> list[str]:
+        """해당 단계 질문들에 붙은 태그를 우선순위 순으로 돌려준다.
+
+        질문을 배달할 때 진행 안내(note)에 실어 다음 선택지를 좁혀 준다.
+
+        Args:
+            stage: 단계 인덱스(0~3). 범위를 벗어나면 빈 목록.
+
+        Returns:
+            중복을 제거한 태그 목록.
+        """
+        ordered = sorted(
+            (question for question in self._questions if question.stage == stage),
+            key=lambda question: question.priority,
+        )
+        return list(dict.fromkeys(tag for question in ordered for tag in question.tags))
 
     def next(
         self,
