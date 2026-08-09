@@ -35,14 +35,6 @@ class Question:
     tags: tuple[str, ...] = field(default=())
     source_chunk_ids: tuple[str, ...] = field(default=())
 
-    def as_result(self) -> dict[str, str]:
-        """모델에게 넘길 형태로 직렬화한다.
-
-        Returns:
-            id와 text만 담은 dict. 우선순위와 근거 청크 id는 서버 내부용이다.
-        """
-        return {"id": self.id, "text": self.text}
-
 
 class QuestionPool:
     """한 세션의 뼈대질문 모음."""

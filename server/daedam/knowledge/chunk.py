@@ -70,7 +70,7 @@ class Chunk:
     text: str
     ref: str | None = None
 
-    def as_result(self) -> dict[str, Any]:
+    def as_tool_result(self) -> dict[str, Any]:
         """툴이 모델에게 돌려줄 형태로 직렬화한다.
 
         Returns:
@@ -86,7 +86,7 @@ class Chunk:
         return result
 
 
-def from_report(sections: list[dict[str, Any]]) -> list[Chunk]:
+def chunks_from_report(sections: list[dict[str, Any]]) -> list[Chunk]:
     """리서치 리포트를 검색 청크로 변환한다.
 
     Args:
@@ -117,7 +117,7 @@ def from_report(sections: list[dict[str, Any]]) -> list[Chunk]:
     return chunks
 
 
-def from_application(parts: list[dict[str, Any]]) -> list[Chunk]:
+def chunks_from_application(parts: list[dict[str, Any]]) -> list[Chunk]:
     """지원서를 검색 청크로 변환한다.
 
     Args:
@@ -151,14 +151,14 @@ def from_application(parts: list[dict[str, Any]]) -> list[Chunk]:
     return chunks
 
 
-def outline(parts: list[dict[str, Any]]) -> str:
+def application_outline(parts: list[dict[str, Any]]) -> str:
     """지원서 목차를 시스템 프롬프트용 문자열로 만든다.
 
     본문은 넣지 않는다. 목차만으로 에이전트가 "무엇을 파고들 수 있는지"를
     알 수 있고, 본문 전체(3천 토큰 안팎)를 프롬프트에 넣지 않아도 된다.
 
     Args:
-        parts: `from_application`과 같은 형태의 파트 목록.
+        parts: `chunks_from_application`과 같은 형태의 파트 목록.
 
     Returns:
         "- 파트: 항목1 / 항목2" 줄들. 작성된 항목이 없으면 안내 문구.

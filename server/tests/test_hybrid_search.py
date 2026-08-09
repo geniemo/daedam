@@ -8,7 +8,7 @@
 import numpy as np
 
 from daedam.knowledge.chunk import Chunk
-from daedam.knowledge.search import Knowledge
+from daedam.knowledge.search import KnowledgeIndex
 
 
 class _FakeEmbedder:
@@ -48,13 +48,13 @@ LOGISTICS_DOC = Chunk(
 GROUPS = [["UX", "유엑스", "사용자 경험"], ["배차", "운송", "트럭"]]
 
 
-def _hybrid() -> Knowledge:
-    return Knowledge([UX_DOC, LOGISTICS_DOC], embedder=_FakeEmbedder(GROUPS))
+def _hybrid() -> KnowledgeIndex:
+    return KnowledgeIndex([UX_DOC, LOGISTICS_DOC], embedder=_FakeEmbedder(GROUPS))
 
 
 def test_bm25만으로는_동의어를_못_잇는다() -> None:
     """이 한계가 임베딩을 얹은 이유다 — 기준선으로 기록해 둔다."""
-    assert Knowledge([UX_DOC, LOGISTICS_DOC]).search("UX") == []
+    assert KnowledgeIndex([UX_DOC, LOGISTICS_DOC]).search("UX") == []
 
 
 def test_동의어_질의가_의미_경로로_이어진다() -> None:

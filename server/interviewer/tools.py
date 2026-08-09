@@ -26,9 +26,9 @@ from google.genai import types
 
 from daedam.interview.question_pool import QuestionPool
 from daedam.interview.stages import STAGE_NAMES
-from daedam.knowledge.chunk import Source, from_application, from_report
+from daedam.knowledge.chunk import Source, chunks_from_application, chunks_from_report
 from daedam.knowledge.embedding import default_embedder
-from daedam.knowledge.search import Knowledge
+from daedam.knowledge.search import KnowledgeIndex
 
 # ── 뼈대질문 배달 ────────────────────────────────────────────────────────
 
@@ -55,7 +55,7 @@ _FALLBACK_POOL = QuestionPool.from_dicts(
 )
 
 
-def _pool_from(state: Mapping[str, Any]) -> QuestionPool:
+def _question_pool_from(state: Mapping[str, Any]) -> QuestionPool:
     """세션 state의 질문 풀을 되살린다. 없으면 스모크 풀."""
     raw = state.get(STATE_QUESTION_POOL)
     return QuestionPool.from_dicts(raw) if raw else _FALLBACK_POOL
@@ -76,7 +76,7 @@ def get_next_question(tool_context: ToolContext, tag: str | None = None) -> dict
         남은 질문이 없으면 done이 True.
     """
     state = tool_context.state
-    pool = _pool_from(state)
+    pool = _question_pool_from(state)
     asked: list[str] = list(state.get("asked", []))
     stage: int = int(state.get("stage", 0))
 
@@ -133,7 +133,7 @@ class NextQuestionTool(FunctionTool):
         await super().process_llm_request(
             tool_context=tool_context, llm_request=llm_request
         )
-        tags = _pool_from(tool_context.state).tags()
+        tags = _question_pool_from(tool_context.state).tags()
         prop = self._tag_property(llm_request)
         if not tags or prop is None:
             return
@@ -167,11 +167,11 @@ class NextQuestionTool(FunctionTool):
 # ── 회사 지식 검색 ───────────────────────────────────────────────────────
 
 #: 세션 생성 시 서버가 리서치 리포트(섹션 목록)를 심는 state 키.
-#: 형태는 `daedam.knowledge.chunk.from_report`의 입력과 같다.
+#: 형태는 `daedam.knowledge.chunk.chunks_from_report`의 입력과 같다.
 STATE_RESEARCH_REPORT = "research_report"
 
 #: 세션 생성 시 서버가 지원서(파트 목록)를 심는 state 키.
-#: 형태는 `daedam.knowledge.chunk.from_application`의 입력과 같다.
+#: 형태는 `daedam.knowledge.chunk.chunks_from_application`의 입력과 같다.
 STATE_APPLICATION = "application"
 
 #: state에 리포트·지원서가 없을 때(adk web 직접 실행) 검색되는 스모크 코퍼스.
@@ -241,34 +241,34 @@ _SMOKE_APPLICATION: list[dict[str, Any]] = [
 ]
 
 @lru_cache(maxsize=2)
-def _knowledge_cached(corpus_json: str) -> Knowledge:
+def _cached_knowledge_index(corpus_json: str) -> KnowledgeIndex:
     """코퍼스 내용을 키로 인덱스를 재사용한다.
 
     임베딩 인덱스는 청크 벡터 인코딩이 수십 ms라 한 번 만들고 다시 쓴다.
     """
     sections, parts = json.loads(corpus_json)
-    return Knowledge(
-        from_report(sections or []) + from_application(parts or []),
+    return KnowledgeIndex(
+        chunks_from_report(sections or []) + chunks_from_application(parts or []),
         embedder=default_embedder(),
     )
 
 
 @lru_cache(maxsize=1)
-def _fallback_knowledge() -> Knowledge:
+def _fallback_knowledge_index() -> KnowledgeIndex:
     """스모크 코퍼스 인덱스. 임베딩 모델 로드를 임포트 시점에서 떼어 놓는다."""
-    return Knowledge(
-        from_report(_SMOKE_REPORT) + from_application(_SMOKE_APPLICATION),
+    return KnowledgeIndex(
+        chunks_from_report(_SMOKE_REPORT) + chunks_from_application(_SMOKE_APPLICATION),
         embedder=default_embedder(),
     )
 
 
-def _knowledge_from(state: Mapping[str, Any]) -> Knowledge:
+def _knowledge_index_from(state: Mapping[str, Any]) -> KnowledgeIndex:
     """세션 state의 리포트·지원서로 검색 인덱스를 얻는다. 둘 다 없으면 스모크 코퍼스."""
     sections = state.get(STATE_RESEARCH_REPORT)
     parts = state.get(STATE_APPLICATION)
     if not sections and not parts:
-        return _fallback_knowledge()
-    return _knowledge_cached(
+        return _fallback_knowledge_index()
+    return _cached_knowledge_index(
         json.dumps([sections, parts], ensure_ascii=False, sort_keys=True)
     )
 
@@ -294,11 +294,11 @@ def search_knowledge(
         results: 출처(source)·제목(title)·본문(text)을 담은 결과 목록,
         관련도 순 최대 3개. 관련 정보가 없으면 results가 비고 note로 알립니다.
     """
-    found = _knowledge_from(tool_context.state).search(query, source=source)
+    found = _knowledge_index_from(tool_context.state).search(query, source=source)
     if not found:
         return {
             "results": [],
             "note": "관련 정보가 없습니다. 다른 검색어로 다시 시도하거나,"
             " 확인되지 않은 사실은 언급하지 마세요.",
         }
-    return {"results": [chunk.as_result() for chunk in found]}
+    return {"results": [chunk.as_tool_result() for chunk in found]}
