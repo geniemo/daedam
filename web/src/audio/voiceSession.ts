@@ -80,6 +80,15 @@ export class VoiceSession {
       },
     })
 
+    // stop()이 start() 완료 전에 불렸다면(StrictMode 이중 마운트) 여기서
+    // 멈춘다 — 계속 진행하면 아무도 참조하지 않는 유령 세션이 소켓까지 열어
+    // 목소리가 겹치고, 화면을 나가도 계속 떠든다.
+    if (this.closing) {
+      this.stream.getTracks().forEach((t) => t.stop())
+      this.stream = null
+      return
+    }
+
     this.inCtx = new AudioContext({ sampleRate: INPUT_RATE })
     this.outCtx = new AudioContext({ sampleRate: OUTPUT_RATE })
     await Promise.all([this.inCtx.resume(), this.outCtx.resume()])
@@ -125,6 +134,12 @@ export class VoiceSession {
   }
 
   private connect(): void {
+    // start()와 재연결 타이머 어느 경로로 오든, 닫히는 중이면 소켓을 새로
+    // 열지 않는다. 남은 자원(마이크·컨텍스트)은 stop()이 마저 정리한다.
+    if (this.closing) {
+      void this.stop()
+      return
+    }
     const ws = new WebSocket(this.wsUrl())
     ws.binaryType = 'arraybuffer'
     this.ws = ws
