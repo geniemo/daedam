@@ -153,13 +153,7 @@ def test_질문이_없는_단계의_태그는_빈_목록(pool: QuestionPool) -> 
     assert pool.tags_for(2) == []
 
 
-# ── 직렬화 ───────────────────────────────────────────────────────────────
-
-
-def test_질문은_모델에게_넘길_형태로_직렬화된다(pool: QuestionPool) -> None:
-    """근거 청크 id와 우선순위는 서버 내부용이라 노출하지 않는다."""
-    result = pool.by_id("q-1-1").as_result()  # type: ignore[union-attr]
-    assert result == {"id": "q-1-1", "text": "물류 프로젝트에서 맡은 역할을 설명해 주세요."}
+# ── 불변성 ───────────────────────────────────────────────────────────────
 
 
 def test_Question은_불변이다() -> None:

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
+import { getResearchStatus } from '@/api/research'
 import { useActiveCard, useAppStore } from '@/store/app'
 import { fill, researchSteps } from '@/data/mock'
 import { CheckDot, EmptyDot, ProgressBar, SectionLabel, Spinner } from '@/components/ui'
@@ -11,21 +12,40 @@ export function Research() {
   const setCardProgress = useAppStore((s) => s.setCardProgress)
   const [pct, setPct] = useState(card.pct ?? 0)
 
-  // §타이머와 인터벌 — 120ms마다 2%. 100%에서 ready로 바뀌고 준비 완료 화면으로.
-  // 실제로는 §서버 연동 2: 서버 진행 상황을 폴링하거나 스트리밍합니다.
+  // §서버 연동 2 — 1초마다 서버 진행률을 폴링한다. 서버가 없거나 카드가 서버
+  // 작업이 아니면(목업 카드, 프론트 단독 실행) 프로토타입의 로컬 타이머
+  // (120ms마다 2%)로 돌아간다.
   useEffect(() => {
-    const id = setInterval(() => {
-      setPct((p) => {
-        const next = Math.min(100, p + 2)
-        setCardProgress(card.id, next)
-        if (next >= 100) {
-          clearInterval(id)
-          setTimeout(() => nav('/ready'), 300)
-        }
-        return next
-      })
-    }, 120)
-    return () => clearInterval(id)
+    let timer: ReturnType<typeof setInterval>
+
+    const finish = () => {
+      clearInterval(timer)
+      setTimeout(() => nav('/ready'), 300)
+    }
+
+    const advanceLocally = () => {
+      clearInterval(timer)
+      timer = setInterval(() => {
+        setPct((p) => {
+          const next = Math.min(100, p + 2)
+          setCardProgress(card.id, next)
+          if (next >= 100) finish()
+          return next
+        })
+      }, 120)
+    }
+
+    timer = setInterval(() => {
+      getResearchStatus(card.id)
+        .then((s) => {
+          setPct(s.pct)
+          setCardProgress(card.id, s.pct)
+          if (s.status === 'done') finish()
+          if (s.status === 'failed') clearInterval(timer)
+        })
+        .catch(advanceLocally)
+    }, 1000)
+    return () => clearInterval(timer)
   }, [card.id, nav, setCardProgress])
 
   const done = Math.floor(pct / 20)

@@ -58,7 +58,7 @@ def _tokenize(text: str) -> list[str]:
     return [squeezed[i : i + 2] for i in range(len(squeezed) - 1)]
 
 
-class Knowledge:
+class KnowledgeIndex:
     """리서치 리포트와 지원서를 함께 담는 세션 하나의 검색 인덱스."""
 
     def __init__(

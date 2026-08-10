@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from google.adk.agents.readonly_context import ReadonlyContext
 
-from daedam.knowledge.chunk import outline
+from daedam.knowledge.chunk import application_outline
 
 from .tools import STATE_APPLICATION, STATE_RESEARCH_REPORT
 
@@ -66,6 +66,6 @@ def build_instruction(context: ReadonlyContext) -> str:
         if titles:
             sections.append(f"회사 조사 자료의 목차: {titles}")
     if parts:
-        sections.append(f"지원자가 제출한 지원서 목차:\n{outline(parts)}")
+        sections.append(f"지원자가 제출한 지원서 목차:\n{application_outline(parts)}")
     sections.append("첫 턴에는 짧게 인사하고 바로 첫 질문으로 시작하세요.")
     return "\n\n".join(sections)

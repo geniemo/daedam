@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { useShallow } from 'zustand/react/shallow'
 import type { ApplicationPart, Card } from '@/data/types'
 import { initialCards, initialParts } from '@/data/mock'
 
@@ -6,6 +7,10 @@ import { initialCards, initialParts } from '@/data/mock'
 // (`screen`, `regStep`) and minus everything that changes at audio rate —
 // waveform amplitudes and ring scale live in refs, never here. See
 // `src/audio/useAudioLevels.ts` for why.
+
+/** 빈 폼 데모용 기본값 — 등록과 서버 요청이 같은 값을 쓴다. */
+export const FALLBACK_COMPANY = '누리테크'
+export const FALLBACK_ROLE = '서비스기획 · 신입'
 
 interface AppState {
   cards: Card[]
@@ -25,8 +30,9 @@ interface AppState {
   setRole: (v: string) => void
   setParts: (parts: ApplicationPart[]) => void
   resetRegister: () => void
-  /** 등록 완료 → researching 카드를 목록 맨 앞에 넣고 id 반환 */
-  submitRegister: () => string
+  /** 등록 완료 → researching 카드를 목록 맨 앞에 넣고 id 반환.
+      서버 리서치가 시작됐으면 task_id를 카드 id로 쓴다. */
+  submitRegister: (id?: string) => string
   setCardProgress: (id: string, pct: number) => void
 
   toggleFlag: (blockId: string) => void
@@ -52,16 +58,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   setParts: (parts) => set({ parts }),
   resetRegister: () => set({ company: '', role: '' }),
 
-  submitRegister: () => {
+  submitRegister: (id) => {
     const { company, role, cards } = get()
-    const name = company.trim() || '누리테크'
-    const position = role.trim() || '서비스기획 · 신입'
-    const id = `new${Date.now()}`
+    const name = company.trim() || FALLBACK_COMPANY
+    const position = role.trim() || FALLBACK_ROLE
+    const cardId = id ?? `new${Date.now()}`
     set({
-      cards: [{ id, company: name, role: position, date: '방금 등록', status: 'researching', pct: 0 }, ...cards],
-      activeCardId: id,
+      cards: [{ id: cardId, company: name, role: position, date: '방금 등록', status: 'researching', pct: 0 }, ...cards],
+      activeCardId: cardId,
     })
-    return id
+    return cardId
   },
 
   setCardProgress: (id, pct) =>
@@ -90,7 +96,11 @@ export const useActiveCard = () =>
 
 /** 하단 고정 바 요약 (§6): "정정 N건 · 메모 M건" */
 export const useAnnotationCounts = () =>
-  useAppStore((s) => ({
-    flagged: Object.values(s.flags).filter(Boolean).length,
-    memoed: Object.values(s.memos).reduce((n, list) => n + list.length, 0),
-  }))
+  useAppStore(
+    // 객체를 새로 만들어 돌려주는 셀렉터라 얕은 비교가 없으면 매 렌더가 새
+    // 스냅샷이 된다 — useShallow로 값이 같으면 같은 참조를 유지한다.
+    useShallow((s) => ({
+      flagged: Object.values(s.flags).filter(Boolean).length,
+      memoed: Object.values(s.memos).reduce((n, list) => n + list.length, 0),
+    })),
+  )

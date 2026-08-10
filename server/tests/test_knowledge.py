@@ -7,8 +7,8 @@
 
 import pytest
 
-from daedam.knowledge.chunk import Chunk, from_application, from_report, outline
-from daedam.knowledge.search import Knowledge
+from daedam.knowledge.chunk import Chunk, chunks_from_application, chunks_from_report, application_outline
+from daedam.knowledge.search import KnowledgeIndex
 
 # ── 픽스처 ───────────────────────────────────────────────────────────────
 
@@ -58,35 +58,35 @@ APPLICATION = [
 
 
 def test_리포트_블록_id가_그대로_보존된다() -> None:
-    chunks = from_report(REPORT)
+    chunks = chunks_from_report(REPORT)
     assert [c.id for c in chunks] == ["blk-1-0", "blk-1-1", "blk-3-0"]
 
 
 def test_리포트_빈_블록은_색인하지_않는다() -> None:
-    assert all(c.text.strip() for c in from_report(REPORT))
+    assert all(c.text.strip() for c in chunks_from_report(REPORT))
 
 
 def test_리포트_청크는_섹션_제목과_출처를_함께_갖는다() -> None:
-    first = from_report(REPORT)[0]
+    first = chunks_from_report(REPORT)[0]
     assert first.title == "1. 회사와 사업 구조"
     assert first.ref == "2026 상반기 실적 발표 자료"
     assert first.source == "research"
 
 
 def test_지원서_빈_항목은_색인하지_않는다() -> None:
-    chunks = from_application(APPLICATION)
+    chunks = chunks_from_application(APPLICATION)
     assert len(chunks) == 2
     assert all("인턴" not in c.title for c in chunks)
 
 
 def test_지원서_청크_제목은_파트와_항목을_합친다() -> None:
-    chunks = from_application(APPLICATION)
+    chunks = chunks_from_application(APPLICATION)
     assert chunks[0].title == "경험 · 경험 1 — 교내 물류 데이터 분석 프로젝트"
     assert chunks[0].source == "application"
 
 
 def test_지원서_항목에_id가_없으면_생성한다() -> None:
-    assert from_application(APPLICATION)[0].id == "app-0-0"
+    assert chunks_from_application(APPLICATION)[0].id == "app-0-0"
 
 
 # ── 긴 본문 쪼개기 ───────────────────────────────────────────────────────
@@ -110,83 +110,83 @@ LONG_APPLICATION = [{"part": "자기소개서", "items": [{"title": "문항 1", 
 
 
 def test_긴_지원서_항목은_여러_청크로_쪼개진다() -> None:
-    chunks = from_application(LONG_APPLICATION)
+    chunks = chunks_from_application(LONG_APPLICATION)
     assert len(chunks) > 1
 
 
 def test_쪼개진_청크는_부모_id에_번호를_붙인다() -> None:
     """§6 주석이 매달리는 앵커를 잃지 않도록 부모 id를 접두로 유지한다."""
-    ids = [c.id for c in from_application(LONG_APPLICATION)]
+    ids = [c.id for c in chunks_from_application(LONG_APPLICATION)]
     assert all(i.startswith("app-0-0#") for i in ids)
     assert ids == sorted(ids, key=lambda i: int(i.split("#")[1]))
 
 
 def test_짧은_본문은_번호_없이_원래_id를_유지한다() -> None:
     """대부분의 리서치 블록은 짧다 — 불필요하게 id를 바꾸지 않는다."""
-    assert from_report(REPORT)[0].id == "blk-1-0"
+    assert chunks_from_report(REPORT)[0].id == "blk-1-0"
 
 
 def test_쪼개진_청크도_제목과_출처를_그대로_물려받는다() -> None:
-    chunks = from_application(LONG_APPLICATION)
+    chunks = chunks_from_application(LONG_APPLICATION)
     assert all(c.title == "자기소개서 · 문항 1" for c in chunks)
     assert all(c.source == "application" for c in chunks)
 
 
 def test_쪼개진_청크는_각각_검색된다() -> None:
     """긴 항목의 뒷부분 내용도 독립적으로 걸려야 한다."""
-    knowledge = Knowledge(from_application(LONG_APPLICATION))
+    knowledge = KnowledgeIndex(chunks_from_application(LONG_APPLICATION))
     hits = knowledge.search("팀원 설득 비교 자료")
     assert hits and "비교 자료" in hits[0].text
 
 
 def test_목차는_작성된_항목만_담는다() -> None:
-    text = outline(APPLICATION)
+    text = application_outline(APPLICATION)
     assert "경험 1" in text
     assert "SQLD" in text
     assert "경험 2" not in text  # 본문이 비어 있음
 
 
 def test_목차는_빈_지원서에도_문장을_돌려준다() -> None:
-    assert outline([]) != ""
+    assert application_outline([]) != ""
 
 
 # ── 검색 ─────────────────────────────────────────────────────────────────
 
 
 @pytest.fixture
-def knowledge() -> Knowledge:
-    return Knowledge(from_report(REPORT) + from_application(APPLICATION))
+def knowledge() -> KnowledgeIndex:
+    return KnowledgeIndex(chunks_from_report(REPORT) + chunks_from_application(APPLICATION))
 
 
-def test_관련_청크를_찾는다(knowledge: Knowledge) -> None:
+def test_관련_청크를_찾는다(knowledge: KnowledgeIndex) -> None:
     hits = knowledge.search("파트너 정산 서비스 매출 비중")
     assert hits[0].id == "blk-1-0"
 
 
-def test_지원서도_같은_인덱스에서_검색된다(knowledge: Knowledge) -> None:
+def test_지원서도_같은_인덱스에서_검색된다(knowledge: KnowledgeIndex) -> None:
     hits = knowledge.search("물류 데이터 분석 프로젝트에서 한 일")
     assert hits[0].source == "application"
 
 
-def test_source로_코퍼스를_좁힐_수_있다(knowledge: Knowledge) -> None:
+def test_source로_코퍼스를_좁힐_수_있다(knowledge: KnowledgeIndex) -> None:
     hits = knowledge.search("물류 데이터", source="research")
     assert all(c.source == "research" for c in hits)
 
 
-def test_k로_결과_개수를_제한한다(knowledge: Knowledge) -> None:
+def test_k로_결과_개수를_제한한다(knowledge: KnowledgeIndex) -> None:
     assert len(knowledge.search("데이터", k=2)) <= 2
 
 
-def test_전혀_안_맞는_질의는_빈_결과를_준다(knowledge: Knowledge) -> None:
+def test_전혀_안_맞는_질의는_빈_결과를_준다(knowledge: KnowledgeIndex) -> None:
     assert knowledge.search("양자역학 초전도체") == []
 
 
-def test_빈_질의에도_예외를_던지지_않는다(knowledge: Knowledge) -> None:
+def test_빈_질의에도_예외를_던지지_않는다(knowledge: KnowledgeIndex) -> None:
     assert knowledge.search("") == []
     assert knowledge.search("   ") == []
 
 
-def test_어미만_겹치는_무관한_질의는_걸러진다(knowledge: Knowledge) -> None:
+def test_어미만_겹치는_무관한_질의는_걸러진다(knowledge: KnowledgeIndex) -> None:
     """한국어는 조사·어미 때문에 우발적 겹침이 생긴다. 실측상 무관 질의는 27% 이하."""
     assert knowledge.search("그렇게 하는 것이 좋았습니다") == []
     assert knowledge.search("지원자는 어떤 사람인가요") == []
@@ -194,20 +194,20 @@ def test_어미만_겹치는_무관한_질의는_걸러진다(knowledge: Knowled
 
 def test_빈_코퍼스에도_예외를_던지지_않는다() -> None:
     """지원서를 안 쓰고 리서치도 실패한 세션 — 면접은 계속돼야 한다."""
-    assert Knowledge([]).search("아무거나") == []
+    assert KnowledgeIndex([]).search("아무거나") == []
 
 
-def test_결과는_모델에게_넘길_형태로_직렬화된다(knowledge: Knowledge) -> None:
-    hit = knowledge.search("기업 고객 계약 비중")[0].as_result()
+def test_결과는_모델에게_넘길_형태로_직렬화된다(knowledge: KnowledgeIndex) -> None:
+    hit = knowledge.search("기업 고객 계약 비중")[0].as_tool_result()
     assert hit["source"] == "리서치 리포트"  # 모델이 읽을 한국어 라벨
     assert "title" in hit and "text" in hit
 
 
-def test_청크_id는_모델에게_노출하지_않는다(knowledge: Knowledge) -> None:
+def test_청크_id는_모델에게_노출하지_않는다(knowledge: KnowledgeIndex) -> None:
     """서버 내부용 식별자다. 검색을 반복하면 쓸모없는 문자열만 컨텍스트에 쌓인다."""
-    assert "id" not in knowledge.search("기업 고객 계약 비중")[0].as_result()
+    assert "id" not in knowledge.search("기업 고객 계약 비중")[0].as_tool_result()
 
 
-def test_출처가_없는_블록은_ref_필드를_안_넣는다(knowledge: Knowledge) -> None:
+def test_출처가_없는_블록은_ref_필드를_안_넣는다(knowledge: KnowledgeIndex) -> None:
     chunk = Chunk(id="x", source="application", title="t", text="본문")
-    assert "ref" not in chunk.as_result()
+    assert "ref" not in chunk.as_tool_result()

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import { useAppStore } from '@/store/app'
+import { startResearch } from '@/api/research'
+import { FALLBACK_COMPANY, FALLBACK_ROLE, useAppStore } from '@/store/app'
 import { Label, TextArea, TextField } from '@/components/ui'
 
 /** README §2·§3. 등록 STEP 1·2 */
@@ -116,7 +117,7 @@ function Step1() {
 
 function Step2() {
   const nav = useNavigate()
-  const { parts, setParts, submitRegister } = useAppStore()
+  const { company, role, parts, setParts, submitRegister } = useAppStore()
   const [openPart, setOpenPart] = useState(0)
   const [openItem, setOpenItem] = useState(0)
 
@@ -244,8 +245,15 @@ function Step2() {
         <span className="text-[12.5px] text-faint">파일로 올리기 (PDF · DOCX)</span>
         <div className="flex-1" />
         <button
-          onClick={() => {
-            submitRegister()
+          onClick={async () => {
+            // §서버 연동 1 — 리서치를 시작하고 task_id를 카드 id로 쓴다.
+            // 서버가 없으면(프론트 단독 실행) 프로토타입의 로컬 진행으로 돌아간다.
+            const taskId = await startResearch(
+              company.trim() || FALLBACK_COMPANY,
+              role.trim() || FALLBACK_ROLE,
+              parts,
+            ).catch(() => undefined)
+            submitRegister(taskId)
             nav('/research')
           }}
           className="rounded-control bg-ink px-[26px] py-[12px] text-[14px] font-semibold text-white"
