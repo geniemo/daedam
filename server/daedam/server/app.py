@@ -21,7 +21,9 @@ from google.adk.runners import InMemoryRunner
 from daedam.research.service import FixtureResearch, LiveResearch, ResearchService
 
 from .live_bridge import create_live_router
-from .research_routes import create_research_router
+from .preparation import InterviewPreparation
+from .preparation_routes import create_preparation_router
+from .store import FileInterviewStore
 
 #: interviewer 에이전트 패키지가 들어 있는 디렉터리 (= server/).
 _AGENTS_DIR = str(Path(__file__).resolve().parents[2])
@@ -53,13 +55,21 @@ def create_app() -> FastAPI:
     app = get_fast_api_app(
         agents_dir=_AGENTS_DIR, web=True, allow_origins=_DEV_ORIGINS
     )
-    app.include_router(create_research_router(_research_service()))
+
+    # 준비 파이프라인: 리서치 → 파일 저장 → 질문 생성. 완료 산출물은
+    # server/data/에 남아 재시작·재데모에서 리서치를 다시 돌리지 않는다.
+    store = FileInterviewStore(Path(_AGENTS_DIR) / "data")
+    preparation = InterviewPreparation(research=_research_service(), store=store)
+    app.include_router(create_preparation_router(preparation))
 
     # 음성 브리지는 자기 러너로 돈다. ADK 앱(dev UI) 쪽 세션 저장소와는
-    # 분리돼 있다 — 제품 경로는 /ws/interview 하나다.
+    # 분리돼 있다 — 제품 경로는 /ws/interview 하나다. 준비 데이터 저장소를
+    # 공유해, 파이프라인이 만든 것을 브리지가 세션에 시딩한다.
     from interviewer.agent import root_agent
 
-    app.include_router(create_live_router(InMemoryRunner(root_agent, app_name="daedam")))
+    app.include_router(
+        create_live_router(InMemoryRunner(root_agent, app_name="daedam"), store)
+    )
     return app
 
 

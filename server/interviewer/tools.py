@@ -35,30 +35,18 @@ from daedam.knowledge.search import KnowledgeIndex
 #: 세션 생성 시 서버가 이 키로 질문 풀(dict 목록)을 state에 심는다.
 STATE_QUESTION_POOL = "question_pool"
 
-#: state에 풀이 없을 때(adk web 직접 실행) 쓰는 스모크 풀.
-#: 실제 풀은 리서치 리포트와 지원서로부터 오프라인 생성돼 세션에 실린다.
-_FALLBACK_POOL = QuestionPool.from_dicts(
-    [
-        {"id": "q0", "stage": 0, "text": "먼저 간단히 자기소개 부탁드립니다.",
-         "priority": 1, "tags": ["자기소개"]},
-        {"id": "q1", "stage": 0, "text": "저희 회사에 지원하신 이유가 무엇인가요?",
-         "priority": 2, "tags": ["지원동기"]},
-        {"id": "q2", "stage": 1, "text": "지원서에 적으신 프로젝트에서 맡으신 역할을 설명해 주세요.",
-         "priority": 1, "tags": ["경험상세"]},
-        {"id": "q3", "stage": 1, "text": "그 과정에서 가장 어려웠던 판단은 무엇이었나요?",
-         "priority": 2, "tags": ["문제해결"]},
-        {"id": "q4", "stage": 2, "text": "동료와 의견이 부딪혔을 때 어떻게 풀어가시나요?",
-         "priority": 1, "tags": ["협업"]},
-        {"id": "q5", "stage": 3, "text": "마지막으로 궁금한 점이 있으신가요?",
-         "priority": 1, "tags": ["역질문"]},
-    ]
-)
-
 
 def _question_pool_from(state: Mapping[str, Any]) -> QuestionPool:
-    """세션 state의 질문 풀을 되살린다. 없으면 스모크 풀."""
+    """세션 state의 질문 풀을 되살린다.
+
+    풀이 없다는 건 시딩이 안 된 세션이라는 뜻이다 — 폴백으로 가리면 엉뚱한
+    데이터로 면접이 그럴듯하게 돌아버리므로 크게 실패한다. 브리지가 준비
+    데이터 없는 면접을 거절하므로 정상 경로에서는 오지 않는다.
+    """
     raw = state.get(STATE_QUESTION_POOL)
-    return QuestionPool.from_dicts(raw) if raw else _FALLBACK_POOL
+    if not raw:
+        raise ValueError("세션에 질문 풀이 없습니다 — 준비 데이터가 시딩되지 않았습니다")
+    return QuestionPool.from_dicts(raw)
 
 
 def get_next_question(tool_context: ToolContext, tag: str | None = None) -> dict:
@@ -174,72 +162,6 @@ STATE_RESEARCH_REPORT = "research_report"
 #: 형태는 `daedam.knowledge.chunk.chunks_from_application`의 입력과 같다.
 STATE_APPLICATION = "application"
 
-#: state에 리포트·지원서가 없을 때(adk web 직접 실행) 검색되는 스모크 코퍼스.
-#: 실제 데이터는 Deep Research 리포트와 지원서에서 온다. 회사는 가상이다.
-_SMOKE_REPORT: list[dict[str, Any]] = [
-    {
-        "title": "회사 개요",
-        "blocks": [
-            {
-                "id": "blk-0-0",
-                "text": "한결물류는 중소 화주와 지역 운송사를 연결하는 미들마일 물류"
-                " 플랫폼 스타트업이다. 2021년 창업해 시리즈 B까지 투자를 유치했고,"
-                " 등록 운송사 1,200곳과 월 12만 건의 운송을 중개한다.",
-                "ref": "회사 소개 페이지",
-            },
-        ],
-    },
-    {
-        "title": "주력 사업과 기술",
-        "blocks": [
-            {
-                "id": "blk-1-0",
-                "text": "주력 제품은 화물 배차 자동화 시스템 '한결로드'다. 배차 추천"
-                " 알고리즘으로 공차 거리를 평균 18% 줄였고, 최근 운임 정산 자동화로"
-                " 사업 영역을 넓히고 있다.",
-                "ref": "보도자료",
-            },
-            {
-                "id": "blk-1-1",
-                "text": "기술 스택은 파이썬 백엔드와 데이터 파이프라인이 중심이고,"
-                " 배차 최적화 팀이 머신러닝 모델을 운영한다.",
-                "ref": "채용 공고",
-            },
-        ],
-    },
-    {
-        "title": "인재상과 조직문화",
-        "blocks": [
-            {
-                "id": "blk-2-0",
-                "text": "인재상은 '현장에서 배우는 사람'이다. 신입에게도 운송사 현장"
-                " 방문을 권하고, 문제를 숫자로 정의해 검증하는 문화를 강조한다.",
-                "ref": "채용 공고",
-            },
-        ],
-    },
-]
-
-_SMOKE_APPLICATION: list[dict[str, Any]] = [
-    {
-        "part": "자기소개서",
-        "items": [
-            {
-                "title": "지원동기",
-                "body": "물류 스타트업 인턴 시절 배차 담당자들이 엑셀로 밤을 새우는"
-                " 모습을 보며 자동화의 가치를 체감했습니다. 한결물류의 배차 자동화가"
-                " 그 문제를 정면으로 다루고 있어 지원했습니다.",
-            },
-            {
-                "title": "프로젝트 경험",
-                "body": "대학 캡스톤에서 지역 마트 배송 경로 최적화를 진행했습니다."
-                " 경로 알고리즘을 파이썬으로 구현해 배송 시간을 평균 22% 단축했고,"
-                " 데이터 검증과 현장 테스트를 직접 맡았습니다.",
-            },
-        ],
-    },
-]
-
 @lru_cache(maxsize=2)
 def _cached_knowledge_index(corpus_json: str) -> KnowledgeIndex:
     """코퍼스 내용을 키로 인덱스를 재사용한다.
@@ -253,21 +175,16 @@ def _cached_knowledge_index(corpus_json: str) -> KnowledgeIndex:
     )
 
 
-@lru_cache(maxsize=1)
-def _fallback_knowledge_index() -> KnowledgeIndex:
-    """스모크 코퍼스 인덱스. 임베딩 모델 로드를 임포트 시점에서 떼어 놓는다."""
-    return KnowledgeIndex(
-        chunks_from_report(_SMOKE_REPORT) + chunks_from_application(_SMOKE_APPLICATION),
-        embedder=default_embedder(),
-    )
-
-
 def _knowledge_index_from(state: Mapping[str, Any]) -> KnowledgeIndex:
-    """세션 state의 리포트·지원서로 검색 인덱스를 얻는다. 둘 다 없으면 스모크 코퍼스."""
+    """세션 state의 리포트·지원서로 검색 인덱스를 얻는다.
+
+    둘 다 없다는 건 시딩이 안 된 세션이라는 뜻이다 — 크게 실패한다
+    (`_question_pool_from`과 같은 원칙). 한쪽만 있으면 있는 쪽으로 색인한다.
+    """
     sections = state.get(STATE_RESEARCH_REPORT)
     parts = state.get(STATE_APPLICATION)
     if not sections and not parts:
-        return _fallback_knowledge_index()
+        raise ValueError("세션에 검색할 자료가 없습니다 — 준비 데이터가 시딩되지 않았습니다")
     return _cached_knowledge_index(
         json.dumps([sections, parts], ensure_ascii=False, sort_keys=True)
     )

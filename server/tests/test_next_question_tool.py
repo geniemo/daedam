@@ -6,6 +6,7 @@
 import asyncio
 from typing import Any
 
+import pytest
 from conftest import ContextStub
 from google.adk.models.llm_request import LlmRequest
 from google.genai import types
@@ -55,10 +56,10 @@ def test_tag는_필수가_아니다() -> None:
     assert "tag" not in schema.get("required", [])
 
 
-def test_풀이_없으면_스모크_풀_태그가_실린다() -> None:
-    """adk web에서 세션 state 없이 바로 띄워도 enum이 비지 않는다."""
-    prop = _declaration(_inject()).parameters_json_schema["properties"]["tag"]
-    assert "자기소개" in prop["enum"]
+def test_시딩_안_된_세션은_크게_실패한다() -> None:
+    """폴백으로 가리면 엉뚱한 데이터로 면접이 그럴듯하게 돌아버린다."""
+    with pytest.raises(ValueError, match="시딩"):
+        _inject()
 
 
 def test_선언과_등록은_한_번만_된다() -> None:

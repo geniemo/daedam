@@ -36,6 +36,16 @@ from google.adk.runners import Runner
 from google.adk.utils.context_utils import Aclosing
 from google.genai import types
 
+from daedam.research.report import search_sections_from_report
+from interviewer.instruction import STATE_COMPANY, STATE_ROLE
+from interviewer.tools import (
+    STATE_APPLICATION,
+    STATE_QUESTION_POOL,
+    STATE_RESEARCH_REPORT,
+)
+
+from .store import FileInterviewStore, InterviewData
+
 logger = logging.getLogger(__name__)
 
 #: 단일 사용자 앱 — 세션은 카드 id로만 구분한다.
@@ -95,13 +105,29 @@ def _client_messages_from(event: Event) -> list[tuple[str, Any]]:
     return messages
 
 
-def create_live_router(runner: Runner) -> APIRouter:
+def _session_state_from(data: InterviewData) -> dict[str, Any]:
+    """준비 데이터를 세션 state로 옮긴다 — 시딩의 실체.
+
+    이 키들을 instruction(회사·직무·목차)과 툴들(질문 풀·검색 인덱스)이
+    읽는다. 리포트는 화면 형태에서 검색 입력 형태로 여기서 변환된다.
+    """
+    return {
+        STATE_COMPANY: data.company,
+        STATE_ROLE: data.role,
+        STATE_APPLICATION: data.application,
+        STATE_RESEARCH_REPORT: search_sections_from_report(data.report),
+        STATE_QUESTION_POOL: data.questions,
+    }
+
+
+def create_live_router(runner: Runner, store: FileInterviewStore) -> APIRouter:
     """음성 브리지 라우터를 만든다.
 
     Args:
         runner: 면접관 에이전트를 물고 있는 Runner. 세션 저장소도 이 러너의
             것을 쓴다 — 브리지가 세션 생성을 소유해야 준비 데이터 시딩이
             이 지점에 꽂힌다. 테스트는 대역 러너를 주입한다.
+        store: 면접 준비 데이터 저장소. 세션 생성 시 여기서 읽어 시딩한다.
     """
     router = APIRouter()
 
@@ -138,10 +164,19 @@ def create_live_router(runner: Runner) -> APIRouter:
         )
         is_new_interview = session is None
         if is_new_interview:
-            # 시딩 지점 — 파일 영속화가 붙으면 질문 풀·리서치 코퍼스가 여기서
-            # state로 들어간다. 지금은 빈 state라 툴들이 스모크 폴백으로 돈다.
+            data = store.load(card)
+            if data is None or data.questions is None:
+                # 준비 데이터 없는 면접은 시작하지 않는다. 조용한 폴백으로
+                # 엉뚱한 데이터 면접이 도는 것보다 크게 실패하는 쪽이 낫다.
+                logger.warning("준비 데이터 없는 면접 시작 거부 (card=%s)", card)
+                await websocket.send_json({"type": "ended"})
+                await websocket.close(code=4004, reason="준비 데이터 없음")
+                return
             session = await runner.session_service.create_session(
-                app_name=runner.app_name, user_id=_USER_ID, session_id=card, state={}
+                app_name=runner.app_name,
+                user_id=_USER_ID,
+                session_id=card,
+                state=_session_state_from(data),
             )
 
         # 에이전트의 귀. 여기 넣는 것이 Gemini로 흘러간다 — run_live가 이

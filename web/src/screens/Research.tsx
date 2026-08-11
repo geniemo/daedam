@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { getResearchStatus } from '@/api/research'
+import { getPreparationStatus } from '@/api/preparation'
 import { useActiveCard, useAppStore } from '@/store/app'
 import { fill, researchSteps } from '@/data/mock'
 import { CheckDot, EmptyDot, ProgressBar, SectionLabel, Spinner } from '@/components/ui'
@@ -36,7 +36,7 @@ export function Research() {
     }
 
     timer = setInterval(() => {
-      getResearchStatus(card.id)
+      getPreparationStatus(card.id)
         .then((s) => {
           setPct(s.pct)
           setCardProgress(card.id, s.pct)
