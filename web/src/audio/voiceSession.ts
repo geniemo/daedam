@@ -1,4 +1,4 @@
-import type { Connection, Phase } from '@/store/interview'
+import type { Connection, Phase, SessionInfo } from '@/store/interview'
 
 /**
  * Browser half of the voice session.
@@ -11,15 +11,21 @@ import type { Connection, Phase } from '@/store/interview'
  *   client → server : raw ArrayBuffer  = 16kHz PCM chunk
  *                     JSON text frame  = control ({type:'start'|'pause'|'resume'|'end'})
  *   server → client : raw ArrayBuffer  = 24kHz PCM chunk
- *                     JSON text frame  = events (phase / question / caption /
- *                                        interrupted / resumeToken / goAway)
+ *                     JSON text frame  = events (session / phase / question /
+ *                                        caption / interrupted / resumeToken /
+ *                                        goAway)
+ *
+ * `session` arrives first on every connection and carries the interview's
+ * progress (남은 시간·단계·질문 번호). The server owns that clock — on a
+ * reconnect the screen picks up where the interview actually is.
  */
 
 export interface VoiceSessionHandlers {
   onConnection?: (c: Connection) => void
+  onSession?: (info: SessionInfo) => void
   onPhase?: (p: Phase) => void
-  onQuestionIndex?: (i: number) => void
-  onCaption?: (text: string) => void
+  onQuestion?: (index: number, stage: number) => void
+  onCaption?: (text: string, final: boolean) => void
   onResumeToken?: (token: string) => void
   onEnded?: () => void
   onError?: (err: Error) => void
@@ -162,14 +168,18 @@ export class VoiceSession {
         return
       }
       switch (msg.type) {
+        // First frame of every connection — the interview's own clock.
+        case 'session':
+          this.opts.handlers.onSession?.(msg as unknown as SessionInfo)
+          break
         case 'phase':
           this.opts.handlers.onPhase?.(msg.value as Phase)
           break
         case 'question':
-          this.opts.handlers.onQuestionIndex?.(msg.index as number)
+          this.opts.handlers.onQuestion?.(msg.index as number, msg.stage as number)
           break
         case 'caption':
-          this.opts.handlers.onCaption?.(msg.text as string)
+          this.opts.handlers.onCaption?.(msg.text as string, msg.final as boolean)
           break
         // Live API `interrupted`: drop every buffered sample right now.
         case 'interrupted':
