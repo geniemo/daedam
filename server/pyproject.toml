@@ -5,6 +5,7 @@ description = "대담 — AI 음성 모의면접 백엔드 (ADK + Gemini Live)"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "google-adk>=2.6.3",
+    "openai>=2.53.0",
     "rank-bm25>=0.2.2",
     "semantic-text-splitter>=0.32.0",
     "sentence-transformers>=5.7.0",
