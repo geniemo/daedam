@@ -33,9 +33,9 @@ def _question(stage: int, text: str = "질문?", ids: list[str] | None = None) -
 
 
 def _minimum_pool() -> list[_GeneratedQuestion]:
-    """생성 대상 단계(0~2)의 최소 개수(2/3/2)를 딱 맞춘 유효 응답."""
-    per_stage = (2, 3, 2)
-    return [_question(stage) for stage, count in enumerate(per_stage) for _ in range(count)]
+    """생성 대상 단계(1·2)의 최소 개수(3/2)를 딱 맞춘 유효 응답."""
+    per_stage = {1: 3, 2: 2}
+    return [_question(stage) for stage, count in per_stage.items() for _ in range(count)]
 
 
 class _StubClient:
@@ -70,21 +70,32 @@ def _generate(questions: list[_GeneratedQuestion]) -> list[dict]:
 def test_생성_결과가_풀_입력_형태가_된다() -> None:
     raw = _generate(_minimum_pool())
     pool = QuestionPool.from_dicts(raw)
-    assert len(pool) == 9  # 생성 7 + 고정 마무리 2
-    assert raw[0]["id"] == "q-0-0" and raw[2]["id"] == "q-1-0"
+    assert len(pool) == 9  # 고정 자기소개 2 + 생성 5 + 고정 마무리 2
+    assert raw[0]["id"] == "q-open-0" and raw[2]["id"] == "q-1-0"
 
 
-def test_마무리는_생성하지_않고_고정_질문을_붙인다() -> None:
-    """정형화된 마무리는 자체 질문을 쓴다. 역질문 유도는 에이전트 몫이라 없다."""
+def test_자기소개와_마무리는_고정_질문이_채운다() -> None:
+    """자료를 근거로 만들 것이 없는 단계는 생성하지 않는다. 역질문 유도는
+    에이전트 몫이라 마무리에도 없다."""
     raw = _generate(_minimum_pool())
-    closers = [question for question in raw if question["stage"] == 3]
-    assert [c["id"] for c in closers] == ["q-3-0", "q-3-1"]
+    openers = [q for q in raw if q["stage"] == 0]
+    closers = [q for q in raw if q["stage"] == 3]
+    assert [q["id"] for q in openers] == ["q-open-0", "q-open-1"]
+    assert [q["id"] for q in closers] == ["q-close-0", "q-close-1"]
+    assert "자기소개" in openers[0]["tags"] and "지원 동기" in openers[1]["tags"]
     assert "입사 포부" in closers[0]["tags"]
+
+
+def test_여는_질문은_자기소개가_먼저다() -> None:
+    """우선순위가 순서를 정한다 — 지원 동기보다 자기소개가 앞이다."""
+    raw = _generate(_minimum_pool())
+    openers = [q for q in raw if q["stage"] == 0]
+    assert openers[0]["priority"] < openers[1]["priority"]
 
 
 def test_유효한_근거_인용은_보존된다() -> None:
     questions = _minimum_pool()
-    questions[2] = _question(1, ids=["blk-1-0", "app-0-0"])
+    questions[0] = _question(1, ids=["blk-1-0", "app-0-0"])
     raw = _generate(questions)
     assert raw[2]["source_chunk_ids"] == ["blk-1-0", "app-0-0"]
 
@@ -109,8 +120,10 @@ def test_프롬프트는_생성_대상_단계만_명시한다() -> None:
         company="A", role="B",
         report_chunks=REPORT_CHUNKS, application_chunks=APPLICATION_CHUNKS,
     )
-    assert "- 0 자기소개: 3개" in prompt and "- 2 인성·컬처핏: 4개" in prompt
-    assert "마무리" not in prompt  # 생성 대상이 아닌 단계는 언급하지 않는다
+    assert "- 1 직무역량: 5개" in prompt and "- 2 인성·컬처핏: 4개" in prompt
+    # 생성 대상이 아닌 단계는 지시에 등장하지 않는다 — 구조로 이미 막혀 있다.
+    # ("자기소개"는 지원서 청크 제목에 있을 수 있으므로 단계 표기로 확인한다.)
+    assert "0 자기소개" not in prompt and "마무리" not in prompt
 
 
 # ── 검증 실패 경로 — 오프라인 배치는 크게 실패해야 한다 ──────────────────
@@ -118,7 +131,7 @@ def test_프롬프트는_생성_대상_단계만_명시한다() -> None:
 
 def test_실존하지_않는_근거_id는_실패한다() -> None:
     questions = _minimum_pool()
-    questions[0] = _question(0, ids=["blk-99-99"])
+    questions[0] = _question(1, ids=["blk-99-99"])
     with pytest.raises(ValueError, match="실존하지 않는 근거"):
         _generate(questions)
 
@@ -128,17 +141,18 @@ def test_단계_최소_개수_미달은_실패한다() -> None:
         _generate(_minimum_pool()[:-1])  # 인성·컬처핏 1개 부족
 
 
-def test_생성_대상_밖_단계는_실패한다() -> None:
-    """마무리(3)는 고정 질문 영역 — 모델이 만들어 오면 거부한다."""
-    questions = _minimum_pool() + [_question(3)]
-    with pytest.raises(ValueError, match="범위 밖"):
+@pytest.mark.parametrize("stage", [0, 3])
+def test_생성_대상_밖_단계는_실패한다(stage: int) -> None:
+    """자기소개(0)와 마무리(3)는 고정 질문 영역 — 만들어 오면 거부한다."""
+    questions = _minimum_pool() + [_question(stage)]
+    with pytest.raises(ValueError, match="생성 대상이 아닌 단계"):
         _generate(questions)
 
 
 def test_태그_없는_질문은_실패한다() -> None:
     questions = _minimum_pool()
     questions[0] = _GeneratedQuestion(
-        stage=0, text="질문?", priority=1, tags=[], source_chunk_ids=[]
+        stage=1, text="질문?", priority=1, tags=[], source_chunk_ids=[]
     )
     with pytest.raises(ValueError, match="태그"):
         _generate(questions)
