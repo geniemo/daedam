@@ -1,9 +1,9 @@
-// 리서치 API 클라이언트. 서버 계약: server/daedam/server/research_routes.py
+// 리서치 API 클라이언트. 서버 계약: server/daedam/server/preparation_routes.py
 // dev에서는 vite 프록시(/api → :8000), 배포에서는 같은 오리진.
 
 import type { ApplicationPart, DocSection, UncertainRef } from '@/data/types'
 
-export interface ResearchStatus {
+export interface PreparationStatus {
   status: 'running' | 'done' | 'failed'
   pct: number
   report?: DocSection[]
@@ -18,12 +18,12 @@ const toServerParts = (parts: ApplicationPart[]) =>
   }))
 
 /** §서버 연동 1 — 회사 등록 + 리서치 시작. task_id를 돌려준다. */
-export async function startResearch(
+export async function startPreparation(
   company: string,
   role: string,
   parts: ApplicationPart[],
 ): Promise<string> {
-  const res = await fetch('/api/research', {
+  const res = await fetch('/api/preparation', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ company, role, application: toServerParts(parts) }),
@@ -34,8 +34,8 @@ export async function startResearch(
 }
 
 /** §서버 연동 2 — 진행률 폴링. 완료되면 report·uncertain이 실려 온다. */
-export async function getResearchStatus(taskId: string): Promise<ResearchStatus> {
-  const res = await fetch(`/api/research/${taskId}`)
+export async function getPreparationStatus(taskId: string): Promise<PreparationStatus> {
+  const res = await fetch(`/api/preparation/${taskId}`)
   if (!res.ok) throw new Error(`리서치 조회 실패: ${res.status}`)
-  return (await res.json()) as ResearchStatus
+  return (await res.json()) as PreparationStatus
 }

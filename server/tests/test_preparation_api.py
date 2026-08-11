@@ -1,0 +1,80 @@
+"""면접 준비 API 라우트 테스트.
+
+무거운 ADK 앱(get_fast_api_app) 대신 맨 FastAPI에 라우터만 얹어 검증한다.
+준비 파이프라인은 fixture 리서치(수십 ms) + 대역 생성으로 실제 완주시키고,
+완료는 타임아웃 폴링으로 기다린다.
+"""
+
+import time
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from daedam.research.service import FixtureResearch
+from daedam.server.preparation import InterviewPreparation
+from daedam.server.preparation_routes import create_preparation_router
+from daedam.server.store import FileInterviewStore
+
+
+def _client(tmp_path: Path, duration_s: float = 0.01) -> TestClient:
+    preparation = InterviewPreparation(
+        research=FixtureResearch(duration_s=duration_s),
+        store=FileInterviewStore(tmp_path / "data"),
+        generate=lambda **kwargs: [
+            {"id": "q-0-0", "stage": 0, "text": "질문?", "priority": 1, "tags": ["태그"]}
+        ],
+        poll_interval_s=0.01,
+    )
+    app = FastAPI()
+    app.include_router(create_preparation_router(preparation))
+    return TestClient(app)
+
+
+def _wait_done(client: TestClient, task_id: str, timeout_s: float = 3.0) -> dict:
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        body = client.get(f"/api/preparation/{task_id}").json()
+        if body["status"] != "running":
+            return body
+        time.sleep(0.02)
+    raise AssertionError("시간 안에 완료되지 않음")
+
+
+def test_등록하면_task_id를_받는다(tmp_path: Path) -> None:
+    response = _client(tmp_path).post(
+        "/api/preparation", json={"company": "한결물류", "role": "데이터 엔지니어"}
+    )
+    assert response.status_code == 202
+    assert response.json()["task_id"]
+
+
+def test_진행_중에는_리포트가_없다(tmp_path: Path) -> None:
+    client = _client(tmp_path, duration_s=10)
+    task_id = client.post(
+        "/api/preparation", json={"company": "A", "role": "B"}
+    ).json()["task_id"]
+
+    body = client.get(f"/api/preparation/{task_id}").json()
+    assert body["status"] == "running" and body["pct"] <= 90
+    assert "report" not in body
+
+
+def test_완료되면_리포트와_확인_필요_목록이_온다(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    task_id = client.post(
+        "/api/preparation",
+        json={
+            "company": "한결물류",
+            "role": "데이터 엔지니어",
+            "application": [{"part": "자소서", "items": [{"title": "지원동기", "body": "..."}]}],
+        },
+    ).json()["task_id"]
+
+    body = _wait_done(client, task_id)
+    assert body["status"] == "done" and body["pct"] == 100
+    assert body["report"] and isinstance(body["uncertain"], list)
+
+
+def test_없는_task는_404(tmp_path: Path) -> None:
+    assert _client(tmp_path).get("/api/preparation/xyz").status_code == 404

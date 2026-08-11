@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import { startResearch } from '@/api/research'
+import { startPreparation } from '@/api/preparation'
 import { FALLBACK_COMPANY, FALLBACK_ROLE, useAppStore } from '@/store/app'
 import { Label, TextArea, TextField } from '@/components/ui'
 
@@ -248,7 +248,7 @@ function Step2() {
           onClick={async () => {
             // §서버 연동 1 — 리서치를 시작하고 task_id를 카드 id로 쓴다.
             // 서버가 없으면(프론트 단독 실행) 프로토타입의 로컬 진행으로 돌아간다.
-            const taskId = await startResearch(
+            const taskId = await startPreparation(
               company.trim() || FALLBACK_COMPANY,
               role.trim() || FALLBACK_ROLE,
               parts,
