@@ -1,6 +1,6 @@
-"""마크다운 → 화면 리포트 변환 테스트."""
+"""리포트 형태 변환 테스트 — 마크다운 → 화면, 화면 → 검색 입력."""
 
-from daedam.research.report import sections_from_markdown
+from daedam.research.report import search_sections_from_report, sections_from_markdown
 
 
 def test_헤딩이_섹션이_된다() -> None:
@@ -29,3 +29,42 @@ def test_헤딩이_없으면_기본_섹션_하나() -> None:
 
 def test_빈_입력은_빈_목록() -> None:
     assert sections_from_markdown("") == []
+
+
+# ── 화면 리포트 → 검색 입력 ──────────────────────────────────────────────
+
+
+def test_블록_id는_화면_좌표를_그대로_쓴다() -> None:
+    """'확인 필요' 좌표·질문 근거 id와 같은 체계여야 한다."""
+    report = [
+        {"title": "개요", "blocks": [
+            {"type": "p", "text": "문단"},
+            {"type": "li", "text": "항목"},
+        ]},
+    ]
+    (section,) = search_sections_from_report(report)
+    assert [b["id"] for b in section["blocks"]] == ["blk-0-0", "blk-0-1"]
+    assert section["blocks"][1]["text"] == "항목"
+
+
+def test_표는_헤더와_값을_붙인_문장이_된다() -> None:
+    report = [
+        {"title": "변화", "blocks": [
+            {"type": "table", "head": ["시점", "내용", "조직"],
+             "rows": [{"a": "2025.09", "b": "본부 신설", "c": "전사"}]},
+        ]},
+    ]
+    (section,) = search_sections_from_report(report)
+    assert section["blocks"][0]["text"] == "시점 2025.09, 내용 본부 신설, 조직 전사"
+
+
+def test_출처_블록은_건너뛰되_좌표는_보존된다() -> None:
+    report = [
+        {"title": "출처 섞임", "blocks": [
+            {"type": "refs", "refs": [{"n": "[1]", "label": "자료"}]},
+            {"type": "p", "text": "본문"},
+        ]},
+    ]
+    (section,) = search_sections_from_report(report)
+    # refs가 0번을 소비했으므로 본문은 blk-0-1 — 화면과 어긋나면 안 된다.
+    assert section["blocks"] == [{"id": "blk-0-1", "text": "본문"}]
