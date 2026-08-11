@@ -4,8 +4,11 @@
   클라 → 서버: 바이너리 프레임 = 16kHz PCM,
                JSON 텍스트 = 컨트롤 {"type": "start"|"pause"|"resume"|"end"}
   서버 → 클라: 바이너리 프레임 = 24kHz PCM,
-               JSON 텍스트 = {"type": "caption"|"question"|"interrupted"|
-                              "resumeToken"|"goAway"|"ended"}
+               JSON 텍스트 = {"type": "session"|"caption"|"question"|
+                              "interrupted"|"resumeToken"|"goAway"|"ended"}
+
+화면에 필요한 진행 상태(남은 시간·단계·질문 번호)는 전부 서버가 내려준다.
+프론트가 자기 시계로 세면 재접속·단계 건너뜀에서 서버와 어긋난다.
 
 골격은 ADK api_server의 /run_live와 같다 — 받은 오디오를 LiveRequestQueue에
 넣고, run_live 이벤트 스트림을 프론트 어휘로 번역해 내보낸다. 차이는 두 가지:
@@ -25,7 +28,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any
+import time
+from typing import Any, Mapping
 
 from fastapi import APIRouter, WebSocket
 from fastapi.websockets import WebSocketDisconnect
@@ -36,12 +40,18 @@ from google.adk.runners import Runner
 from google.adk.utils.context_utils import Aclosing
 from google.genai import types
 
+from daedam.interview.stages import DEFAULT_PROFILE, SessionFlow
 from daedam.research.report import search_sections_from_report
 from interviewer.instruction import STATE_COMPANY, STATE_ROLE
 from interviewer.tools import (
     STATE_APPLICATION,
+    STATE_ASKED,
+    STATE_CLOSING,
+    STATE_PROFILE,
     STATE_QUESTION_POOL,
     STATE_RESEARCH_REPORT,
+    STATE_STAGE,
+    STATE_STARTED_AT,
 )
 
 from .store import FileInterviewStore, InterviewData
@@ -53,6 +63,14 @@ _USER_ID = "user"
 
 #: Live API 입력 규격. 프론트 pcm-recorder가 이 형식 그대로 보낸다.
 _INPUT_MIME = "audio/pcm;rate=16000"
+
+#: 마무리에 들어간 뒤 인사 한 턴을 기다리는 상한(초). 모델이 인사를 안 하고
+#: 뭉개도 여기서 끊는다.
+_CLOSING_GRACE_S = 30.0
+
+#: 모델이 말을 마친 뒤 큐를 닫기까지의 여유(초). 프론트 재생 큐에 아직 남아
+#: 있는 오디오가 있어서, 바로 닫으면 마지막 인사가 잘려 들린다.
+_PLAYBACK_TAIL_S = 3.0
 
 
 def _client_messages_from(event: Event) -> list[tuple[str, Any]]:
@@ -73,19 +91,40 @@ def _client_messages_from(event: Event) -> list[tuple[str, Any]]:
         if blob and blob.data:
             messages.append(("bytes", blob.data))
 
-    # 모델 발화의 전사 → 화면 자막. 사용자 쪽 전사(input_transcription)는
-    # 화면에 안 쓰므로 보내지 않는다.
-    if event.output_transcription and event.output_transcription.text:
+    # 모델 발화의 전사 → 화면 자막. 조각으로 흘러오므로 프론트가 이어 붙이고,
+    # finished가 턴의 끝을 알린다(google.genai types.Transcription.finished).
+    # 자막이 실제 발화인 이유는 면접관이 뼈대질문을 그대로 읽지 않고, 꼬리질문에는
+    # 대본 자체가 없기 때문이다 — 준비된 문장을 띄우면 들리는 말과 어긋난다.
+    # 사용자 쪽 전사(input_transcription)는 화면에 안 쓰므로 보내지 않는다.
+    transcription = event.output_transcription
+    if transcription is not None and (transcription.text or transcription.finished):
         messages.append(
-            ("json", {"type": "caption", "text": event.output_transcription.text})
+            (
+                "json",
+                {
+                    "type": "caption",
+                    "text": transcription.text or "",
+                    "final": bool(transcription.finished),
+                },
+            )
         )
 
     # get_next_question이 실행되면 그 이벤트의 state 델타에 늘어난 asked가
     # 실려 온다 — 뼈대질문이 하나 나간 순간이고, 낸 질문 수가 곧 번호다.
-    # 화면의 "질문 N" 표시가 이걸로 움직인다.
-    asked = (event.actions.state_delta or {}).get("asked") if event.actions else None
+    # 같은 델타의 stage로 화면 상단의 단계 표시가 함께 움직인다.
+    delta = (event.actions.state_delta or {}) if event.actions else {}
+    asked = delta.get(STATE_ASKED)
     if asked:
-        messages.append(("json", {"type": "question", "index": len(asked) - 1}))
+        messages.append(
+            (
+                "json",
+                {
+                    "type": "question",
+                    "index": len(asked) - 1,
+                    "stage": int(delta.get(STATE_STAGE, 0)),
+                },
+            )
+        )
 
     # 사용자가 말을 끊었다(barge-in). 프론트는 이걸 받는 즉시 재생 버퍼를
     # 비운다 — 안 비우면 에이전트가 사용자 말 위로 계속 떠든다.
@@ -105,11 +144,28 @@ def _client_messages_from(event: Event) -> list[tuple[str, Any]]:
     return messages
 
 
-def _session_state_from(data: InterviewData) -> dict[str, Any]:
+def _elapsed_s(state: Mapping[str, Any]) -> float:
+    """면접이 시작된 뒤 흐른 초. 시작 시각이 없으면 0으로 본다."""
+    started_at = state.get(STATE_STARTED_AT)
+    return 0.0 if started_at is None else max(0.0, time.time() - float(started_at))
+
+
+def _marks_closing(event: Event) -> bool:
+    """면접이 마무리에 들어갔다는 표시인가.
+
+    툴이 done을 돌려줄 때(질문 소진·하드캡) state에 남긴 자국이다. 모델은
+    커넥션을 끊을 수 없으므로 실제 종료는 이걸 보고 서버가 한다.
+    """
+    delta = (event.actions.state_delta or {}) if event.actions else {}
+    return bool(delta.get(STATE_CLOSING))
+
+
+def _session_state_from(data: InterviewData, profile: str) -> dict[str, Any]:
     """준비 데이터를 세션 state로 옮긴다 — 시딩의 실체.
 
-    이 키들을 instruction(회사·직무·목차)과 툴들(질문 풀·검색 인덱스)이
-    읽는다. 리포트는 화면 형태에서 검색 입력 형태로 여기서 변환된다.
+    이 키들을 instruction(회사·직무·목차)과 툴들(질문 풀·검색 인덱스·시간
+    예산)이 읽는다. 리포트는 화면 형태에서 검색 입력 형태로 여기서 변환된다.
+    세션이 만들어지는 순간이 곧 면접 시작이라 시계도 여기서 켠다.
     """
     return {
         STATE_COMPANY: data.company,
@@ -117,10 +173,14 @@ def _session_state_from(data: InterviewData) -> dict[str, Any]:
         STATE_APPLICATION: data.application,
         STATE_RESEARCH_REPORT: search_sections_from_report(data.report),
         STATE_QUESTION_POOL: data.questions,
+        STATE_STARTED_AT: time.time(),
+        STATE_PROFILE: profile,
     }
 
 
-def create_live_router(runner: Runner, store: FileInterviewStore) -> APIRouter:
+def create_live_router(
+    runner: Runner, store: FileInterviewStore, profile: str = DEFAULT_PROFILE
+) -> APIRouter:
     """음성 브리지 라우터를 만든다.
 
     Args:
@@ -128,8 +188,11 @@ def create_live_router(runner: Runner, store: FileInterviewStore) -> APIRouter:
             것을 쓴다 — 브리지가 세션 생성을 소유해야 준비 데이터 시딩이
             이 지점에 꽂힌다. 테스트는 대역 러너를 주입한다.
         store: 면접 준비 데이터 저장소. 세션 생성 시 여기서 읽어 시딩한다.
+        profile: 시간 예산 프로필 이름 (`daedam.interview.stages.PROFILES`).
+            세션 state에도 실려 툴이 같은 예산으로 단계를 판정한다.
     """
     router = APIRouter()
+    flow = SessionFlow(profile)
 
     #: 카드당 활성 커넥션 하나. 새 접속이 오면 이전 것을 서버가 닫는다 —
     #: 개발 모드 이중 마운트나 중복 탭이 만드는 "두 목소리"의 방어선이다.
@@ -176,22 +239,62 @@ def create_live_router(runner: Runner, store: FileInterviewStore) -> APIRouter:
                 app_name=runner.app_name,
                 user_id=_USER_ID,
                 session_id=card,
-                state=_session_state_from(data),
+                state=_session_state_from(data, profile),
             )
 
         # 에이전트의 귀. 여기 넣는 것이 Gemini로 흘러간다 — run_live가 이
         # 큐를 소비한다. close()가 들어가면 대화가 정상 종료된다.
         queue = LiveRequestQueue()
 
+        # 이벤트 펌프가 세우고 종료 태스크가 기다리는 두 신호.
+        closing = asyncio.Event()  # 툴이 마무리를 알렸다
+        turn_done = asyncio.Event()  # 모델이 한 턴을 말끝까지 마쳤다
+        turn_count = 0  # 이 커넥션에서 완료된 턴 수 — 종료 로그의 진단 재료
+
+        ended_notified = False
+
+        async def notify_ended() -> None:
+            """프론트에 종료를 알린다. 어느 경로로 끝나든 한 번만 나간다."""
+            nonlocal ended_notified
+            if ended_notified:
+                return
+            ended_notified = True
+            try:
+                await websocket.send_json({"type": "ended"})
+            except Exception:  # noqa: BLE001 — 이미 닫힌 소켓이면 그만
+                pass
+
+        # 화면이 자기 시계를 서버에 맞추게 하는 첫 메시지. 재접속이면 이미
+        # 흐른 시간과 진행 상황이 실려 화면이 이어서 그려진다 — 프론트가
+        # 0부터 다시 세면 남은 시간이 늘어나 보인다.
+        await websocket.send_json(
+            {
+                "type": "session",
+                "totalSeconds": int(flow.hard_cap_s),
+                "elapsedSeconds": int(_elapsed_s(session.state)),
+                "stageBudgets": [int(seconds) for seconds in flow.profile.budgets],
+                "stage": int(session.state.get(STATE_STAGE, 0)),
+                "asked": len(session.state.get(STATE_ASKED, [])),
+            }
+        )
+
         if is_new_interview:
             # 개시 신호 — 모델은 입력이 와야 입을 여는데, 지원자가 먼저 말을
             # 걸어야 면접이 시작되는 UX는 어색하다. 첫 입장에만 한 턴을 넣어
             # 면접관이 먼저 인사하게 한다. 재연결·재입장은 이력이 있으므로
             # 다시 인사하지 않는다.
+            #
+            # 개시 지시가 instruction이 아니라 여기 있는 이유: instruction은 매
+            # 턴 다시 읽혀서 "첫 턴에는"이 조건 판정이 되지만, 이 메시지는 처음
+            # 한 번만 존재하므로 판정할 조건이 없다.
             queue.send_content(
                 types.Content(
                     role="user",
-                    parts=[types.Part(text="(지원자가 입장했습니다.)")],
+                    parts=[
+                        types.Part(
+                            text="(지원자가 입장했습니다. 짧게 인사한 뒤 면접을 시작하세요.)"
+                        )
+                    ],
                 )
             )
         run_config = RunConfig(
@@ -219,7 +322,12 @@ def create_live_router(runner: Runner, store: FileInterviewStore) -> APIRouter:
                     queue.send_realtime(types.Blob(mime_type=_INPUT_MIME, data=data))
                 elif text := message.get("text"):
                     if json.loads(text).get("type") == "end":
-                        queue.close()
+                        # 지원자가 끝냈다. 큐를 닫아 봐야 ADK가 재연결로 받으므로
+                        # (end_interview 주석 참고) 이 펌프를 끝내 커넥션째 정리한다.
+                        # 어느 쪽이 끝냈든 종료는 서버가 알린다 — 계약이 하나다.
+                        logger.info("지원자 종료 요청 (card=%s)", card)
+                        await notify_ended()
+                        return
                     # start/pause/resume는 서버 조치가 없다 — 마이크 뮤트는
                     # 프론트 워클릿이 하고, 커넥션은 유지한다.
 
@@ -239,22 +347,97 @@ def create_live_router(runner: Runner, store: FileInterviewStore) -> APIRouter:
                 )
             ) as agen:
                 async for event in agen:
+                    if _marks_closing(event):
+                        closing.set()
+                    if event.turn_complete:
+                        nonlocal turn_count
+                        turn_count += 1
+                        turn_done.set()
                     for kind, payload in _client_messages_from(event):
                         if kind == "bytes":
                             await websocket.send_bytes(payload)
-                        else:
-                            await websocket.send_json(payload)
-            await websocket.send_json({"type": "ended"})
+                            continue
+                        if payload["type"] == "question":
+                            # 툴의 배달 로그와 짝을 이룬다. 둘 중 이 줄만 없으면
+                            # state 델타가 브리지까지 오지 않은 것이다.
+                            logger.info("질문 %d번 화면 전달", payload["index"])
+                        elif payload["type"] == "caption" and payload["final"]:
+                            # 면접관이 실제로 한 말. 툴 호출 기록만으로는 면접에서
+                            # 무슨 일이 있었는지 알 수 없다 — 꼬리질문의 질, 준비된
+                            # 질문을 어떻게 바꿔 물었는지, 검색 결과를 대화에
+                            # 실었는지가 여기서만 드러난다. 턴이 끝난 전문만 남긴다.
+                            if payload["text"]:
+                                logger.info("면접관: %s", payload["text"])
+                        await websocket.send_json(payload)
+            await notify_ended()
+
+        async def end_interview() -> None:
+            """면접을 끝낸다 — 마무리에 들어갔거나, 하드캡에 닿거나.
+
+            모델은 툴을 호출할 때만 시간을 알고, 커넥션을 끊을 수도 없다.
+            꼬리질문만 이어가면 툴을 안 부르므로 툴 쪽 판정만으로는 면접이
+            안 끝난다. 그래서 종료는 서버가 시계를 들고 쥔다
+            (daedam/interview/stages.py 첫 줄의 원칙).
+            """
+            started_at = session.state.get(STATE_STARTED_AT)
+            if started_at is None:
+                logger.warning("시작 시각 없는 세션 — 시간 예산 미적용 (card=%s)", card)
+                return
+            remaining_s = flow.hard_cap_s - (time.time() - float(started_at))
+            try:
+                await asyncio.wait_for(closing.wait(), timeout=max(0.0, remaining_s))
+                logger.info("마무리 진입 — 인사를 기다린다 (card=%s)", card)
+            except TimeoutError:
+                # 하드캡. 지시는 지원자 발화로 넣는다 — 개시 신호와 같은 통로다.
+                logger.info("하드캡 도달 — 마무리 지시 주입 (card=%s)", card)
+                queue.send_content(
+                    types.Content(
+                        role="user",
+                        parts=[
+                            types.Part(
+                                text="(면접 시간이 다 됐습니다."
+                                " 짧게 마무리 인사를 하고 면접을 끝내 주세요.)"
+                            )
+                        ],
+                    )
+                )
+
+            # 인사 한 턴이 끝나기를 기다린다.
+            turn_done.clear()
+            try:
+                await asyncio.wait_for(turn_done.wait(), timeout=_CLOSING_GRACE_S)
+            except TimeoutError:
+                logger.info(
+                    "마무리 인사가 오지 않아 그대로 종료 (턴 완료 %d회, card=%s)",
+                    turn_count,
+                    card,
+                )
+            await asyncio.sleep(_PLAYBACK_TAIL_S)
+
+            # 종료를 알리고 소켓을 우리가 닫는다. run_live가 끝나기를 기다리지
+            # 않는 이유: 큐를 닫으면 ADK는 Gemini 소켓이 끊어진 것으로 보고
+            # 재개 핸들로 다시 붙는다(base_llm_flow.run_live의 ConnectionClosed
+            # 분기) — 의도한 종료와 사고를 구분하지 못한다. 소켓을 닫으면 수신
+            # 펌프가 정리되면서 run_live 제너레이터도 함께 닫힌다.
+            await notify_ended()
+            try:
+                await websocket.close(code=1000, reason="면접 종료")
+            except Exception:  # noqa: BLE001 — 이미 닫혔으면 그만
+                pass
 
         # 두 펌프를 나란히 돌리고, 어느 한쪽이 먼저 끝나면 전체를 정리한다.
         # 자연스러운 종료는 두 갈래다:
         #   클라가 끊음 → 위 펌프 리턴 → 아래 펌프 취소 + 큐 close
-        #   대화 종료(end/모델) → 아래 펌프 리턴 → 위 펌프 취소
+        #   대화 종료(end/모델/하드캡) → 아래 펌프 리턴 → 위 펌프 취소
+        # 종료 태스크는 이 wait에 넣지 않는다 — 스스로 끝을 알리는 대신 큐를
+        # 닫아 위 두 갈래 중 하나로 흘려보내는 역할이다.
+        ending = asyncio.create_task(end_interview())
         tasks = [
             asyncio.create_task(pump_client_to_agent()),
             asyncio.create_task(pump_agent_to_client()),
         ]
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        ending.cancel()
         for task in pending:
             task.cancel()
         queue.close()
