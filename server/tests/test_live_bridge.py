@@ -17,6 +17,7 @@ from google.adk.sessions.in_memory_session_service import InMemorySessionService
 from google.genai import types
 
 from daedam.server.live_bridge import _client_messages_from, create_live_router
+from daedam.server.store import FileInterviewStore
 
 
 def _audio_event(data: bytes = b"\x01\x02") -> Event:
@@ -101,15 +102,35 @@ class _FakeRunner:
         )
 
 
-def _client(runner: _FakeRunner) -> TestClient:
+def _seeded_store(tmp_path, *interview_ids: str) -> FileInterviewStore:
+    """준비 데이터(질문 포함)가 저장된 상태의 저장소를 만든다."""
+    store = FileInterviewStore(tmp_path / "data")
+    for interview_id in interview_ids:
+        store.save(
+            interview_id,
+            company="한결물류",
+            role="데이터 엔지니어",
+            application=[{"part": "자소서", "items": [{"title": "지원동기", "body": "본문"}]}],
+            report=[{"title": "개요", "blocks": [{"type": "p", "text": "회사 본문"}]}],
+            uncertain=[],
+        )
+        store.save_questions(
+            interview_id,
+            [{"id": "q-0-0", "stage": 0, "text": "질문?", "priority": 1, "tags": ["태그"]}],
+        )
+    return store
+
+
+def _client(runner: _FakeRunner, store: FileInterviewStore) -> TestClient:
     app = FastAPI()
-    app.include_router(create_live_router(runner))
+    app.include_router(create_live_router(runner, store))
     return TestClient(app)
 
 
-def test_왕복_오디오와_이벤트가_흐른다() -> None:
+def test_왕복_오디오와_이벤트가_흐른다(tmp_path) -> None:
     runner = _FakeRunner()
-    with _client(runner).websocket_connect("/ws/interview?card=c1") as websocket:
+    client = _client(runner, _seeded_store(tmp_path, "c1"))
+    with client.websocket_connect("/ws/interview?card=c1") as websocket:
         websocket.send_bytes(b"\x00\x01")
         assert websocket.receive_bytes() == b"\x01\x02"
         assert websocket.receive_json() == {"type": "caption", "text": "자막"}
@@ -120,10 +141,11 @@ def test_왕복_오디오와_이벤트가_흐른다() -> None:
     assert blob.mime_type == "audio/pcm;rate=16000"
 
 
-def test_새_세션은_개시_신호로_시작한다() -> None:
-    """면접관이 먼저 인사한다 — 첫 큐 항목이 입장 알림 턴이어야 한다."""
+def test_새_세션은_준비_데이터가_시딩되고_개시_신호로_시작한다(tmp_path) -> None:
+    """저장소의 준비 데이터가 세션 state로 들어가고, 면접관이 먼저 인사한다."""
     runner = _FakeRunner()
-    with _client(runner).websocket_connect("/ws/interview?card=fresh") as websocket:
+    client = _client(runner, _seeded_store(tmp_path, "fresh"))
+    with client.websocket_connect("/ws/interview?card=fresh") as websocket:
         websocket.send_bytes(b"\x00")
         websocket.receive_bytes()
 
@@ -131,8 +153,27 @@ def test_새_세션은_개시_신호로_시작한다() -> None:
     assert opening.content is not None
     assert "입장" in opening.content.parts[0].text
 
+    session = asyncio.run(
+        runner.session_service.get_session(
+            app_name="daedam", user_id="user", session_id="fresh"
+        )
+    )
+    assert session.state["company"] == "한결물류"
+    assert session.state["question_pool"][0]["id"] == "q-0-0"
+    # 리포트는 화면 형태에서 검색 입력 형태(blk 좌표 id)로 변환돼 들어간다.
+    assert session.state["research_report"][0]["blocks"][0]["id"] == "blk-0-0"
 
-def test_재접속에는_개시_신호가_없다() -> None:
+
+def test_준비_데이터_없는_면접은_거절된다(tmp_path) -> None:
+    """조용한 폴백 대신 명시적 거절 — 시딩 실패가 첫 접속에서 드러난다."""
+    client = _client(_FakeRunner(), FileInterviewStore(tmp_path / "empty"))
+    with client.websocket_connect("/ws/interview?card=nope") as websocket:
+        assert websocket.receive_json() == {"type": "ended"}
+        with pytest.raises(WebSocketDisconnect):
+            websocket.receive_bytes()
+
+
+def test_재접속에는_개시_신호가_없다(tmp_path) -> None:
     """이미 진행된 면접에 다시 붙으면 인사를 반복하지 않는다."""
     runner = _FakeRunner()
     asyncio.run(
@@ -140,16 +181,17 @@ def test_재접속에는_개시_신호가_없다() -> None:
             app_name="daedam", user_id="user", session_id="re", state={}
         )
     )
-    with _client(runner).websocket_connect("/ws/interview?card=re") as websocket:
+    client = _client(runner, _seeded_store(tmp_path, "re"))
+    with client.websocket_connect("/ws/interview?card=re") as websocket:
         websocket.send_bytes(b"\x00")
         websocket.receive_bytes()
 
     assert runner.heard[0].blob is not None  # 개시 신호 없이 바로 오디오
 
 
-def test_같은_카드의_새_접속이_이전_커넥션을_닫는다() -> None:
+def test_같은_카드의_새_접속이_이전_커넥션을_닫는다(tmp_path) -> None:
     """이중 마운트·중복 탭이 만드는 '두 목소리'를 서버가 차단한다."""
-    client = _client(_FakeRunner())
+    client = _client(_FakeRunner(), _seeded_store(tmp_path, "dup"))
     with client.websocket_connect("/ws/interview?card=dup") as first:
         with client.websocket_connect("/ws/interview?card=dup") as second:
             with pytest.raises(WebSocketDisconnect):
@@ -159,9 +201,10 @@ def test_같은_카드의_새_접속이_이전_커넥션을_닫는다() -> None:
             assert second.receive_bytes() == b"\x01\x02"
 
 
-def test_세션은_카드_id로_만들어진다() -> None:
+def test_세션은_카드_id로_만들어진다(tmp_path) -> None:
     runner = _FakeRunner()
-    with _client(runner).websocket_connect("/ws/interview?card=card-77") as websocket:
+    client = _client(runner, _seeded_store(tmp_path, "card-77"))
+    with client.websocket_connect("/ws/interview?card=card-77") as websocket:
         websocket.send_bytes(b"\x00")
         websocket.receive_bytes()
 

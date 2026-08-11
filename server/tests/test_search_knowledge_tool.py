@@ -6,6 +6,7 @@ state 복원, source 좁히기, 빈 결과 안내, 선언 스키마 — 를 검�
 
 import asyncio
 
+import pytest
 from conftest import ContextStub
 from google.adk.models.llm_request import LlmRequest
 from google.adk.tools import FunctionTool
@@ -64,10 +65,10 @@ def test_무관한_질의는_빈_결과와_note() -> None:
     assert "note" in result
 
 
-def test_state가_없으면_스모크_코퍼스에서_찾는다() -> None:
-    """adk web에서 세션 state 없이 바로 띄워도 검색이 동작한다."""
-    result = search_knowledge(tool_context=ContextStub(), query="배차 자동화")
-    assert result["results"]
+def test_시딩_안_된_세션은_크게_실패한다() -> None:
+    """폴백으로 가리면 엉뚱한 데이터로 검색이 그럴듯하게 돌아버린다."""
+    with pytest.raises(ValueError, match="시딩"):
+        search_knowledge(tool_context=ContextStub(), query="배차 자동화")
 
 
 def test_같은_코퍼스는_인덱스를_재사용한다() -> None:

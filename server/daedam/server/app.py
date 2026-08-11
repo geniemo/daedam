@@ -63,10 +63,13 @@ def create_app() -> FastAPI:
     app.include_router(create_preparation_router(preparation))
 
     # 음성 브리지는 자기 러너로 돈다. ADK 앱(dev UI) 쪽 세션 저장소와는
-    # 분리돼 있다 — 제품 경로는 /ws/interview 하나다.
+    # 분리돼 있다 — 제품 경로는 /ws/interview 하나다. 준비 데이터 저장소를
+    # 공유해, 파이프라인이 만든 것을 브리지가 세션에 시딩한다.
     from interviewer.agent import root_agent
 
-    app.include_router(create_live_router(InMemoryRunner(root_agent, app_name="daedam")))
+    app.include_router(
+        create_live_router(InMemoryRunner(root_agent, app_name="daedam"), store)
+    )
     return app
 
 
