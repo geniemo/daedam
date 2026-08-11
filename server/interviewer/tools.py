@@ -5,6 +5,12 @@ tag 파라미터의 enum으로 주입해, 모델이 이 세션에 실제로 존�
 고르게 한다. enum은 단계별이 아니라 풀 전체 어휘다 — 커넥션(~10분)이 단계
 여러 개에 걸치기 때문이다(`QuestionPool.tags` 참고).
 
+단계 전환은 질문 소진이 아니라 시간이 정한다. 다만 모델에게 시계를 보여
+주지는 않는다 — 남은 시간을 알려 봐야 정작 늘어질 때는 툴을 부르지 않고
+있고, 꼬리질문의 필요는 시간이 아니라 답변 내용이 정하기 때문이다. 툴이
+세션 시작 시각으로 경과를 재서 예산보다 뒤처진 단계를 끌어올리고, 모델은
+결과만 통보받는다(`daedam.interview.stages`).
+
 선언 주입 경로 (설치된 ADK 2.6.3 소스에서 확인):
   google/adk/flows/llm_flows/base_llm_flow.py  `_process_agent_tools`
     — run_live 전처리도 툴마다 ToolContext를 만들어 process_llm_request를 부른다
@@ -17,6 +23,8 @@ tag 파라미터의 enum으로 주입해, 모델이 이 세션에 실제로 존�
 from __future__ import annotations
 
 import json
+import logging
+import time
 from functools import lru_cache
 from typing import Any, Mapping, override
 
@@ -25,15 +33,34 @@ from google.adk.tools import FunctionTool, ToolContext
 from google.genai import types
 
 from daedam.interview.question_pool import QuestionPool
-from daedam.interview.stages import STAGE_NAMES
+from daedam.interview.stages import DEFAULT_PROFILE, STAGE_NAMES, SessionFlow
 from daedam.knowledge.chunk import Source, chunks_from_application, chunks_from_report
 from daedam.knowledge.embedding import default_embedder
 from daedam.knowledge.search import KnowledgeIndex
+
+logger = logging.getLogger(__name__)
 
 # ── 뼈대질문 배달 ────────────────────────────────────────────────────────
 
 #: 세션 생성 시 서버가 이 키로 질문 풀(dict 목록)을 state에 심는다.
 STATE_QUESTION_POOL = "question_pool"
+
+#: 면접이 시작된 epoch 초. 단조 시계가 아니라 벽시계인 이유는 이 값이
+#: 세션 state에 실려 재연결을 넘고, 나중에 파일·DB에 저장돼도 뜻이 남아야
+#: 하기 때문이다. 면접 시계는 재연결 공백 동안에도 계속 간다.
+STATE_STARTED_AT = "started_at"
+
+#: 시간 예산 프로필 이름 (`daedam.interview.stages.PROFILES`의 키).
+STATE_PROFILE = "profile"
+
+#: 면접이 마무리에 들어갔다는 표시. 툴이 남기고 브리지가 읽는다 — 모델은
+#: 커넥션을 끊을 수 없으므로, 마무리 인사가 끝난 뒤 실제로 닫는 것은 서버다.
+STATE_CLOSING = "closing"
+
+#: 이미 낸 질문 id 목록과 현재 단계 인덱스. 툴이 갱신하고 브리지가 state
+#: 델타에서 읽어 화면의 질문 번호·단계 표시를 움직인다.
+STATE_ASKED = "asked"
+STATE_STAGE = "stage"
 
 
 def _question_pool_from(state: Mapping[str, Any]) -> QuestionPool:
@@ -49,11 +76,30 @@ def _question_pool_from(state: Mapping[str, Any]) -> QuestionPool:
     return QuestionPool.from_dicts(raw)
 
 
+def _elapsed_s_from(state: Mapping[str, Any]) -> float:
+    """면접이 시작된 뒤 흐른 초를 잰다.
+
+    시작 시각이 없다는 건 브리지가 세션을 시딩하지 않았다는 뜻이다 —
+    질문 풀과 같은 이유로 크게 실패한다. 조용히 넘어가면 시간 예산 없이
+    면접이 돌아 단계가 영영 안 넘어간다.
+    """
+    started_at = state.get(STATE_STARTED_AT)
+    if started_at is None:
+        raise ValueError("세션에 면접 시작 시각이 없습니다 — 시딩되지 않았습니다")
+    return max(0.0, time.time() - float(started_at))
+
+
+def _session_flow_from(state: Mapping[str, Any]) -> SessionFlow:
+    """세션의 시간 예산 판정기를 만든다. 프로필이 없으면 기본 프로필."""
+    return SessionFlow(state.get(STATE_PROFILE) or DEFAULT_PROFILE)
+
+
 def get_next_question(tool_context: ToolContext, tag: str | None = None) -> dict:
     """다음 뼈대질문을 가져옵니다. 면접을 시작할 때와 새 주제로 넘어갈 때 호출하세요.
 
     방금 들은 답변을 파고드는 꼬리질문은 직접 만드는 것입니다 — 그때는 이 툴을
-    호출하지 마세요.
+    호출하지 마세요. 답변에서 더 확인할 것이 없으면 이 툴을 불러 새 주제로
+    넘어가세요.
 
     Args:
         tag: 원하는 주제 태그. 지원자의 답변 맥락과 이어지는 태그를 고르세요.
@@ -61,12 +107,36 @@ def get_next_question(tool_context: ToolContext, tag: str | None = None) -> dict
 
     Returns:
         question(질문 문장), stage(현재 단계 이름), note(진행 안내)를 담은 dict.
-        남은 질문이 없으면 done이 True.
+        면접을 끝낼 때가 되면 done이 True입니다.
     """
     state = tool_context.state
     pool = _question_pool_from(state)
-    asked: list[str] = list(state.get("asked", []))
-    stage: int = int(state.get("stage", 0))
+    flow = _session_flow_from(state)
+    elapsed_s = _elapsed_s_from(state)
+    asked: list[str] = list(state.get(STATE_ASKED, []))
+    stage: int = int(state.get(STATE_STAGE, 0))
+
+    if flow.should_end(elapsed_s):
+        state[STATE_STAGE] = len(STAGE_NAMES) - 1
+        state[STATE_CLOSING] = True
+        logger.info("하드캡 도달 — 마무리 지시 (경과 %.0f초)", elapsed_s)
+        return {
+            "done": True,
+            "note": "면접 시간이 다 됐습니다. 짧게 마무리 인사를 하고 면접을 끝내세요.",
+        }
+
+    # 예산보다 뒤처진 단계는 끌어올린다. 남은 질문이 있어도 건너뛴다 —
+    # 지난 단계에 계속 머무르면 뒤 단계가 통째로 잘린다. 반대로 예산보다
+    # 앞서 가는 것(질문 소진)은 막지 않는다.
+    on_schedule = flow.stage_index_at(elapsed_s)
+    if on_schedule > stage:
+        logger.info(
+            "시간 경과로 단계 이동: %s → %s (경과 %.0f초)",
+            STAGE_NAMES[stage],
+            STAGE_NAMES[on_schedule],
+            elapsed_s,
+        )
+        stage = on_schedule
 
     # 현재 단계가 소진되면 다음 단계로 넘긴다. 단계 전환의 최종 판단은 서버에 있다.
     question = pool.next(stage=stage, tag=tag, exclude=asked)
@@ -75,12 +145,21 @@ def get_next_question(tool_context: ToolContext, tag: str | None = None) -> dict
         question = pool.next(stage=stage, tag=tag, exclude=asked)
 
     if question is None:
-        state["stage"] = stage
+        state[STATE_STAGE] = stage
+        state[STATE_CLOSING] = True
+        logger.info("질문 소진 — 마무리 (경과 %.0f초, %d개 배달)", elapsed_s, len(asked))
         return {"done": True, "note": "질문이 모두 끝났습니다. 면접을 마무리해 주세요."}
 
     asked.append(question.id)
-    state["asked"] = asked
-    state["stage"] = stage
+    state[STATE_ASKED] = asked
+    state[STATE_STAGE] = stage
+    logger.info(
+        "뼈대질문 %d번 배달 [%s] %s (경과 %.0f초)",
+        len(asked) - 1,
+        STAGE_NAMES[stage],
+        question.text,
+        elapsed_s,
+    )
 
     note = f"지금은 {STAGE_NAMES[stage]} 단계입니다. 이 질문을 그대로 읽지 말고 자연스럽게 물어보세요."
     stage_tags = pool.tags_for(stage)
@@ -212,6 +291,15 @@ def search_knowledge(
         관련도 순 최대 3개. 관련 정보가 없으면 results가 비고 note로 알립니다.
     """
     found = _knowledge_index_from(tool_context.state).search(query, source=source)
+    # 모델이 무엇을 찾았고 무엇이 걸렸는지 남긴다. 검색은 면접 중 유일한 사실
+    # 조회 경로인데, 이 줄이 없으면 툴이 쓰이는지조차 알 수 없다.
+    logger.info(
+        "지식 검색 [%s] %s → %d건 %s",
+        source or "전체",
+        query,
+        len(found),
+        [chunk.title for chunk in found],
+    )
     if not found:
         return {
             "results": [],
