@@ -55,6 +55,8 @@ STATE_PROFILE = "profile"
 
 #: 면접이 마무리에 들어갔다는 표시. 툴이 남기고 브리지가 읽는다 — 모델은
 #: 커넥션을 끊을 수 없으므로, 마무리 인사가 끝난 뒤 실제로 닫는 것은 서버다.
+#: `get_next_question`(하드캡·질문 소진)과 `finish_interview`(면접관의 판단)가
+#: 세운다. 이 표시가 없으면 서버는 하드캡까지 면접이 끝난 줄 모른다.
 STATE_CLOSING = "closing"
 
 #: 이미 낸 질문 id 목록과 현재 단계 인덱스. 툴이 갱신하고 브리지가 state
@@ -229,6 +231,55 @@ class NextQuestionTool(FunctionTool):
                 if isinstance(schema, dict):
                     return schema.get("properties", {}).get("tag")
         return None
+
+
+# ── 면접 종료 ────────────────────────────────────────────────────────────
+
+
+def finish_interview(tool_context: ToolContext) -> dict:
+    """면접을 끝냅니다. 마무리 단계에서 마지막 질문의 답변까지 듣고 더 물어볼 것이 없을 때 호출하세요.
+
+    호출한 뒤 짧게 마무리 인사를 하고 대화를 마치세요. 커넥션은 서버가 닫습니다.
+
+    Returns:
+        done(종료가 받아들여졌는지)과 note(다음에 할 일)를 담은 dict.
+        아직 마무리 단계가 아니면 done이 False입니다.
+    """
+    # 이 툴이 있는 이유: 서버가 면접을 끝내는 근거가 시계밖에 없으면, 대화가
+    # 끝나고도 하드캡까지 화면이 면접에 머문다. 면접관은 마지막 뼈대질문 뒤의
+    # 역질문 응대와 마무리 인사를 툴 없이 하므로, 그 판단을 서버가 볼 통로가
+    # 따로 필요하다. 하드캡은 이 툴을 안 부를 때를 위한 백스톱으로 남는다.
+    state = tool_context.state
+    flow = _session_flow_from(state)
+    elapsed_s = _elapsed_s_from(state)
+    stage = int(state.get(STATE_STAGE, 0))
+    last_stage = len(STAGE_NAMES) - 1
+
+    # 이른 종료를 막는다. 모델이 분위기로 끝내버리면 준비된 단계가 통째로
+    # 날아간다 — 단계 판정은 여기서도 서버가 쥔다. 질문을 일찍 소진하면
+    # get_next_question이 이미 단계를 끌어올려 놓으므로, 대화가 실제로 일찍
+    # 끝난 경우까지 막히지는 않는다.
+    #
+    # 다만 하드캡을 넘었으면 단계와 무관하게 받는다. 그 시점엔 브리지가 이미
+    # 마무리를 지시한 뒤라, 여기서 반려하면 "끝내라"와 "계속하라"가 같이 가서
+    # 모델이 어느 쪽도 못 믿게 된다.
+    if stage < last_stage and not flow.should_end(elapsed_s):
+        logger.info(
+            "종료 요청 반려 — 아직 %s 단계 (경과 %.0f초)", STAGE_NAMES[stage], elapsed_s
+        )
+        return {
+            "done": False,
+            "note": f"아직 {STAGE_NAMES[last_stage]} 단계가 아닙니다."
+            " get_next_question으로 다음 주제를 이어가세요.",
+        }
+
+    state[STATE_CLOSING] = True
+    logger.info(
+        "면접관이 종료를 요청 (경과 %.0f초, %d개 배달)",
+        elapsed_s,
+        len(state.get(STATE_ASKED, [])),
+    )
+    return {"done": True, "note": "짧게 마무리 인사를 하고 대화를 마치세요."}
 
 
 # ── 회사 지식 검색 ───────────────────────────────────────────────────────
