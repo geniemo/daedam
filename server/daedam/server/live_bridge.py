@@ -249,7 +249,8 @@ def create_live_router(
         # 이벤트 펌프가 세우고 종료 태스크가 기다리는 두 신호.
         closing = asyncio.Event()  # 툴이 마무리를 알렸다
         turn_done = asyncio.Event()  # 모델이 한 턴을 말끝까지 마쳤다
-        turn_count = 0  # 이 커넥션에서 완료된 턴 수 — 종료 로그의 진단 재료
+        turn_count = 0  # 이 커넥션에서 완료된 턴 수 — 인사 대기의 기준선
+        turns_at_closing = 0  # 마무리 표시를 읽은 순간의 턴 수
 
         ended_notified = False
 
@@ -261,8 +262,27 @@ def create_live_router(
             ended_notified = True
             try:
                 await websocket.send_json({"type": "ended"})
+                logger.info("종료 통지 전송 (card=%s)", card)
             except Exception:  # noqa: BLE001 — 이미 닫힌 소켓이면 그만
-                pass
+                # 삼키되 남긴다. 이 줄이 없으면 "화면이 안 넘어간다"를 놓고
+                # 서버가 안 보냈는지 브라우저가 안 받았는지 가릴 수 없다.
+                logger.warning("종료 통지 전송 실패 — 소켓이 이미 닫혔다 (card=%s)", card)
+
+        async def wait_next_turn(baseline: int, timeout_s: float) -> bool:
+            """모델이 턴을 하나 더 마칠 때까지 기다린다. 시간 안에 오면 True.
+
+            turn_done을 clear하고 기다리는 대신 완료된 턴 수를 기준선으로 쓴다 —
+            마무리 표시와 인사가 붙어 오면(종료 툴 경로) 표시를 읽고 깨어나는
+            사이에 인사 턴이 이미 끝나 있을 수 있는데, clear()는 그 사실을 지운다.
+            """
+            if turn_count > baseline:
+                return True
+            turn_done.clear()
+            try:
+                await asyncio.wait_for(turn_done.wait(), timeout=timeout_s)
+            except TimeoutError:
+                return False
+            return True
 
         # 화면이 자기 시계를 서버에 맞추게 하는 첫 메시지. 재접속이면 이미
         # 흐른 시간과 진행 상황이 실려 화면이 이어서 그려진다 — 프론트가
@@ -346,13 +366,22 @@ def create_live_router(
                     run_config=run_config,
                 )
             ) as agen:
+                nonlocal turn_count, turns_at_closing
                 async for event in agen:
-                    if _marks_closing(event):
+                    if _marks_closing(event) and not closing.is_set():
+                        # 인사 대기의 기준선은 여기서 잡는다. 종료 태스크가
+                        # 깨어난 시점에 잡으면 그 사이에 끝난 인사 턴을 놓치고
+                        # 다음 턴을 30초 기다리게 된다.
+                        turns_at_closing = turn_count
                         closing.set()
                     if event.turn_complete:
-                        nonlocal turn_count
                         turn_count += 1
                         turn_done.set()
+                        logger.info(
+                            "턴 완료 %d회째 (경과 %.0f초)",
+                            turn_count,
+                            _elapsed_s(session.state),
+                        )
                     for kind, payload in _client_messages_from(event):
                         if kind == "bytes":
                             await websocket.send_bytes(payload)
@@ -386,9 +415,11 @@ def create_live_router(
             remaining_s = flow.hard_cap_s - (time.time() - float(started_at))
             try:
                 await asyncio.wait_for(closing.wait(), timeout=max(0.0, remaining_s))
+                baseline = turns_at_closing
                 logger.info("마무리 진입 — 인사를 기다린다 (card=%s)", card)
             except TimeoutError:
                 # 하드캡. 지시는 지원자 발화로 넣는다 — 개시 신호와 같은 통로다.
+                baseline = turn_count
                 logger.info("하드캡 도달 — 마무리 지시 주입 (card=%s)", card)
                 queue.send_content(
                     types.Content(
@@ -403,10 +434,7 @@ def create_live_router(
                 )
 
             # 인사 한 턴이 끝나기를 기다린다.
-            turn_done.clear()
-            try:
-                await asyncio.wait_for(turn_done.wait(), timeout=_CLOSING_GRACE_S)
-            except TimeoutError:
+            if not await wait_next_turn(baseline, _CLOSING_GRACE_S):
                 logger.info(
                     "마무리 인사가 오지 않아 그대로 종료 (턴 완료 %d회, card=%s)",
                     turn_count,
@@ -424,6 +452,11 @@ def create_live_router(
                 await websocket.close(code=1000, reason="면접 종료")
             except Exception:  # noqa: BLE001 — 이미 닫혔으면 그만
                 pass
+            logger.info(
+                "면접 종료 — 소켓을 닫았다 (경과 %.0f초, card=%s)",
+                _elapsed_s(session.state),
+                card,
+            )
 
         # 두 펌프를 나란히 돌리고, 어느 한쪽이 먼저 끝나면 전체를 정리한다.
         # 자연스러운 종료는 두 갈래다:

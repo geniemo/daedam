@@ -27,12 +27,15 @@ class Profile:
             raise ValueError(f"단계 수 불일치: {len(self.budgets)} != {len(STAGE_NAMES)}")
 
 
-# demo — 개발·시연용. 8분이면 Live API 커넥션 수명(~10분) 안쪽이라
-#        시연 도중 재연결 경로를 타지 않는다.
-# full  — 제품 정의. 디자인 핸드오프의 "15~20분"에 맞춘다.
+# demo  — 개발·시연용. 8분이면 Live API 커넥션 수명(~10분) 안쪽이라
+#         시연 도중 재연결 경로를 타지 않는다.
+# full   — 제품 정의. 디자인 핸드오프의 "15~20분"에 맞춘다.
+# probe  — 종료 경로 실증용. 실 Gemini 연결로도 한 판이 2분 안에 끝나서,
+#          9분짜리 면접을 다시 돌리지 않고 마무리·종료를 확인할 수 있다.
 PROFILES: dict[str, Profile] = {
     "demo": Profile("demo", (90.0, 180.0, 150.0, 60.0), hard_cap_s=540.0),
     "full": Profile("full", (120.0, 420.0, 360.0, 120.0), hard_cap_s=1200.0),
+    "probe": Profile("probe", (20.0, 20.0, 20.0, 20.0), hard_cap_s=100.0),
 }
 
 DEFAULT_PROFILE = "demo"

@@ -205,9 +205,22 @@ export class VoiceSession {
 
     ws.onerror = () => this.opts.handlers.onError?.(new Error('voice socket error'))
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
+      // 우리가 닫은 경우(stop, 또는 ended를 이미 받은 경우)는 여기서 끝내기만
+      // 한다 — 면접을 취소하고 나가는 것도 이 경로라, 종료를 다시 알리면 홈에
+      // 있는 사용자를 결과 화면으로 끌고 간다.
       if (this.closing) {
         this.opts.handlers.onConnection?.('ended')
+        return
+      }
+      // 서버가 정상 종료(1000)로 닫았다면 면접이 끝난 것이다. ended 프레임이
+      // 유실되거나 서버가 먼저 닫아도 화면이 면접에 갇히지 않게 여기서도 끝으로
+      // 본다 — onEnded는 중복 호출을 스스로 막는다. 재접속은 사고로 끊긴
+      // 경우(1006 등)에만 남는다.
+      if (event.code === 1000) {
+        this.closing = true
+        this.opts.handlers.onConnection?.('ended')
+        this.opts.handlers.onEnded?.()
         return
       }
       this.reconnect()

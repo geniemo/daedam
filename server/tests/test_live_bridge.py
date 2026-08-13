@@ -303,6 +303,37 @@ def test_마무리_표시가_뜨면_서버가_커넥션을_끝낸다(tmp_path, m
             websocket.receive_json()
 
 
+class _ClosingWithTurnRunner(_FakeRunner):
+    """마무리 표시와 인사 턴 완료를 붙여 내보내고 그대로 살아 있는 대역.
+
+    종료 태스크가 표시를 읽고 깨어나기 전에 인사 턴이 이미 끝난 순서다. 종료
+    툴 경로에서는 툴 응답과 인사가 붙어 오므로 실제로 이렇게 된다.
+    """
+
+    async def run_live(self, *, session, live_request_queue, run_config):
+        yield Event(
+            author="interviewer", actions=EventActions(state_delta={"closing": True})
+        )
+        yield Event(author="interviewer", turn_complete=True)
+        while True:
+            self.heard.append(await live_request_queue.get())
+
+
+def test_인사_턴이_먼저_끝나도_그레이스를_다_기다리지_않는다(
+    tmp_path, monkeypatch
+) -> None:
+    """이미 끝난 인사를 못 본 척하고 다음 턴을 기다리면 그만큼 침묵이 길어진다.
+    대기 기준은 신호를 지우고 새로 받는 것이 아니라 완료된 턴 수다."""
+    monkeypatch.setattr(live_bridge, "_CLOSING_GRACE_S", 5.0)
+    monkeypatch.setattr(live_bridge, "_PLAYBACK_TAIL_S", 0.0)
+    client = _client(_ClosingWithTurnRunner(), _seeded_store(tmp_path, "quick"))
+    with client.websocket_connect("/ws/interview?card=quick") as websocket:
+        _handshake(websocket)
+        started = time.monotonic()
+        assert websocket.receive_json() == {"type": "ended"}
+        assert time.monotonic() - started < 2.0
+
+
 def test_지원자가_끝내면_종료를_알리고_정리한다(tmp_path) -> None:
     """end 컨트롤도 같은 계약을 탄다 — 끝을 알리는 것은 언제나 서버다."""
     client = _client(_ClosingSignalRunner(), _seeded_store(tmp_path, "bye"))
