@@ -135,6 +135,15 @@ function Step2() {
       ),
     )
 
+  const updateItemTitle = (pi: number, ii: number, title: string) =>
+    setParts(
+      parts.map((p, i) =>
+        i !== pi
+          ? p
+          : { ...p, items: p.items.map((it, j) => (j !== ii ? it : { ...it, title })) },
+      ),
+    )
+
   const addItem = (pi: number) =>
     setParts(
       parts.map((p, i) =>
@@ -146,6 +155,14 @@ function Step2() {
 
   const removeItem = (pi: number, ii: number) =>
     setParts(parts.map((p, i) => (i !== pi ? p : { ...p, items: p.items.filter((_, j) => j !== ii) })))
+
+  const renamePart = (pi: number, name: string) =>
+    setParts(parts.map((p, i) => (i !== pi ? p : { ...p, name })))
+
+  const removePart = (pi: number) => {
+    setParts(parts.filter((_, i) => i !== pi))
+    setOpenPart(-1) // 인덱스가 밀리므로 열린 파트를 붙잡지 않고 접는다
+  }
 
   return (
     <main className="mx-auto max-w-(--container-doc) px-8 pb-20 animate-dm-fade">
@@ -159,16 +176,34 @@ function Step2() {
         {parts.map((part, pi) => {
           const open = openPart === pi
           return (
-            <div key={part.name} className="rounded-card border border-line bg-surface">
+            // key는 인덱스다 — 이름을 키로 쓰면 한 글자 칠 때마다 입력란이
+            // 새로 마운트돼 포커스가 날아간다.
+            <div key={pi} className="rounded-card border border-line bg-surface">
               <div
                 onClick={() => setOpenPart(open ? -1 : pi)}
                 className="flex cursor-pointer items-center gap-[9px] border-b border-hair px-[18px] py-[15px]"
               >
-                <span className="text-[15px] font-bold">{part.name}</span>
+                {/* 이름 입력란과 삭제는 아코디언 토글을 타지 않는다 */}
+                <input
+                  value={part.name}
+                  onChange={(e) => renamePart(pi, e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  placeholder="파트 이름"
+                  className="min-w-[40px] rounded-chip bg-transparent px-[3px] text-[15px] font-bold outline-none [field-sizing:content] focus:bg-surface-2"
+                />
                 <span className="num rounded-chip border border-line px-[6px] py-px text-[11.5px] text-faint">
                   {part.items.length}
                 </span>
                 <div className="flex-1" />
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    removePart(pi)
+                  }}
+                  className="text-[12px] text-faint"
+                >
+                  파트 삭제
+                </button>
                 <span className="text-[12px] text-faintest">{open ? '▲' : '▼'}</span>
               </div>
 
@@ -177,13 +212,19 @@ function Step2() {
                   {part.items.map((item, ii) => {
                     const itemOpen = openItem === ii
                     return (
-                      <div key={item.title} className="rounded-control border border-line-2 bg-surface-2">
+                      <div key={ii} className="rounded-control border border-line-2 bg-surface-2">
                         {/* 항목 제목은 헤더에만 — 펼쳤을 때 제목 입력란을 두면 같은 문자열이 두 번 보입니다 */}
                         <div
                           onClick={() => setOpenItem(itemOpen ? -1 : ii)}
                           className="flex cursor-pointer items-center gap-[9px] px-[13px] py-[11px]"
                         >
-                          <span className="text-[13px] font-semibold text-body">{item.title}</span>
+                          <input
+                            value={item.title}
+                            onChange={(e) => updateItemTitle(pi, ii, e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            placeholder="항목 이름"
+                            className="min-w-[40px] rounded-chip bg-transparent px-[3px] text-[13px] font-semibold text-body outline-none [field-sizing:content] focus:bg-surface"
+                          />
                           <div className="flex-1" />
                           <span className="text-[11.5px] text-faint">
                             {item.body ? item.len : '비어 있음'}

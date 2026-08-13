@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { VoiceSession } from './voiceSession'
 import { useInterviewStore, QUESTION_COUNT } from '@/store/interview'
+import { questions } from '@/data/mock'
 
 /**
  * Drives the interview screen.
@@ -27,8 +28,16 @@ export function useVoiceSession(cardId: string, onFinished: () => void) {
   const levels = useRef<Levels>({ input: 0, output: 0 })
   const finished = useRef(false)
 
-  const { setConnection, setPhase, setQIndex, setResumeToken, tick, reset } =
-    useInterviewStore.getState()
+  const {
+    setConnection,
+    setPhase,
+    setQuestion,
+    appendCaption,
+    applySession,
+    setResumeToken,
+    tick,
+    reset,
+  } = useInterviewStore.getState()
 
   const finish = useCallback(() => {
     if (finished.current) return
@@ -45,8 +54,10 @@ export function useVoiceSession(cardId: string, onFinished: () => void) {
         cardId,
         handlers: {
           onConnection: setConnection,
+          onSession: applySession,
           onPhase: setPhase,
-          onQuestionIndex: setQIndex,
+          onQuestion: setQuestion,
+          onCaption: appendCaption,
           onResumeToken: setResumeToken,
           onEnded: finish,
           onError: (e) => console.error('[voice]', e),
@@ -74,7 +85,12 @@ export function useVoiceSession(cardId: string, onFinished: () => void) {
           finish()
           return
         }
-        setQIndex(q)
+        // 백엔드가 없을 때의 대역 데이터. 실제 세션에서는 서버가 자막·단계를
+        // 내려주므로, 목업을 읽는 곳은 여기 하나로 끝납니다.
+        if (q !== before.askedCount - 1) {
+          setQuestion(q, questions[q].s)
+          appendCaption(questions[q].q, true)
+        }
         setPhase(e % CYCLE < SPEAK_SEC ? 'speaking' : 'listening')
       }
     }, 1000)
@@ -105,7 +121,18 @@ export function useVoiceSession(cardId: string, onFinished: () => void) {
       session.current?.stop()
       session.current = null
     }
-  }, [cardId, finish, reset, setConnection, setPhase, setQIndex, setResumeToken, tick])
+  }, [
+    cardId,
+    finish,
+    reset,
+    setConnection,
+    setPhase,
+    setQuestion,
+    appendCaption,
+    applySession,
+    setResumeToken,
+    tick,
+  ])
 
   const setPaused = useCallback((paused: boolean) => {
     session.current?.setPaused(paused)

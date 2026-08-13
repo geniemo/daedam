@@ -10,6 +10,7 @@ ADK의 get_fast_api_app이 에이전트 API와 dev UI를 제공하고, 그 위�
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from fastapi import FastAPI
 from google.adk.cli.fast_api import get_fast_api_app
 from google.adk.runners import InMemoryRunner
 
+from daedam.interview.stages import DEFAULT_PROFILE
 from daedam.research.service import FixtureResearch, LiveResearch, ResearchService
 
 from .live_bridge import create_live_router
@@ -44,8 +46,30 @@ def _research_service() -> ResearchService:
     return LiveResearch() if mode == "live" else FixtureResearch()
 
 
+def _interview_profile() -> str:
+    """INTERVIEW_PROFILE로 면접 시간 예산을 고른다.
+
+    기본은 demo — 하드캡 9분이라 Live 커넥션 수명(~10분) 안쪽이고, 개발 중
+    한 판 돌리는 비용이 작다. 제품 길이(15~20분)는 full이다.
+    """
+    return os.environ.get("INTERVIEW_PROFILE", DEFAULT_PROFILE)
+
+
 def create_app() -> FastAPI:
     """ADK 앱에 대담 라우트를 얹어 돌려준다."""
+    # 면접 진행 로그(단계 이동·뼈대질문 배달)가 보이게 한다. uvicorn은 자기
+    # 로거만 설정하고 루트에는 핸들러를 달지 않아서, 핸들러를 세운 뒤 우리
+    # 패키지만 INFO로 올린다 — 서드파티 INFO까지 켜면 로그가 묻힌다.
+    # 시각이 없으면 로그로 간격을 못 읽는다 — 재연결 루프와 사용자가 직접
+    # 들락거린 것을 구분하지 못한다.
+    logging.basicConfig(
+        level=logging.WARNING,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    for package in ("daedam", "interviewer"):
+        logging.getLogger(package).setLevel(logging.INFO)
+
     # 임베딩 모델(수 초)을 기동 시점에 예열한다 — 첫 검색이 면접 한가운데서
     # 모델 로드로 멈추면 안 된다.
     from daedam.knowledge.embedding import default_embedder
@@ -68,7 +92,11 @@ def create_app() -> FastAPI:
     from interviewer.agent import root_agent
 
     app.include_router(
-        create_live_router(InMemoryRunner(root_agent, app_name="daedam"), store)
+        create_live_router(
+            InMemoryRunner(root_agent, app_name="daedam"),
+            store,
+            profile=_interview_profile(),
+        )
     )
     return app
 

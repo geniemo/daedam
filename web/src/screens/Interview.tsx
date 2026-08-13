@@ -1,23 +1,25 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router'
 import { useActiveCard } from '@/store/app'
-import {
-  QUESTION_COUNT,
-  formatClock,
-  remainingSeconds,
-  useInterviewStore,
-} from '@/store/interview'
+import { formatClock, remainingSeconds, stageAt, useInterviewStore } from '@/store/interview'
 import { useVoiceSession, type Levels } from '@/audio/useVoiceSession'
-import { STAGE_NAMES, fill, questions } from '@/data/mock'
+import { STAGE_NAMES, fill } from '@/data/mock'
 
 /** README §8. 면접 진행 — 화면이 시선을 뺏지 않는 것이 목표입니다. */
 export function Interview({ showCaption = true }: { showCaption?: boolean }) {
   const nav = useNavigate()
   const card = useActiveCard()
 
+  // 진행 상태는 전부 서버가 내려준 것입니다 (§/ws/interview의 session·question
+  // 메시지). 화면이 자체 대본을 그리면 실제 면접과 어긋납니다 — 면접관은
+  // 뼈대질문을 그대로 읽지 않고, 꼬리질문에는 대본 자체가 없습니다.
   const phase = useInterviewStore((s) => s.phase)
-  const qIndex = useInterviewStore((s) => s.qIndex)
+  const deliveredStage = useInterviewStore((s) => s.stage)
+  const caption = useInterviewStore((s) => s.caption)
+  const askedCount = useInterviewStore((s) => s.askedCount)
   const elapsed = useInterviewStore((s) => s.elapsed)
+  const totalSeconds = useInterviewStore((s) => s.totalSeconds)
+  const stageBudgets = useInterviewStore((s) => s.stageBudgets)
   const paused = useInterviewStore((s) => s.paused)
   const connection = useInterviewStore((s) => s.connection)
   const togglePause = useInterviewStore((s) => s.togglePause)
@@ -25,9 +27,14 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
   const onFinished = useCallback(() => nav('/analyzing'), [nav])
   const { levels, setPaused, end } = useVoiceSession(card.id, onFinished)
 
-  const qi = Math.min(qIndex, QUESTION_COUNT - 1)
-  const current = questions[qi]
-  const stage = current.s
+  // 진행 바는 단계별 시간 예산이 칸 너비이고 경과 시간이 채움입니다 — 단계를
+  // 넘기는 것이 질문 수가 아니라 시간이라서 그렇습니다. 예산을 모르면(백엔드
+  // 없이 도는 프로토타입) 균등 분할합니다.
+  const budgets = stageBudgets ?? STAGE_NAMES.map(() => totalSeconds / STAGE_NAMES.length)
+
+  // 단계도 같은 시계에서 뽑습니다. 다만 서버가 더 앞선 단계를 알려줬다면
+  // (질문을 일찍 소진해 먼저 넘어간 경우) 그쪽이 맞습니다.
+  const stage = Math.max(deliveredStage, stageAt(elapsed, budgets))
 
   const doPause = () => {
     const next = !paused
@@ -62,7 +69,7 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
           </span>
           <span className="bg-body" style={{ width: 1, height: 12 }} />
           <span className="num text-[13px] text-stage-ink">
-            {formatClock(remainingSeconds(elapsed))}
+            {formatClock(remainingSeconds(elapsed, totalSeconds))}
           </span>
         </div>
       </div>
@@ -72,13 +79,13 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
         <Avatar levels={levels} speaking={phase === 'speaking'} />
       </div>
 
-      {/* 자막 */}
-      {showCaption && (
+      {/* 자막 — 면접관이 실제로 하고 있는 말. 뼈대질문 문장이 아닙니다. */}
+      {showCaption && caption && (
         <div
-          key={qi}
+          key={askedCount}
           className="mx-auto max-w-[660px] animate-dm-fade-slow px-8 text-center text-[17px] leading-[1.65] font-medium tracking-[-.01em] text-stage-ink"
         >
-          {fill(current.q, card.company, card.role)}
+          {fill(caption, card.company, card.role)}
         </div>
       )}
 
@@ -95,14 +102,14 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
       <div className="flex flex-col gap-[14px] px-[30px] pb-[26px]">
         <div className="flex gap-[6px]">
           {STAGE_NAMES.map((name, i) => {
-            const group = questions.map((q, idx) => ({ ...q, idx })).filter((q) => q.s === i)
-            const first = group[0].idx
-            const prog = Math.max(
-              0,
-              Math.min(1, (qi - first + (phase === 'listening' ? 0.6 : 0.2)) / group.length),
-            )
+            const before = budgets.slice(0, i).reduce((sum, seconds) => sum + seconds, 0)
+            const prog = Math.max(0, Math.min(1, (elapsed - before) / budgets[i]))
             return (
-              <div key={name} className="flex-1 bg-stage-line-2" style={{ height: 2.5 }}>
+              <div
+                key={name}
+                className="bg-stage-line-2"
+                style={{ height: 2.5, flexGrow: budgets[i], flexBasis: 0 }}
+              >
                 <div
                   className="h-full bg-accent"
                   style={{ width: `${Math.round(prog * 100)}%`, transition: 'width .5s ease' }}
@@ -112,8 +119,10 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
           })}
         </div>
         <div className="flex items-center">
+          {/* 분모를 두지 않습니다 — 풀은 여유 있게 만들고 다 묻지 않습니다.
+              아직 한 문항도 안 나갔으면 번호를 지어내지 않고 비워 둡니다. */}
           <span className="num text-[12.5px] text-stage-muted-3">
-            질문 {qi + 1} / {QUESTION_COUNT}
+            {askedCount > 0 ? `질문 ${askedCount}` : ''}
           </span>
           <div className="flex-1" />
           <div className="flex gap-[10px]">

@@ -1,9 +1,10 @@
 """뼈대질문 풀 생성 — Grok 오프라인 배치.
 
 검토가 끝난 리서치 리포트와 지원서를 청크 형태로 받아, 4단계 면접의 질문
-풀을 만든다. 질문마다 태그(세션별 동적 어휘 — 툴 선언 enum에 실린다)와
-근거 청크 id(오프라인 품질 점검용)를 붙인다. 면접 중에는 호출되지 않는다 —
-검토 제출 시점의 배치 작업이다.
+풀을 만든다. 생성이 맡는 것은 자료가 있어야 쓸 수 있는 직무역량·인성 단계이고,
+자기소개와 마무리는 고정 질문이 채운다. 질문마다 태그(세션별 동적 어휘 —
+툴 선언 enum에 실린다)와 근거 청크 id(오프라인 품질 점검용)를 붙인다.
+면접 중에는 호출되지 않는다 — 검토 제출 시점의 배치 작업이다.
 
 xAI API 확인 경로 (docs.x.ai, 2026-08 확인):
   - OpenAI 호환: base_url https://api.x.ai/v1, 모델 grok-4.5
@@ -26,19 +27,32 @@ from daedam.knowledge.chunk import Chunk
 _MODEL = "grok-4.5"
 _BASE_URL = "https://api.x.ai/v1"
 
-#: 생성 대상 단계(0~2)의 목표 개수. 실제로 나가는 수(2/3/2)보다 넉넉하게
-#: 만들어 모델이 면접 맥락에 맞는 질문을 고를 여지를 준다.
-_TARGET_COUNTS = (3, 5, 4)
+#: 생성 대상 단계와 목표 개수. 실제로 나가는 수보다 넉넉하게 만들어 모델이
+#: 면접 맥락에 맞는 질문을 고를 여지를 준다.
+_TARGET_COUNTS = {1: 5, 2: 4}
 
 #: 단계별 최소 개수 — 실전에서 나가는 수. 이보다 적으면 생성 실패로 본다.
-_MINIMUM_COUNTS = (2, 3, 2)
+_MINIMUM_COUNTS = {1: 3, 2: 2}
 
-#: 마무리 단계는 정형화돼 있어 생성하지 않는다 — 고정 질문을 그대로 쓴다.
+#: 자기소개와 마무리는 생성하지 않고 고정 질문을 쓴다. 자료를 근거로 만들
+#: 것이 없고 회사가 바뀌어도 문장이 그대로다 — 생성은 자료가 있어야 쓸 수
+#: 있는 단계만 맡는다. id에 open/close를 박아 생성 id(q-{단계}-{번호})와
+#: 겹치지 않게 하고, 로그에서도 어느 쪽인지 바로 보이게 한다.
+#:
+#: 여는 두 문항이 instruction이 아니라 풀에 있는 이유: instruction에 적으면
+#: 모델이 질문을 스스로 지어내고 준비된 풀을 건너뛴다.
+_OPENING_QUESTIONS: list[dict[str, Any]] = [
+    {"id": "q-open-0", "stage": 0, "text": "먼저 간단히 자기소개 부탁드립니다.",
+     "priority": 1, "tags": ["자기소개"], "source_chunk_ids": []},
+    {"id": "q-open-1", "stage": 0, "text": "저희 회사에 지원하신 이유는 무엇인가요?",
+     "priority": 2, "tags": ["지원 동기"], "source_chunk_ids": []},
+]
+
 #: 역질문 유도("궁금한 점")는 면접 에이전트가 현장에서 처리한다.
 _CLOSING_QUESTIONS: list[dict[str, Any]] = [
-    {"id": "q-3-0", "stage": 3, "text": "입사하시면 가장 해보고 싶은 일은 무엇인가요?",
+    {"id": "q-close-0", "stage": 3, "text": "입사하시면 가장 해보고 싶은 일은 무엇인가요?",
      "priority": 1, "tags": ["입사 포부"], "source_chunk_ids": []},
-    {"id": "q-3-1", "stage": 3, "text": "마지막으로 하고 싶은 말씀이 있으신가요?",
+    {"id": "q-close-1", "stage": 3, "text": "마지막으로 하고 싶은 말씀이 있으신가요?",
      "priority": 2, "tags": ["마지막 한마디"], "source_chunk_ids": []},
 ]
 
@@ -47,7 +61,7 @@ class _GeneratedQuestion(BaseModel):
     """Grok이 돌려줄 질문 하나. 필드 설명이 곧 모델에게 주는 지시다."""
 
     stage: int = Field(
-        description="이 질문이 나갈 단계 인덱스. 0 자기소개, 1 직무역량, 2 인성·컬처핏"
+        description="이 질문이 나갈 단계 인덱스. 1 직무역량, 2 인성·컬처핏"
     )
     text: str = Field(
         description="면접관이 음성으로 그대로 읽을 한국어 질문. 물음표 하나로 끝나는 존댓말 한 문장,"
@@ -119,7 +133,11 @@ def generate_question_pool(
     )
     generated = completion.choices[0].message.parsed
     known_ids = {chunk.id for chunk in report_chunks + application_chunks}
-    raw = _validated(generated.questions, known_ids) + deepcopy(_CLOSING_QUESTIONS)
+    raw = [
+        *deepcopy(_OPENING_QUESTIONS),
+        *_validated(generated.questions, known_ids),
+        *deepcopy(_CLOSING_QUESTIONS),
+    ]
     QuestionPool.from_dicts(raw)  # 로딩 검증까지 통과해야 저장할 자격이 있다
     return raw
 
@@ -138,8 +156,8 @@ def generation_prompt(
     확인). 청크는 id와 함께 나열해 근거 인용이 가능하게 한다.
     """
     counts = "\n".join(
-        f"- {index} {name}: {count}개"
-        for index, (name, count) in enumerate(zip(STAGE_NAMES, _TARGET_COUNTS))
+        f"- {stage} {STAGE_NAMES[stage]}: {count}개"
+        for stage, count in _TARGET_COUNTS.items()
     )
     report_lines = "\n".join(
         f"({chunk.id}) [{chunk.title}] {chunk.text}" for chunk in report_chunks
@@ -160,7 +178,6 @@ def generation_prompt(
 개수는 정확히 맞추십시오.
 
 단계별 성격:
-- 0 자기소개: 지원서에 적힌 사실 하나를 집어 말문을 열게 합니다. 검증이 아니라 진입입니다.
 - 1 직무역량: 지원서의 프로젝트·수치·기술 선택을 파고듭니다. 결과가 아니라 과정과
   판단을 묻습니다.
 - 2 인성·컬처핏: 회사 자료에 드러난 일하는 방식·가치·재직자 발언을 지원자의 경험과
@@ -204,11 +221,11 @@ def _validated(
     questions: list[_GeneratedQuestion], known_chunk_ids: set[str]
 ) -> list[dict[str, Any]]:
     """생성 결과를 검증하고 id를 부여해 풀 입력 형태로 만든다."""
-    counters = [0] * len(_TARGET_COUNTS)
+    counters = dict.fromkeys(_TARGET_COUNTS, 0)
     raw: list[dict[str, Any]] = []
     for question in questions:
-        if not 0 <= question.stage < len(_TARGET_COUNTS):
-            raise ValueError(f"단계가 범위 밖: {question.stage} — {question.text}")
+        if question.stage not in _TARGET_COUNTS:
+            raise ValueError(f"생성 대상이 아닌 단계: {question.stage} — {question.text}")
         if not question.tags:
             raise ValueError(f"태그 없는 질문: {question.text}")
         unknown = set(question.source_chunk_ids) - known_chunk_ids
@@ -226,9 +243,9 @@ def _validated(
         )
         counters[question.stage] += 1
 
-    for stage, (count, minimum) in enumerate(zip(counters, _MINIMUM_COUNTS)):
-        if count < minimum:
+    for stage, minimum in _MINIMUM_COUNTS.items():
+        if counters[stage] < minimum:
             raise ValueError(
-                f"{STAGE_NAMES[stage]} 단계 질문 부족: {count}개 (최소 {minimum})"
+                f"{STAGE_NAMES[stage]} 단계 질문 부족: {counters[stage]}개 (최소 {minimum})"
             )
     return raw

@@ -23,14 +23,21 @@ STATE_COMPANY = "company"
 STATE_ROLE = "role"
 STATE_CANDIDATE = "candidate"
 
-#: 말투와 진행 규칙. 회사가 누구든 변하지 않는 부분.
+#: 말투와 진행 규칙. 회사가 누구든, 면접 어느 지점이든 변하지 않는 부분만 둔다.
+#: "첫 턴에는" 같은 조건부 지시는 여기 두지 않는다 — 이 글은 매 턴 다시 읽히므로
+#: 모델이 턴마다 조건을 판정해야 한다. 개시 지시는 개시 신호가 나르고
+#: (daedam/server/live_bridge.py), 툴 사용법은 툴 설명이 소유한다.
+#:
+#: 짧은 반응을 먼저 말하게 하는 것은 툴이 도는 동안의 침묵을 메우기 위해서다
+#: (Live API 함수 호출은 순차 전용이라 그 사이 소리가 끊긴다). 모델이 방금
+#: 말을 마친 뒤에는 필요 없으므로 답변을 들은 경우로 한정한다.
 _STYLE = """\
 - 존댓말로, 담담하고 정중하게. 한 번에 질문은 하나만.
 - 문장을 짧게 끊으세요. 음성이라 긴 문장은 알아듣기 어렵습니다.
 - 답변을 평가하는 말("좋은 답변이네요")은 하지 마세요.
 
-툴을 호출하기 직전에는 "네, 말씀 잘 들었습니다" 같은 짧은 중립 반응을 먼저
-말하세요. 그 말이 나가는 동안 툴 결과가 준비됩니다."""
+지원자의 답변을 들은 뒤 다음 질문으로 넘어갈 때는 상황에 맞는 짧은 반응을 먼저
+말하세요."""
 
 
 def build_instruction(context: ReadonlyContext) -> str:
@@ -67,5 +74,4 @@ def build_instruction(context: ReadonlyContext) -> str:
             sections.append(f"회사 조사 자료의 목차: {titles}")
     if parts:
         sections.append(f"지원자가 제출한 지원서 목차:\n{application_outline(parts)}")
-    sections.append("첫 턴에는 짧게 인사하고 바로 첫 질문으로 시작하세요.")
     return "\n\n".join(sections)
