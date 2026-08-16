@@ -22,6 +22,7 @@ from google.adk.runners import InMemoryRunner
 from daedam.interview.stages import DEFAULT_PROFILE
 from daedam.research.service import FixtureResearch, LiveResearch, ResearchService
 
+from .interview_routes import create_interviews_router
 from .live_bridge import create_live_router
 from .preparation import InterviewPreparation
 from .preparation_routes import create_preparation_router
@@ -40,10 +41,16 @@ load_dotenv(Path(_AGENTS_DIR) / ".env")
 _DEV_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 
-def _research_service() -> ResearchService:
-    """RESEARCH_MODE로 백엔드를 고른다. 기본은 fixture — live는 작업당 $1~7."""
+def _research_service(data_root: Path) -> ResearchService:
+    """RESEARCH_MODE로 백엔드를 고른다. 기본은 fixture — live는 작업당 $1~7.
+
+    live는 리포트 원문을 `_raw/`에 먼저 떨어뜨린다. 파싱이 틀려도 원문은 남아야
+    한다 — 다시 받으려면 20~60분과 비용이 또 든다.
+    """
     mode = os.environ.get("RESEARCH_MODE", "fixture")
-    return LiveResearch() if mode == "live" else FixtureResearch()
+    if mode != "live":
+        return FixtureResearch()
+    return LiveResearch(raw_dir=data_root / "_raw")
 
 
 def _interview_profile() -> str:
@@ -82,9 +89,20 @@ def create_app() -> FastAPI:
 
     # 준비 파이프라인: 리서치 → 파일 저장 → 질문 생성. 완료 산출물은
     # server/data/에 남아 재시작·재데모에서 리서치를 다시 돌리지 않는다.
-    store = FileInterviewStore(Path(_AGENTS_DIR) / "data")
-    preparation = InterviewPreparation(research=_research_service(), store=store)
+    data_root = Path(_AGENTS_DIR) / "data"
+    store = FileInterviewStore(data_root)
+    # live는 20~60분짜리 작업이라 1초 폴링이면 조회 API를 수천 번 두드린다.
+    # fixture는 12초 안에 끝나므로 촘촘히 봐야 진행 화면이 자연스럽다.
+    live = os.environ.get("RESEARCH_MODE") == "live"
+    preparation = InterviewPreparation(
+        research=_research_service(data_root),
+        store=store,
+        poll_interval_s=30.0 if live else 1.0,
+    )
     app.include_router(create_preparation_router(preparation))
+    # 홈 화면이 그릴 카드 목록. 프론트가 자기 메모리로 들고 있으면 새로고침에
+    # 사라지고, 준비 안 된 면접을 시작하려다 브리지에서 거절당한다.
+    app.include_router(create_interviews_router(store, preparation))
 
     # 음성 브리지는 자기 러너로 돈다. ADK 앱(dev UI) 쪽 세션 저장소와는
     # 분리돼 있다 — 제품 경로는 /ws/interview 하나다. 준비 데이터 저장소를

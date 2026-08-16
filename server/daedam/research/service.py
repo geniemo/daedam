@@ -16,13 +16,17 @@ interactions API 확인 경로 (설치된 google-genai 소스):
 
 from __future__ import annotations
 
+import logging
 import time
 import uuid
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable, Literal, Protocol
 
 from .fixture import fixture_report, fixture_uncertain
 from .report import sections_from_markdown
+
+logger = logging.getLogger(__name__)
 
 #: Deep Research가 통상 걸리는 시간. live 모드 진행률 어림의 분모다.
 _LIVE_EXPECTED_S = 40 * 60
@@ -111,12 +115,16 @@ class LiveResearch:
         self,
         client: Any | None = None,
         clock: Callable[[], float] = time.monotonic,
+        raw_dir: Path | None = None,
     ) -> None:
         """
         Args:
             client: genai Client. 기본값은 GOOGLE_API_KEY 환경변수로 만든
                 실제 클라이언트고, 테스트는 대역을 주입한다.
             clock: 단조 시계. 진행률 어림에 쓴다.
+            raw_dir: 완료된 리포트 원문을 파싱 전에 떨어뜨릴 디렉터리.
+                작업당 20~60분·$1~7이라, 파싱이 틀리면 원문까지 잃는 일이
+                없어야 한다. None이면 남기지 않는다(테스트).
         """
         if client is None:
             from google.genai import Client
@@ -124,6 +132,7 @@ class LiveResearch:
             client = Client()
         self._client = client
         self._clock = clock
+        self._raw_dir = raw_dir
         self._tasks: dict[str, _LiveTask] = {}
 
     def start(
@@ -148,10 +157,12 @@ class LiveResearch:
             return None
         interaction = self._client.interactions.get(task.interaction_id)
         if interaction.status == "completed":
+            markdown = _report_text_from(interaction)
+            self._dump_raw(task.interaction_id, markdown)
             return ResearchStatus(
                 state="done",
                 pct=100,
-                report=sections_from_markdown(_report_text_from(interaction)),
+                report=sections_from_markdown(markdown),
                 # 신뢰도 낮은 블록 플래그는 오프라인 평가(Grok)로 붙일 예정.
                 uncertain=[],
             )
@@ -163,6 +174,23 @@ class LiveResearch:
                 state="running", pct=min(95, int(elapsed / _LIVE_EXPECTED_S * 100))
             )
         return ResearchStatus(state="failed", pct=0)
+
+    def _dump_raw(self, interaction_id: str, markdown: str) -> None:
+        """리포트 원문을 파싱 전에 파일로 떨어뜨린다.
+
+        `sections_from_markdown`이 형식을 잘못 읽어도 원문은 남아야 한다 —
+        다시 받으려면 20~60분과 $1~7이 또 든다. 저장 실패가 리서치를 실패로
+        만들면 안 되므로 여기서만 삼킨다.
+        """
+        if self._raw_dir is None or not markdown:
+            return
+        try:
+            self._raw_dir.mkdir(parents=True, exist_ok=True)
+            (self._raw_dir / f"{interaction_id}.md").write_text(
+                markdown, encoding="utf-8"
+            )
+        except OSError:
+            logger.exception("리서치 원문 저장 실패 (interaction=%s)", interaction_id)
 
 
 def research_prompt(

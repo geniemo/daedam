@@ -68,6 +68,17 @@ class InterviewPreparation:
         self, company: str, role: str, application: list[dict[str, Any]]
     ) -> str:
         task_id = self._research.start(company, role, application)
+        # 등록되는 순간 파일에 남긴다. 리서치가 끝나야 저장하면 그동안 홈 목록에
+        # 이 면접이 없어서, 방금 등록한 카드가 새로고침에 사라진다. 리포트는
+        # 아직 비어 있고, 그 비어 있음이 "리서치 진행 중"의 표시다.
+        self._store.save(
+            task_id,
+            company=company,
+            role=role,
+            application=application,
+            report=[],
+            uncertain=[],
+        )
         self._states[task_id] = _PipelineState(phase="researching", pct=0)
         # 이 면접 전담 워커 — 브라우저가 닫혀도 파이프라인은 여기서 완주한다.
         threading.Thread(
@@ -76,6 +87,24 @@ class InterviewPreparation:
             daemon=True,
         ).start()
         return task_id
+
+    def regenerate(self, interview_id: str) -> bool:
+        """검토로 고쳐진 리포트에서 질문 풀을 다시 뽑는다.
+
+        질문은 리포트를 근거로 만들어졌으므로, 사용자가 사실을 고치면 그 질문은
+        낡은 근거 위에 서 있다. 저장된 리포트가 없으면 할 일이 없다.
+
+        Returns:
+            생성을 시작했으면 True.
+        """
+        data = self._store.load(interview_id)
+        if data is None or not data.report:
+            return False
+        self._states[interview_id] = _PipelineState(phase="generating", pct=95)
+        threading.Thread(
+            target=self._recover_generation, args=(interview_id, data), daemon=True
+        ).start()
+        return True
 
     def status(self, task_id: str) -> ResearchStatus | None:
         """준비 전체의 진행 상황. 읽기만 한다 — 전진은 워커의 일이다."""
@@ -87,7 +116,10 @@ class InterviewPreparation:
             )
         state = self._states.get(task_id)
         if state is None:
-            return None
+            # 저장은 됐는데 워커가 없다 — 재시작으로 리서치가 끊긴 면접이다.
+            # 404로 두면 화면이 "없는 면접"으로 읽지만, 실제로는 등록됐고 진행이
+            # 끊긴 것이라 실패로 알린다.
+            return ResearchStatus(state="failed", pct=0) if stored else None
         if state.phase == "failed":
             return ResearchStatus(state="failed", pct=0)
         return ResearchStatus(state="running", pct=state.pct)
@@ -141,10 +173,15 @@ class InterviewPreparation:
         del self._states[task_id]  # 완료 — 이제부터 파일이 진실을 말한다
 
     def _recover(self) -> None:
-        """저장은 됐는데 질문이 없는 면접 — 재시작으로 끊긴 생성을 이어서 한다."""
+        """저장은 됐는데 질문이 없는 면접 — 재시작으로 끊긴 생성을 이어서 한다.
+
+        리포트가 비어 있으면 리서치가 끝나기 전에 재시작된 것이다. 그 상태로
+        질문을 만들면 근거 없는 질문 풀이 나오므로 건드리지 않는다 — 그 면접은
+        홈 목록에 준비 중으로 남고, 리서치 자체는 재시작을 넘지 못한다.
+        """
         for interview_id in self._store.list_ids():
             data = self._store.load(interview_id)
-            if data is None or data.questions is not None:
+            if data is None or data.questions is not None or not data.report:
                 continue
             self._states[interview_id] = _PipelineState(phase="generating", pct=95)
             threading.Thread(
