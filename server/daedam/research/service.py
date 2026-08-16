@@ -230,17 +230,29 @@ def research_prompt(
     return "\n".join(lines)
 
 
+#: 리포트 본문이 실리는 스텝 종류. 첫 스텝은 우리가 보낸 프롬프트가 되돌아온
+#: 것(user_input)이라 빼야 한다.
+_MODEL_OUTPUT = "model_output"
+
+
 def _report_text_from(interaction: Any) -> str:
     """완료된 Interaction에서 리포트 본문을 꺼낸다.
 
-    출력은 steps[*].content[*]의 text 항목으로 실린다(interaction.py의
-    outputs→steps 강제 변환 참고). Deep Research는 중간 사고 요약도 텍스트로
-    남길 수 있어 마지막 텍스트를 리포트로 본다.
+    Deep Research는 리포트를 여러 스텝에 나눠 내보낸다. 실측(컬리 리서치)에서
+    한 리포트가 세 조각으로 왔고, 마지막 조각만 쓰면 Executive Summary와 1~4장을
+    통째로 잃는다 — 처음에 그렇게 만들었다가 실제로 잃었다.
+
+    확인 경로 (실제 완료 응답):
+      steps[0].type == "user_input"    — 요청 프롬프트
+      steps[1:].type == "model_output" — content에 ImageContent(차트)와
+                                         TextContent가 섞여 온다
     """
-    texts: list[str] = []
+    parts: list[str] = []
     for step in interaction.steps or []:
+        if getattr(step, "type", None) != _MODEL_OUTPUT:
+            continue
         for item in getattr(step, "content", None) or []:
             text = getattr(item, "text", None)
             if text:
-                texts.append(text)
-    return texts[-1] if texts else ""
+                parts.append(text)
+    return "".join(parts)

@@ -111,24 +111,45 @@ def test_live_진행중은_어림_진행률이고_95를_넘지_않는다() -> No
     assert status.state == "running" and status.pct == 95
 
 
-def test_live_완료되면_마크다운이_섹션으로_변환된다() -> None:
-    steps = [
-        SimpleNamespace(
-            content=[
-                SimpleNamespace(text="계획 중간 요약"),
-                SimpleNamespace(text="## 회사 개요\n\n본문입니다.\n\n- 항목 하나"),
-            ]
-        )
-    ]
-    interaction = SimpleNamespace(id="itx-1", status="completed", steps=steps)
-    service, _ = _live(interaction, _Clock())
-    task_id = service.start("A", "B", [])
+def _completed(*chunks: str) -> SimpleNamespace:
+    """리포트를 여러 model_output 스텝에 나눠 담은 완료 응답.
 
-    status = service.status(task_id)
+    실제 응답 모양 그대로다 — steps[0]은 우리가 보낸 프롬프트가 되돌아온
+    user_input이고, 리포트는 그 뒤 스텝들에 조각으로 실린다.
+    """
+    steps = [
+        SimpleNamespace(type="user_input", content=[SimpleNamespace(text="요청 프롬프트")])
+    ]
+    steps += [
+        SimpleNamespace(type="model_output", content=[SimpleNamespace(text=chunk)])
+        for chunk in chunks
+    ]
+    return SimpleNamespace(id="itx-1", status="completed", steps=steps)
+
+
+def test_live_완료되면_마크다운이_섹션으로_변환된다() -> None:
+    service, _ = _live(_completed("## 회사 개요\n\n본문입니다.\n\n- 항목 하나"), _Clock())
+    status = service.status(service.start("A", "B", []))
     assert status.state == "done"
-    # 마지막 텍스트만 리포트다 — 중간 사고 요약은 버린다.
     assert status.report[0]["title"] == "회사 개요"
     assert [b["type"] for b in status.report[0]["blocks"]] == ["p", "li"]
+
+
+def test_live_여러_조각으로_온_리포트를_모두_잇는다() -> None:
+    """Deep Research는 리포트를 스텝 여러 개로 나눠 내보낸다. 마지막 조각만
+    쓰면 실측에서 Executive Summary와 1~4장을 통째로 잃었다."""
+    service, _ = _live(
+        _completed("## 앞 장\n\n앞 본문.", "\n\n## 뒤 장\n\n뒤 본문."), _Clock()
+    )
+    status = service.status(service.start("A", "B", []))
+    assert [s["title"] for s in status.report] == ["앞 장", "뒤 장"]
+
+
+def test_live_요청_프롬프트는_리포트에_섞이지_않는다() -> None:
+    """steps[0]은 우리가 보낸 입력이 되돌아온 것이다."""
+    service, _ = _live(_completed("## 회사 개요\n\n본문."), _Clock())
+    status = service.status(service.start("A", "B", []))
+    assert all("요청 프롬프트" not in s["title"] for s in status.report)
 
 
 def test_live_실패_상태가_매핑된다() -> None:
