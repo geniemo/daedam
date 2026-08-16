@@ -189,9 +189,12 @@ def test_새_세션은_준비_데이터가_시딩되고_개시_신호로_시작�
         websocket.send_bytes(b"\x00")
         websocket.receive_bytes()
 
+    # 개시 신호는 지문이 아니라 인사말이다 — 이 채널은 지원자의 목소리라,
+    # 3인칭 지문을 넣으면 지원자의 말과 섞여 이력에 남는다.
     opening = runner.heard[0]
     assert opening.content is not None
-    assert "입장" in opening.content.parts[0].text
+    assert opening.content.role == "user"
+    assert opening.content.parts[0].text == "안녕하세요."
 
     session = asyncio.run(
         runner.session_service.get_session(
