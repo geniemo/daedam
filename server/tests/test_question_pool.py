@@ -107,6 +107,21 @@ def test_요청한_태그가_없으면_우선순위로_대체한다(pool: Questi
     assert question is not None and question.id == "q-1-1"
 
 
+def test_중요도가_같으면_생성_순서로_갈린다() -> None:
+    """중요도는 순서 번호가 아니라 절대 기여도라 동점이 생긴다. 같은 무게면
+    만들어진 차례대로 나가야 순서가 예측 가능하다."""
+    pool = QuestionPool.from_dicts(
+        [
+            {"id": "먼저", "stage": 1, "text": "A?", "priority": 2, "tags": []},
+            {"id": "나중", "stage": 1, "text": "B?", "priority": 2, "tags": []},
+        ]
+    )
+    first = pool.next(stage=1)
+    assert first is not None and first.id == "먼저"
+    second = pool.next(stage=1, exclude={"먼저"})
+    assert second is not None and second.id == "나중"
+
+
 def test_해당_단계_밖의_질문은_절대_주지_않는다(pool: QuestionPool) -> None:
     """태그가 다른 단계에 있어도 단계 경계를 넘지 않는다."""
     question = pool.next(stage=3, tag="경험상세")
