@@ -20,12 +20,10 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
   const elapsed = useInterviewStore((s) => s.elapsed)
   const totalSeconds = useInterviewStore((s) => s.totalSeconds)
   const stageBudgets = useInterviewStore((s) => s.stageBudgets)
-  const paused = useInterviewStore((s) => s.paused)
   const connection = useInterviewStore((s) => s.connection)
-  const togglePause = useInterviewStore((s) => s.togglePause)
 
   const onFinished = useCallback(() => nav('/analyzing'), [nav])
-  const { levels, setPaused, end } = useVoiceSession(card.id, onFinished)
+  const { levels, end } = useVoiceSession(card.id, onFinished)
 
   // 진행 바는 단계별 시간 예산이 칸 너비이고 경과 시간이 채움입니다 — 단계를
   // 넘기는 것이 질문 수가 아니라 시간이라서 그렇습니다. 예산을 모르면(백엔드
@@ -35,12 +33,6 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
   // 단계도 같은 시계에서 뽑습니다. 다만 서버가 더 앞선 단계를 알려줬다면
   // (질문을 일찍 소진해 먼저 넘어간 경우) 그쪽이 맞습니다.
   const stage = Math.max(deliveredStage, stageAt(elapsed, budgets))
-
-  const doPause = () => {
-    const next = !paused
-    togglePause()
-    setPaused(next)
-  }
 
   return (
     <div className="fixed inset-0 z-60 flex flex-col bg-stage">
@@ -125,24 +117,17 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
             {askedCount > 0 ? `질문 ${askedCount}` : ''}
           </span>
           <div className="flex-1" />
-          <div className="flex gap-[10px]">
-            <button
-              onClick={doPause}
-              className="tap44 rounded-control border border-stage-line px-[18px] py-[9px] text-[13px] text-stage-muted-2"
-            >
-              일시정지
-            </button>
-            <button
-              onClick={end}
-              className="tap44 rounded-control border border-stage-line px-[18px] py-[9px] text-[13px] text-stage-muted-2"
-            >
-              종료
-            </button>
-          </div>
+          {/* 멈췄다 이어가는 길은 두지 않는다 — 면접은 한 번에 끝까지 간다.
+              중간에 그만두면 그때까지의 답변으로 리포트를 받는다. */}
+          <button
+            onClick={end}
+            className="tap44 rounded-control border border-stage-line px-[18px] py-[9px] text-[13px] text-stage-muted-2"
+          >
+            종료하고 리포트 받기
+          </button>
         </div>
       </div>
 
-      {paused && <PauseOverlay onResume={doPause} onEnd={end} onCancel={() => nav('/')} />}
     </div>
   )
 }
@@ -269,45 +254,6 @@ function Waveform({ levels }: { levels: React.RefObject<Levels> }) {
           style={{ width: 3, height: 38, transformOrigin: 'center', transform: 'scaleY(0.22)' }}
         />
       ))}
-    </div>
-  )
-}
-
-function PauseOverlay({
-  onResume,
-  onEnd,
-  onCancel,
-}: {
-  onResume: () => void
-  onEnd: () => void
-  onCancel: () => void
-}) {
-  return (
-    <div
-      className="absolute inset-0 z-5 flex items-center justify-center"
-      style={{ background: 'rgba(14,23,38,.86)', backdropFilter: 'blur(6px)' }}
-    >
-      <div
-        className="flex flex-col gap-3 rounded-card border border-stage-line p-7"
-        style={{ width: 390, background: 'var(--color-stage-surface)' }}
-      >
-        <h2 className="m-0 text-[19px] font-bold text-stage-ink-2">면접을 잠시 멈췄습니다</h2>
-        <p className="m-0 mb-2 text-[13.5px] text-stage-muted">
-          이어서 진행하거나, 지금까지의 답변만으로 리포트를 받을 수 있습니다.
-        </p>
-        <button
-          onClick={onResume}
-          className="tap44 rounded-control bg-accent py-3 text-[14px] font-semibold text-white"
-        >
-          이어서 진행
-        </button>
-        <button onClick={onEnd} className="tap44 text-[13px] text-stage-muted-2">
-          종료하고 리포트 받기
-        </button>
-        <button onClick={onCancel} className="tap44 text-[12.5px] text-stage-muted-3">
-          면접 취소 · 기록을 남기지 않습니다
-        </button>
-      </div>
     </div>
   )
 }

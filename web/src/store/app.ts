@@ -1,5 +1,4 @@
 import { create } from 'zustand'
-import { useShallow } from 'zustand/react/shallow'
 import type { ApplicationPart, Card } from '@/data/types'
 import { initialCards, initialParts } from '@/data/mock'
 
@@ -21,11 +20,9 @@ interface AppState {
   role: string
   parts: ApplicationPart[]
 
-  /* §6 리포트 검토 — 원문을 수정하지 않는 주석(delta)으로만 쌓인다 */
-  flags: Record<string, boolean>
-  memos: Record<string, string[]>
-
   setActiveCard: (id: string) => void
+  /** 서버 목록으로 카드를 갈아끼운다. 홈이 마운트될 때 한 번 — 파일이 진실이다. */
+  setCards: (cards: Card[]) => void
   setCompany: (v: string) => void
   setRole: (v: string) => void
   setParts: (parts: ApplicationPart[]) => void
@@ -34,11 +31,6 @@ interface AppState {
       서버 리서치가 시작됐으면 task_id를 카드 id로 쓴다. */
   submitRegister: (id?: string) => string
   setCardProgress: (id: string, pct: number) => void
-
-  toggleFlag: (blockId: string) => void
-  addMemo: (blockId: string, text: string) => void
-  removeMemo: (blockId: string, index: number) => void
-  clearAnnotations: () => void
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -49,10 +41,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   role: '',
   parts: initialParts,
 
-  flags: {},
-  memos: {},
-
   setActiveCard: (id) => set({ activeCardId: id }),
+
+  // 활성 카드가 새 목록에 없으면 첫 카드로 옮긴다 — 없는 카드를 가리킨 채로
+  // 두면 useActiveCard의 폴백이 조용히 엉뚱한 면접을 열어 준다.
+  setCards: (cards) =>
+    set((s) => ({
+      cards,
+      activeCardId: cards.some((c) => c.id === s.activeCardId)
+        ? s.activeCardId
+        : (cards[0]?.id ?? null),
+    })),
   setCompany: (company) => set({ company }),
   setRole: (role) => set({ role }),
   setParts: (parts) => set({ parts }),
@@ -76,31 +75,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         c.id === id ? { ...c, pct, status: pct >= 100 ? 'ready' : 'researching' } : c,
       ),
     })),
-
-  toggleFlag: (blockId) => set((s) => ({ flags: { ...s.flags, [blockId]: !s.flags[blockId] } })),
-
-  addMemo: (blockId, text) =>
-    set((s) => ({ memos: { ...s.memos, [blockId]: [...(s.memos[blockId] ?? []), text] } })),
-
-  removeMemo: (blockId, index) =>
-    set((s) => ({
-      memos: { ...s.memos, [blockId]: (s.memos[blockId] ?? []).filter((_, i) => i !== index) },
-    })),
-
-  clearAnnotations: () => set({ flags: {}, memos: {} }),
 }))
 
 /** 활성 카드. 없으면 첫 카드로 폴백 — 프로토타입과 동일한 동작. */
 export const useActiveCard = () =>
   useAppStore((s) => s.cards.find((c) => c.id === s.activeCardId) ?? s.cards[0])
-
-/** 하단 고정 바 요약 (§6): "정정 N건 · 메모 M건" */
-export const useAnnotationCounts = () =>
-  useAppStore(
-    // 객체를 새로 만들어 돌려주는 셀렉터라 얕은 비교가 없으면 매 렌더가 새
-    // 스냅샷이 된다 — useShallow로 값이 같으면 같은 참조를 유지한다.
-    useShallow((s) => ({
-      flagged: Object.values(s.flags).filter(Boolean).length,
-      memoed: Object.values(s.memos).reduce((n, list) => n + list.length, 0),
-    })),
-  )

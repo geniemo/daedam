@@ -9,7 +9,7 @@ import type { Connection, Phase, SessionInfo } from '@/store/interview'
  *
  * Wire format (server-defined, kept deliberately small):
  *   client → server : raw ArrayBuffer  = 16kHz PCM chunk
- *                     JSON text frame  = control ({type:'start'|'pause'|'resume'|'end'})
+ *                     JSON text frame  = control ({type:'start'|'end'})
  *   server → client : raw ArrayBuffer  = 24kHz PCM chunk
  *                     JSON text frame  = events (session / phase / question /
  *                                        caption / interrupted / resumeToken /
@@ -242,14 +242,6 @@ export class VoiceSession {
 
   private sendBinary(pcm: ArrayBuffer): void {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(pcm)
-  }
-
-  setPaused(paused: boolean): void {
-    this.recorder?.port.postMessage({ type: 'mute', value: paused })
-    if (paused) this.player?.port.postMessage({ type: 'flush' })
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: paused ? 'pause' : 'resume' }))
-    }
   }
 
   /** Peak levels in 0–1, for the waveform and the avatar rings. */

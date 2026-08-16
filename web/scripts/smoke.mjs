@@ -10,6 +10,9 @@ const load = (p) => vite.ssrLoadModule(p)
 // Import directly (not via ssrLoadModule) so the router context instance is the
 // same one the components get when Vite externalizes their bare import.
 const { createMemoryRouter, RouterProvider } = await import('react-router')
+// 앱이 App.tsx에서 감싸는 것과 같은 프로바이더. 서버에서 데이터를 읽는 화면은
+// 이것 없이는 렌더 자체가 안 된다 — 하네스가 앱과 같은 껍데기를 써야 한다.
+const { QueryClient, QueryClientProvider } = await import('@tanstack/react-query')
 
 // [visited url, route pattern, module, export]. The pattern must match App.tsx —
 // a static route alongside the dynamic one would out-rank it and swallow the param.
@@ -38,7 +41,13 @@ for (const [url, pattern, file, name] of screens) {
       [{ element: createElement(Chrome), children: [{ path: pattern, element: createElement(Screen) }] }],
       { initialEntries: [url] },
     )
-    const html = renderToString(createElement(RouterProvider, { router }))
+    const html = renderToString(
+      createElement(
+        QueryClientProvider,
+        { client: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
+        createElement(RouterProvider, { router }),
+      ),
+    )
     const len = html.length
     if (len < 200) throw new Error(`suspiciously short output (${len} chars)`)
     console.log(`ok    ${url.padEnd(14)} ${name.padEnd(10)} ${len} chars`)

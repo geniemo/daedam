@@ -49,7 +49,6 @@ interface InterviewState {
   elapsed: number
   totalSeconds: number
   stageBudgets: number[] | null
-  paused: boolean
   /** 서버가 내려주는 세션 재개 토큰 (유효 2시간). 재연결 시 그대로 돌려보냅니다. */
   resumeToken: string | null
 
@@ -60,7 +59,6 @@ interface InterviewState {
   applySession: (info: SessionInfo) => void
   setResumeToken: (t: string | null) => void
   tick: () => void
-  togglePause: () => void
   reset: () => void
 }
 
@@ -74,7 +72,6 @@ const initial = {
   elapsed: 0,
   totalSeconds: TOTAL_SECONDS,
   stageBudgets: null,
-  paused: false,
   resumeToken: null,
 }
 
@@ -109,10 +106,7 @@ export const useInterviewStore = create<InterviewState>((set) => ({
 
   setResumeToken: (resumeToken) => set({ resumeToken }),
 
-  // 일시정지 중에는 면접 타이머가 진행되지 않습니다 (§타이머와 인터벌)
-  tick: () => set((s) => (s.paused ? s : { elapsed: s.elapsed + 1 })),
-
-  togglePause: () => set((s) => ({ paused: !s.paused })),
+  tick: () => set((s) => ({ elapsed: s.elapsed + 1 })),
   reset: () => set(initial),
 }))
 

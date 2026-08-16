@@ -115,6 +115,29 @@ function Step1() {
   )
 }
 
+/**
+ * 이름 옆에 붙는 연필. 이름은 클릭해야 고칠 수 있다는 것을 알리는 표시라,
+ * 평소엔 흐리게 두고 그 줄에 마우스를 올리면 진해진다.
+ */
+function PencilMark() {
+  return (
+    <svg
+      viewBox="0 0 12 12"
+      aria-hidden
+      className="shrink-0 text-faintest transition-colors group-hover:text-muted"
+      style={{ width: 11, height: 11 }}
+    >
+      <path
+        d="M8.2 1.3 10.7 3.8 4.3 10.2 1.3 10.7 1.8 7.7z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 function Step2() {
   const nav = useNavigate()
   const { company, role, parts, setParts, submitRegister } = useAppStore()
@@ -183,14 +206,18 @@ function Step2() {
                 onClick={() => setOpenPart(open ? -1 : pi)}
                 className="flex cursor-pointer items-center gap-[9px] border-b border-hair px-[18px] py-[15px]"
               >
-                {/* 이름 입력란과 삭제는 아코디언 토글을 타지 않는다 */}
-                <input
-                  value={part.name}
-                  onChange={(e) => renamePart(pi, e.target.value)}
-                  onClick={(e) => e.stopPropagation()}
-                  placeholder="파트 이름"
-                  className="min-w-[40px] rounded-chip bg-transparent px-[3px] text-[15px] font-bold outline-none [field-sizing:content] focus:bg-surface-2"
-                />
+                {/* 이름 입력란과 삭제는 아코디언 토글을 타지 않는다.
+                    점선 밑줄과 연필이 "고칠 수 있다"를 알린다 — 평범한 글자로
+                    두면 눌러볼 생각 자체를 안 한다. */}
+                <label className="group flex items-center gap-[5px]" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    value={part.name}
+                    onChange={(e) => renamePart(pi, e.target.value)}
+                    placeholder="파트 이름"
+                    className="min-w-[40px] rounded-chip border-b border-dashed border-field bg-transparent px-[3px] text-[15px] font-bold outline-none [field-sizing:content] hover:bg-surface-2 focus:border-solid focus:border-accent focus:bg-surface-2"
+                  />
+                  <PencilMark />
+                </label>
                 <span className="num rounded-chip border border-line px-[6px] py-px text-[11.5px] text-faint">
                   {part.items.length}
                 </span>
@@ -218,13 +245,18 @@ function Step2() {
                           onClick={() => setOpenItem(itemOpen ? -1 : ii)}
                           className="flex cursor-pointer items-center gap-[9px] px-[13px] py-[11px]"
                         >
-                          <input
-                            value={item.title}
-                            onChange={(e) => updateItemTitle(pi, ii, e.target.value)}
+                          <label
+                            className="group flex items-center gap-[5px]"
                             onClick={(e) => e.stopPropagation()}
-                            placeholder="항목 이름"
-                            className="min-w-[40px] rounded-chip bg-transparent px-[3px] text-[13px] font-semibold text-body outline-none [field-sizing:content] focus:bg-surface"
-                          />
+                          >
+                            <input
+                              value={item.title}
+                              onChange={(e) => updateItemTitle(pi, ii, e.target.value)}
+                              placeholder="항목 이름"
+                              className="min-w-[40px] rounded-chip border-b border-dashed border-field bg-transparent px-[3px] text-[13px] font-semibold text-body outline-none [field-sizing:content] hover:bg-surface focus:border-solid focus:border-accent focus:bg-surface"
+                            />
+                            <PencilMark />
+                          </label>
                           <div className="flex-1" />
                           <span className="text-[11.5px] text-faint">
                             {item.body ? item.len : '비어 있음'}
@@ -283,7 +315,6 @@ function Step2() {
         <button onClick={() => nav('/register/1')} className="text-[13.5px] text-muted">
           ← 이전
         </button>
-        <span className="text-[12.5px] text-faint">파일로 올리기 (PDF · DOCX)</span>
         <div className="flex-1" />
         <button
           onClick={async () => {
