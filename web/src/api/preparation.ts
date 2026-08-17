@@ -34,11 +34,19 @@ export async function startPreparation(
   parts: ApplicationPart[],
   /** 채용공고 링크 또는 본문. 서버가 파싱 없이 리서치 프롬프트에 그대로 싣는다. */
   posting = '',
+  /** 지원자 이름. 면접관이 부르고 전사 어휘 힌트로도 나간다. */
+  name = '',
 ): Promise<string> {
   const res = await fetch('/api/preparation', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ company, role, application: toServerParts(parts), posting }),
+    body: JSON.stringify({
+      company,
+      role,
+      application: toServerParts(parts),
+      posting,
+      name,
+    }),
   })
   if (!res.ok) throw new Error(`리서치 시작 실패: ${res.status}`)
   const data = (await res.json()) as { task_id: string }

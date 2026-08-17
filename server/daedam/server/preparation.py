@@ -85,6 +85,7 @@ class InterviewPreparation:
         role: str,
         application: list[dict[str, Any]],
         posting: str = "",
+        name: str = "",
     ) -> str:
         # posting은 여기서만 쓰인다 — 리서치 프롬프트에 실려 나가고, 이후
         # 재개·재생성 경로는 이미 만들어진 인터랙션을 따라가므로 필요 없다.
@@ -99,6 +100,7 @@ class InterviewPreparation:
             application=application,
             report=[],
             uncertain=[],
+            name=name,
         )
         # pct=None으로 시작한다. live는 첫 폴링이 30초 뒤라, 0으로 두면 그동안
         # 화면에 0%가 떠 있는다 — 백엔드가 진행률을 아는지도 모르는 시점이다.
@@ -110,7 +112,7 @@ class InterviewPreparation:
         # 이 면접 전담 워커 — 브라우저가 닫혀도 파이프라인은 여기서 완주한다.
         threading.Thread(
             target=self._run_pipeline,
-            args=(task_id, company, role, application),
+            args=(task_id, company, role, application, name),
             daemon=True,
         ).start()
         return task_id
@@ -169,6 +171,7 @@ class InterviewPreparation:
         company: str,
         role: str,
         application: list[dict[str, Any]],
+        name: str = "",
     ) -> None:
         state = self._states[task_id]
         try:
@@ -218,6 +221,7 @@ class InterviewPreparation:
                 application=application,
                 report=research.report or [],
                 uncertain=research.uncertain or [],
+                name=name,
             )
 
             # ③ 질문 생성 — 화면의 "질문 준비" 단계가 실제로 이 구간이다.
@@ -277,7 +281,13 @@ class InterviewPreparation:
                 )
                 threading.Thread(
                     target=self._run_pipeline,
-                    args=(interview_id, data.company, data.role, data.application),
+                    args=(
+                        interview_id,
+                        data.company,
+                        data.role,
+                        data.application,
+                        data.name,
+                    ),
                     daemon=True,
                 ).start()
                 continue

@@ -24,6 +24,8 @@ class PreparationRequest(BaseModel):
     application: list[dict[str, Any]] = Field(default_factory=list)
     #: 채용공고 링크 또는 본문. 파싱하지 않고 리서치 프롬프트에 그대로 실린다.
     posting: str = ""
+    #: 지원자 이름. 면접관이 부르고 전사 어휘 힌트로도 나간다.
+    name: str = ""
 
 
 def create_preparation_router(preparation: InterviewPreparation) -> APIRouter:
@@ -40,7 +42,11 @@ def create_preparation_router(preparation: InterviewPreparation) -> APIRouter:
     @router.post("", status_code=202)
     def start_preparation(request: PreparationRequest) -> dict[str, str]:
         task_id = preparation.start(
-            request.company, request.role, request.application, request.posting
+            request.company,
+            request.role,
+            request.application,
+            request.posting,
+            request.name,
         )
         return {"task_id": task_id}
 

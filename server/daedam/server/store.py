@@ -28,6 +28,9 @@ class InterviewData:
 
     company: str
     role: str
+    #: 지원자 이름. 면접관이 부르고 전사 어휘 힌트로도 나간다. 옛 데이터에는
+    #: 없어서 빈 문자열이 될 수 있다.
+    name: str
     application: list[dict[str, Any]]
     report: list[dict[str, Any]]
     uncertain: list[dict[str, Any]]
@@ -51,11 +54,15 @@ class FileInterviewStore:
         application: list[dict[str, Any]],
         report: list[dict[str, Any]],
         uncertain: list[dict[str, Any]],
+        name: str = "",
     ) -> None:
         """리서치 완료 시점의 준비 데이터를 저장한다. 질문은 아직 없다."""
         directory = self._directory(interview_id)
         directory.mkdir(parents=True, exist_ok=True)
-        self._write(directory / "meta.json", {"company": company, "role": role})
+        self._write(
+            directory / "meta.json",
+            {"company": company, "role": role, "name": name},
+        )
         self._write(directory / "application.json", application)
         self._write(directory / "report.json", report)
         self._write(directory / "uncertain.json", uncertain)
@@ -92,6 +99,8 @@ class FileInterviewStore:
         return InterviewData(
             company=meta["company"],
             role=meta["role"],
+            # 이름은 나중에 생긴 필드라 옛 면접에는 없다.
+            name=meta.get("name", ""),
             application=json.loads(
                 (directory / "application.json").read_text(encoding="utf-8")
             ),
