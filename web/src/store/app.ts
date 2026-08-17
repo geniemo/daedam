@@ -7,10 +7,6 @@ import { initialParts } from '@/data/mock'
 // waveform amplitudes and ring scale live in refs, never here. See
 // `src/audio/useAudioLevels.ts` for why.
 
-/** 빈 폼 데모용 기본값 — 등록과 서버 요청이 같은 값을 쓴다. */
-export const FALLBACK_COMPANY = '누리테크'
-export const FALLBACK_ROLE = '서비스기획 · 신입'
-
 interface AppState {
   cards: Card[]
   activeCardId: string | null
@@ -18,6 +14,8 @@ interface AppState {
   /* 등록 폼 */
   company: string
   role: string
+  /** 채용공고 링크 또는 본문. 파싱하지 않고 리서치 프롬프트로 그대로 나간다. */
+  posting: string
   parts: ApplicationPart[]
 
   setActiveCard: (id: string) => void
@@ -25,6 +23,7 @@ interface AppState {
   setCards: (cards: Card[]) => void
   setCompany: (v: string) => void
   setRole: (v: string) => void
+  setPosting: (v: string) => void
   setParts: (parts: ApplicationPart[]) => void
   resetRegister: () => void
   /** 등록 완료 → researching 카드를 목록 맨 앞에 넣고 id 반환.
@@ -41,6 +40,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   company: '',
   role: '',
+  posting: '',
   parts: initialParts,
 
   setActiveCard: (id) => set({ activeCardId: id }),
@@ -56,13 +56,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
   setCompany: (company) => set({ company }),
   setRole: (role) => set({ role }),
+  setPosting: (posting) => set({ posting }),
   setParts: (parts) => set({ parts }),
-  resetRegister: () => set({ company: '', role: '' }),
+  // parts까지 비운다. 지원서는 회사마다 다시 쓰는 것이고, 남겨 두면 다음 등록
+  // 화면에 앞 회사에 낸 지원서가 그대로 떠 있다.
+  resetRegister: () => set({ company: '', role: '', posting: '', parts: [] }),
 
   submitRegister: (id) => {
     const { company, role, cards } = get()
-    const name = company.trim() || FALLBACK_COMPANY
-    const position = role.trim() || FALLBACK_ROLE
+    // 기본값으로 메우지 않는다. 비어 있으면 등록 화면이 막아 주는데, 여기서
+    // 다시 메우면 엉뚱한 회사로 리서치가 돌고 live에서는 그것이 유료다.
+    const name = company.trim()
+    const position = role.trim()
     const cardId = id ?? `new${Date.now()}`
     set({
       cards: [{ id: cardId, company: name, role: position, date: '방금 등록', status: 'researching', pct: 0 }, ...cards],

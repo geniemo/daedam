@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useActiveCard } from '@/store/app'
 import { AccentDot, CheckDot, EmptyDot, OutlineButton, SectionLabel } from '@/components/ui'
-import { STAGE_NAMES, questions } from '@/data/mock'
+import { STAGE_NAMES } from '@/data/mock'
 
 /** 마이크가 실제로 소리를 잡았다고 볼 진폭. 0~1 정규화된 피크 기준. */
 const HEARD_LEVEL = 0.12
@@ -139,8 +139,8 @@ export function Ready() {
         {card.company} · {card.role}
       </h1>
       <p className="mt-[10px] mb-[30px] text-[14px] text-muted">
-        채용공고와 최근 소식, 지원서를 함께 읽고 질문을 준비했습니다. 한국어 음성으로 15~20분간
-        진행됩니다.
+        채용공고와 최근 소식, 지원서를 함께 읽고 질문을 준비했습니다. 아래 네 가지와 관련된
+        질문을 한국어 음성으로 주고받습니다.
       </p>
 
       <div className="mb-4 grid grid-cols-4 gap-[10px]">
@@ -149,11 +149,10 @@ export function Ready() {
             key={name}
             className="flex flex-col gap-[5px] rounded-card border border-line bg-surface px-[14px] py-[15px]"
           >
+            {/* 질문 개수와 소요 시간은 적지 않는다. 게이트가 매 턴 다시
+                판정하므로 몇 개가 나갈지는 시작 전에 정해져 있지 않다. */}
             <span className="num text-[11.5px] font-semibold text-faintest">0{i + 1}</span>
             <span className="text-[14px] font-bold">{name}</span>
-            <span className="text-[11.5px] text-faint">
-              {questions.filter((q) => q.s === i).length}개 질문
-            </span>
           </div>
         ))}
       </div>
@@ -183,10 +182,11 @@ export function Ready() {
 
       <Preflight />
 
+      {/* 지원서 수정 버튼이 있던 자리. STEP 2는 등록용 초안(스토어의 parts)을
+          읽지 이 면접의 지원서를 읽지 않아 빈 화면이 떴고, 그 화면의 버튼은
+          "등록하고 준비 시작"이라 저장하면 새 면접이 하나 더 생겼다 —
+          live 모드에서는 리서치가 한 번 더 도는 것과 같다. */}
       <div className="flex items-center">
-        <button onClick={() => nav('/register/2')} className="text-[13px] text-muted">
-          지원서 수정
-        </button>
         <div className="flex-1" />
         {/* AudioContext는 이 클릭 핸들러 안에서 생성됩니다 — 밖에서 만들면
             자동재생 정책에 막혀 무음이 됩니다. useVoiceSession 참조. */}

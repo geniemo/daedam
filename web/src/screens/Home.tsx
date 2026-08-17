@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { listInterviews } from '@/api/preparation'
 import { useAppStore } from '@/store/app'
 import { AccentDot, ProgressBar } from '@/components/ui'
-import { initialCards, researchSteps } from '@/data/mock'
+import { initialCards } from '@/data/mock'
 import type { Card as CardT } from '@/data/types'
 
 /** 저장 시각(epoch 초) → "8월 17일". 카드 우상단에 붙는다. */
@@ -19,6 +19,14 @@ export function Home() {
   const cards = useAppStore((s) => s.cards)
   const setActiveCard = useAppStore((s) => s.setActiveCard)
   const setCards = useAppStore((s) => s.setCards)
+  const resetRegister = useAppStore((s) => s.resetRegister)
+
+  // 등록 폼은 스토어에 남는다. 새로 등록하러 들어갈 때 비우지 않으면 앞 회사의
+  // 회사명·직무·채용공고·지원서가 그대로 떠 있다.
+  const startRegister = () => {
+    resetRegister()
+    nav('/register/1')
+  }
 
   // 목록의 진실은 서버 파일이다. 프론트 메모리로 들고 있으면 새로고침에
   // 사라지고, 준비 데이터가 없는 면접을 시작하려다 브리지에서 거절당한다.
@@ -61,7 +69,7 @@ export function Home() {
         </div>
         <div className="flex-1" />
         <button
-          onClick={() => nav('/register/1')}
+          onClick={startRegister}
           className="rounded-control bg-ink px-5 py-[11px] text-[14px] font-semibold text-white"
         >
           회사 등록하기
@@ -73,7 +81,7 @@ export function Home() {
           <CompanyCard key={c.id} card={c} onClick={() => open(c)} />
         ))}
         <button
-          onClick={() => nav('/register/1')}
+          onClick={startRegister}
           className="flex min-h-[172px] items-center justify-center rounded-card border border-dashed border-field text-[13.5px] text-faint"
         >
           + 새 회사 등록
@@ -87,8 +95,6 @@ function CompanyCard({ card, onClick }: { card: CardT; onClick: () => void }) {
   // 서버 목록에는 진행률이 없다 — 준비 중이라는 사실만 안다. 0%를 지어내
   // 보여주면 멈춘 것처럼 읽히므로, 진행률을 아는 경우에만 바를 그린다.
   const pct = card.pct
-  const stepLabel =
-    pct === undefined ? null : researchSteps[Math.min(4, Math.floor(pct / 20))].label
 
   return (
     <div
@@ -113,7 +119,6 @@ function CompanyCard({ card, onClick }: { card: CardT; onClick: () => void }) {
             <span className="text-[12.5px] font-semibold text-accent">면접 준비 완료</span>
           </div>
           <div className="flex items-center border-t border-hair-2 pt-[11px]">
-            <span className="text-[12.5px] text-muted">4단계 · 15~20분</span>
             <div className="flex-1" />
             <span className="text-[13px] font-semibold">시작하기 →</span>
           </div>
@@ -130,7 +135,6 @@ function CompanyCard({ card, onClick }: { card: CardT; onClick: () => void }) {
             <span className="text-[12px] text-faint">자세히 보기 →</span>
           </div>
           {pct !== undefined && <ProgressBar pct={pct} />}
-          {stepLabel && <div className="text-[12.5px] text-muted">{stepLabel}</div>}
         </div>
       )}
 
