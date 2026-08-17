@@ -40,17 +40,31 @@ load_dotenv(Path(_AGENTS_DIR) / ".env")
 #: POST가 403이 된다. 배포에서는 dist/를 같은 오리진에서 서빙하므로 무관하다.
 _DEV_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
+logger = logging.getLogger(__name__)
+
 
 def _research_service(data_root: Path) -> ResearchService:
     """RESEARCH_MODE로 백엔드를 고른다. 기본은 fixture — live는 작업당 $1~7.
 
-    live는 리포트 원문을 `_raw/`에 먼저 떨어뜨린다. 파싱이 틀려도 원문은 남아야
-    한다 — 다시 받으려면 20~60분과 비용이 또 든다.
+    live는 두 가지를 파일에 남긴다. 리포트 원문은 `_raw/`에 파싱 전에 —
+    파싱이 틀려도 원문은 남아야 한다. 진행 중인 인터랙션 id는
+    `_research_tasks.json`에 — 이게 없으면 20~60분 도는 리서치가 서버 재시작을
+    못 넘고, 데모 직전 재기동 한 번에 준비가 통째로 사라진다.
     """
     mode = os.environ.get("RESEARCH_MODE", "fixture")
     if mode != "live":
+        logger.info("리서치 백엔드: fixture — 등록해도 실제 조사는 돌지 않습니다")
         return FixtureResearch()
-    return LiveResearch(raw_dir=data_root / "_raw")
+    # 어느 모드로 떠 있는지 로그만 보고 알 수 있어야 한다. 등록 버튼 한 번이
+    # 20~60분짜리 유료 작업을 시작하는데, 그걸 화면에서도 로그에서도 구분할 수
+    # 없으면 fixture인 줄 알고 누르거나 그 반대가 된다.
+    logger.warning(
+        "리서치 백엔드: LIVE — 회사 등록 한 건마다 실제 Deep Research가 돕니다"
+    )
+    return LiveResearch(
+        raw_dir=data_root / "_raw",
+        state_path=data_root / "_research_tasks.json",
+    )
 
 
 def _interview_profile() -> str:
@@ -89,7 +103,10 @@ def create_app() -> FastAPI:
 
     # 준비 파이프라인: 리서치 → 파일 저장 → 질문 생성. 완료 산출물은
     # server/data/에 남아 재시작·재데모에서 리서치를 다시 돌리지 않는다.
-    data_root = Path(_AGENTS_DIR) / "data"
+    #
+    # DAEDAM_DATA_DIR로 옮길 수 있다. 시험용 서버를 따로 띄울 때 쓴다 —
+    # 데모용 면접이 든 디렉터리에 시험 등록이 섞이면 지우다 실수한다.
+    data_root = Path(os.environ.get("DAEDAM_DATA_DIR") or Path(_AGENTS_DIR) / "data")
     store = FileInterviewStore(data_root)
     # live는 20~60분짜리 작업이라 1초 폴링이면 조회 API를 수천 번 두드린다.
     # fixture는 12초 안에 끝나므로 촘촘히 봐야 진행 화면이 자연스럽다.
