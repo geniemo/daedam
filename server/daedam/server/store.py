@@ -116,6 +116,10 @@ class FileInterviewStore:
         meta_path = self._directory(interview_id) / "meta.json"
         return meta_path.stat().st_mtime if meta_path.exists() else 0.0
 
+    def directory(self, interview_id: str) -> Path:
+        """면접 하나의 디렉터리. 녹음·전사처럼 JSON이 아닌 산출물이 여기 붙는다."""
+        return self._directory(interview_id)
+
     def _directory(self, interview_id: str) -> Path:
         if not _SAFE_ID.match(interview_id):
             raise ValueError(f"허용되지 않는 면접 id: {interview_id!r}")

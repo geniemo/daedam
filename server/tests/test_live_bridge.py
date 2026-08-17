@@ -6,7 +6,9 @@
 """
 
 import asyncio
+import json
 import time
+import wave
 
 import pytest
 from fastapi import FastAPI
@@ -360,3 +362,61 @@ def test_세션은_카드_id로_만들어진다(tmp_path) -> None:
         )
     )
     assert session is not None
+
+
+# ── 면접이 남기는 것 (§리포트의 재료) ────────────────────────────────
+
+
+class _TranscribingRunner(_FakeRunner):
+    """양쪽 전사를 흘리는 대역.
+
+    조각이 오다가 finished에 **전문**이 실린다. 프론트가 final일 때 자막을
+    text로 통째로 교체하는데(store/interview.ts appendCaption) 자막이 잘려
+    보인 적이 없으므로 실제 모양이 이렇다.
+    """
+
+    async def run_live(self, *, session, live_request_queue, run_config):
+        while True:
+            request = await live_request_queue.get()
+            self.heard.append(request)
+            if request.blob is not None:
+                break
+        yield Event(
+            author="interviewer",
+            output_transcription=types.Transcription(text="자기소개 "),
+        )
+        yield Event(
+            author="interviewer",
+            output_transcription=types.Transcription(
+                text="자기소개 부탁드립니다.", finished=True
+            ),
+        )
+        yield Event(
+            author="user",
+            input_transcription=types.Transcription(text="네, 저는", finished=True),
+        )
+
+
+def test_면접이_음성과_전사를_남긴다(tmp_path) -> None:
+    """면접이 끝나면 아무것도 안 남았다 — 리포트는 이 파일들 위에 선다."""
+    store = _seeded_store(tmp_path, "rec")
+    client = _client(_TranscribingRunner(), store)
+    with client.websocket_connect("/ws/interview?card=rec") as websocket:
+        _handshake(websocket)
+        websocket.send_bytes(b"\x00\x01" * 16_000)  # 1초치
+        # 대역 러너가 낸 자막 셋을 흘려보내고 종료 통지까지 받는다.
+        while websocket.receive_json()["type"] != "ended":
+            pass
+
+    directory = store.directory("rec")
+    saved = json.loads((directory / "transcript.json").read_text(encoding="utf-8"))
+    assert [(u["speaker"], u["text"]) for u in saved["utterances"]] == [
+        ("interviewer", "자기소개 부탁드립니다."),
+        ("applicant", "네, 저는"),
+    ]
+    # 조각은 이어 붙고, 위치는 그때까지 받은 오디오 길이다.
+    assert saved["durationS"] == 1.0
+    assert saved["utterances"][0]["at"] == 1.0
+
+    with wave.open(str(directory / "mic.wav"), "rb") as wav:
+        assert wav.getnframes() == 16_000

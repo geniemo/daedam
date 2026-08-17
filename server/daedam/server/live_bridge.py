@@ -55,6 +55,7 @@ from interviewer.tools import (
     STATE_STARTED_AT,
 )
 
+from .recording import InterviewRecording
 from .store import FileInterviewStore, InterviewData
 
 logger = logging.getLogger(__name__)
@@ -277,6 +278,25 @@ def create_live_router(
                 state=_session_state_from(data, profile),
             )
 
+        # 면접이 남기는 것. 커넥션이 끊겼다 붙어도 같은 디렉터리에 이어 쓴다 —
+        # Live 커넥션 수명이 ~10분이라 15~20분 면접은 반드시 재접속한다.
+        recording = InterviewRecording(directory=store.directory(card))
+        # 전사는 조각으로 흘러오다 finished에 전문이 실린다. 그 전문만 한
+        # 토막으로 남긴다. 프론트도 같은 규칙이다 — final이면 자막을 text로
+        # 통째로 교체하고(store/interview.ts appendCaption), 그래도 자막이 잘려
+        # 보인 적이 없다. 전문이 안 실린 경우를 대비해 모아둔 조각을 받쳐 둔다.
+        partial: dict[str, str] = {"interviewer": "", "applicant": ""}
+
+        def collect(speaker: str, transcription: Any) -> None:
+            if transcription is None:
+                return
+            text = transcription.text or ""
+            if not transcription.finished:
+                partial[speaker] += text
+                return
+            recording.note(speaker, text or partial[speaker])
+            partial[speaker] = ""
+
         # 에이전트의 귀. 여기 넣는 것이 Gemini로 흘러간다 — run_live가 이
         # 큐를 소비한다. close()가 들어가면 대화가 정상 종료된다.
         queue = LiveRequestQueue()
@@ -380,6 +400,7 @@ def create_live_router(
                     return
                 if (data := message.get("bytes")) is not None:
                     queue.send_realtime(types.Blob(mime_type=_INPUT_MIME, data=data))
+                    recording.write_audio(data)
                 elif text := message.get("text"):
                     if json.loads(text).get("type") == "end":
                         # 지원자가 끝냈다. 큐를 닫아 봐야 ADK가 재연결로 받으므로
@@ -418,6 +439,8 @@ def create_live_router(
                                 logger.info("추적: 오디오 %d프레임", audio_run)
                                 audio_run = 0
                             logger.info("추적: %s", line)
+                    collect("interviewer", event.output_transcription)
+                    collect("applicant", event.input_transcription)
                     if _marks_closing(event) and not closing.is_set():
                         # 인사 대기의 기준선은 여기서 잡는다. 종료 태스크가
                         # 깨어난 시점에 잡으면 그 사이에 끝난 인사 턴을 놓치고
@@ -532,6 +555,10 @@ def create_live_router(
         except Exception:
             logger.exception("음성 브리지 오류 (card=%s)", card)
         finally:
+            # 커넥션이 끝날 때마다 저장한다. 재접속이면 다음 커넥션이 이어
+            # 받으므로 중간 저장이고, 마지막 커넥션의 것이 최종본이 된다 —
+            # 면접이 어떻게 끝나든(정상 종료·하드캡·창 닫기) 기록이 남는다.
+            recording.finish()
             # 내가 아직 활성 커넥션일 때만 지운다 — 새 커넥션이 이미
             # 자리를 차지했다면 그쪽 것이다.
             if active.get(card) is websocket:
