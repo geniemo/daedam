@@ -172,8 +172,10 @@ function EditableBlock({
   if (block.type === 'refs') {
     return (
       <div className="flex flex-col gap-[6px] py-[9px] pl-3">
-        {block.refs.map((r) => (
-          <div key={r.n} className="flex gap-[6px]">
+        {/* key는 인덱스다 — 출처 번호는 원문에서 겹친다(같은 [cite: 25]에
+            서로 다른 URL이 둘). 목록은 읽기 전용이라 순서가 바뀌지 않는다. */}
+        {block.refs.map((r, i) => (
+          <div key={i} className="flex gap-[6px]">
             <span className="num w-5 shrink-0 text-[11.5px] text-faintest">{r.n}</span>
             <span className="text-[12.5px] text-muted">{r.label}</span>
           </div>
@@ -183,36 +185,43 @@ function EditableBlock({
   }
 
   if (block.type === 'table') {
+    // minmax(0,1fr)이어야 합니다: 그냥 1fr이면 트랙이 내용의 min-content 폭
+    // 아래로 안 줄어서, 셀이 긴 리서치 표가 문서를 가로로 밀어냅니다.
+    const columns = `repeat(${block.head.length}, minmax(0, 1fr))`
+    const setCell = (ri: number, ci: number, value: string) =>
+      onChange({
+        ...block,
+        rows: block.rows.map((r, i) =>
+          i !== ri ? r : r.map((c, j) => (j === ci ? value : c)),
+        ),
+      })
+
     return (
       <div className="py-[9px] pl-3">
         <div className="overflow-hidden rounded-control border border-hair-2">
           <div
-            className="grid bg-surface-2 px-3 py-[8px] text-[11.5px] font-semibold text-muted"
-            style={{ gridTemplateColumns: '96px 1fr 120px' }}
+            className="grid gap-x-3 bg-surface-2 px-3 py-[8px] text-[11.5px] font-semibold text-muted"
+            style={{ gridTemplateColumns: columns }}
           >
-            {block.head.map((h) => (
-              <span key={h}>{h}</span>
+            {block.head.map((h, ci) => (
+              <span key={ci}>{h}</span>
             ))}
           </div>
           {block.rows.map((row, ri) => (
             <div
               key={ri}
-              className="grid border-t border-hair-3 px-3 py-[8px] text-[12.5px]"
-              style={{ gridTemplateColumns: '96px 1fr 120px' }}
+              className="grid items-start gap-x-3 border-t border-hair-3 px-3 py-[8px] text-[12.5px]"
+              style={{ gridTemplateColumns: columns }}
             >
-              {(['a', 'b', 'c'] as const).map((key) => (
-                <input
-                  key={key}
-                  value={row[key]}
-                  onChange={(e) =>
-                    onChange({
-                      ...block,
-                      rows: block.rows.map((r, i) =>
-                        i === ri ? { ...r, [key]: e.target.value } : r,
-                      ),
-                    })
-                  }
-                  className={`${key === 'a' ? 'num ' : ''}mr-2 rounded-chip bg-transparent px-[3px] outline-none hover:bg-surface-2 focus:bg-surface-2`}
+              {row.map((cell, ci) => (
+                // input이 아니라 textarea입니다 — 리서치 표의 칸은 한 줄에
+                // 안 들어가고, input은 넘치는 글자를 잘라 보여줍니다.
+                <textarea
+                  key={ci}
+                  value={cell}
+                  onChange={(e) => setCell(ri, ci, e.target.value)}
+                  rows={1}
+                  className="resize-none rounded-chip bg-transparent px-[3px] leading-[1.7] outline-none [field-sizing:content] hover:bg-surface focus:bg-surface"
                 />
               ))}
             </div>
