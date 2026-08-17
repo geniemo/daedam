@@ -215,7 +215,10 @@ def _session_state_from(data: InterviewData, profile: str) -> dict[str, Any]:
 
 
 def create_live_router(
-    runner: Runner, store: FileInterviewStore, profile: str = DEFAULT_PROFILE
+    runner: Runner,
+    store: FileInterviewStore,
+    profile: str = DEFAULT_PROFILE,
+    evaluation: Any = None,
 ) -> APIRouter:
     """음성 브리지 라우터를 만든다.
 
@@ -223,6 +226,8 @@ def create_live_router(
         runner: 면접관 에이전트를 물고 있는 Runner. 세션 저장소도 이 러너의
             것을 쓴다 — 브리지가 세션 생성을 소유해야 준비 데이터 시딩이
             이 지점에 꽂힌다. 테스트는 대역 러너를 주입한다.
+        evaluation: 면접이 끝나면 피드백을 만드는 오케스트레이터. None이면
+            기록만 남기고 만들지 않는다(테스트).
         store: 면접 준비 데이터 저장소. 세션 생성 시 여기서 읽어 시딩한다.
         profile: 시간 예산 프로필 이름 (`daedam.interview.stages.PROFILES`).
             세션 state에도 실려 툴이 같은 예산으로 단계를 판정한다.
@@ -559,6 +564,11 @@ def create_live_router(
             # 받으므로 중간 저장이고, 마지막 커넥션의 것이 최종본이 된다 —
             # 면접이 어떻게 끝나든(정상 종료·하드캡·창 닫기) 기록이 남는다.
             recording.finish()
+            # 기록이 남은 직후에 피드백 생성을 깨운다. 재접속이면 다음
+            # 커넥션이 이어가므로 그때 다시 깨워지고, 이미 돌고 있으면
+            # evaluation이 스스로 무시한다.
+            if evaluation is not None:
+                evaluation.start(card)
             # 내가 아직 활성 커넥션일 때만 지운다 — 새 커넥션이 이미
             # 자리를 차지했다면 그쪽 것이다.
             if active.get(card) is websocket:

@@ -32,6 +32,8 @@ class InterviewData:
     report: list[dict[str, Any]]
     uncertain: list[dict[str, Any]]
     questions: list[dict[str, Any]] | None = None
+    #: 면접이 끝난 뒤 만들어지는 피드백(음성 지표 + 코칭). 면접 전에는 없다.
+    feedback: dict[str, Any] | None = None
 
 
 class FileInterviewStore:
@@ -68,6 +70,10 @@ class FileInterviewStore:
         """검토·정정이 반영된 리포트로 교체한다."""
         self._write(self._directory(interview_id) / "report.json", report)
 
+    def save_feedback(self, interview_id: str, feedback: dict[str, Any]) -> None:
+        """면접이 끝난 뒤 만든 피드백을 저장한다. 다시 면접하면 덮어쓴다."""
+        self._write(self._directory(interview_id) / "feedback.json", feedback)
+
     def load(self, interview_id: str) -> InterviewData | None:
         """준비 데이터를 읽는다. 저장된 적 없거나 id 형식이 어긋나면 None.
 
@@ -82,6 +88,7 @@ class FileInterviewStore:
             return None
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
         questions_path = directory / "questions.json"
+        feedback_path = directory / "feedback.json"
         return InterviewData(
             company=meta["company"],
             role=meta["role"],
@@ -95,6 +102,11 @@ class FileInterviewStore:
             questions=(
                 json.loads(questions_path.read_text(encoding="utf-8"))
                 if questions_path.exists()
+                else None
+            ),
+            feedback=(
+                json.loads(feedback_path.read_text(encoding="utf-8"))
+                if feedback_path.exists()
                 else None
             ),
         )

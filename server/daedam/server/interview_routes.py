@@ -3,6 +3,7 @@
   GET /api/interviews             — 저장소에 있는 면접 목록 (최근 저장 순)
   GET /api/interviews/{id}        — 리포트를 포함한 면접 하나
   PUT /api/interviews/{id}/report — 검토로 고친 리포트 저장 + 질문 재생성
+  GET /api/interviews/{id}/feedback — 면접이 끝난 뒤의 피드백 (없으면 상태만)
 
 프론트가 자기 메모리에 카드를 들고 있으면 새로고침에 사라지고, 준비 데이터가
 없는 면접을 시작하려다 브리지에서 거절당한다. 목록의 진실은 파일 저장소다 —
@@ -31,13 +32,17 @@ class ReportUpdate(BaseModel):
 
 
 def create_interviews_router(
-    store: FileInterviewStore, preparation: InterviewPreparation
+    store: FileInterviewStore,
+    preparation: InterviewPreparation,
+    evaluation: Any = None,
 ) -> APIRouter:
     """면접 조회·검토 라우터를 만든다.
 
     Args:
         store: 준비 데이터 파일 저장소.
         preparation: 리포트가 바뀌면 질문을 다시 뽑는 오케스트레이터.
+        evaluation: 면접 뒤 피드백을 만드는 오케스트레이터. None이면 피드백
+            조회가 늘 absent를 돌려준다(테스트).
 
     Returns:
         /api/interviews 라우터.
@@ -93,5 +98,23 @@ def create_interviews_router(
             raise HTTPException(status_code=404, detail="면접이 없습니다")
         store.save_report(interview_id, update.report)
         return {"regenerating": preparation.regenerate(interview_id)}
+
+    @router.get("/{interview_id}/feedback")
+    def get_feedback(interview_id: str) -> dict[str, Any]:
+        """분석 화면이 기다리며 부르고, 리포트 화면이 결과를 읽는다.
+
+        상태는 넷이다. running은 만드는 중, done이면 feedback이 실려 온다.
+        failed는 만들다 실패한 것이고, absent는 아직 면접을 안 했다는 뜻이다 —
+        실패와 미실행을 같은 값으로 두면 화면이 무엇을 말할지 정할 수 없다.
+        """
+        if store.load(interview_id) is None:
+            raise HTTPException(status_code=404, detail="면접이 없습니다")
+        if evaluation is None:
+            return {"status": "absent"}
+        status = evaluation.status(interview_id)
+        payload: dict[str, Any] = {"status": status.state}
+        if status.feedback is not None:
+            payload["feedback"] = status.feedback
+        return payload
 
     return router

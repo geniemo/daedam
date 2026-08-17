@@ -161,7 +161,7 @@ class InterviewRecording:
 
     @staticmethod
     def discard(directory: Path) -> bool:
-        """면접 기록만 지운다. 리서치·질문은 건드리지 않는다.
+        """면접 기록과 그 위에 만든 피드백을 지운다. 리서치·질문은 그대로 둔다.
 
         면접을 다시 하려면 앞 판의 흔적이 없어야 한다 — 이어 쓰기 때문에
         남겨 두면 새 면접이 앞 면접 뒤에 붙는다.
@@ -170,7 +170,7 @@ class InterviewRecording:
             하나라도 지웠으면 True.
         """
         removed = False
-        for name in ("mic.pcm", "mic.wav", "transcript.json"):
+        for name in ("mic.pcm", "mic.wav", "transcript.json", "feedback.json"):
             path = directory / name
             try:
                 if path.exists():
