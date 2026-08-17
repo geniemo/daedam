@@ -101,30 +101,75 @@ function ReportBody({
           <div className="mb-[18px]">
             <SectionLabel>음성 지표</SectionLabel>
           </div>
-          <div className="grid grid-cols-4 gap-3">
+          {/* 3열 두 줄 — 핸드오프 §10의 배치입니다. 값만 두지 않고 권장 범위와
+              판정을 함께 보여줘야 숫자가 좋은지 나쁜지 읽힙니다.
+
+              범위는 일반 대화의 관찰값보다 조금 좁게 잡았습니다. 면접은 평소
+              대화보다 또렷해야 하는 자리라서입니다. 근거는 카드마다 아래 주석에
+              적었습니다 — 지어낸 숫자가 아니어야 판정을 신뢰할 수 있습니다. */}
+          <div className="grid grid-cols-3 gap-3">
+            {/* 한국어 뉴스 아나운서가 353~357 음절/분(말소리와 음성과학).
+                또렷하게 들리는 상한이 그쯤이라 360을 위로 두고, 아래는 그보다
+                한참 느리면 답답하게 들리는 선에서 280으로 잡았습니다. */}
             <Metric
               label="말하기 속도"
               value={Math.round(voice.syllablesPerMinute)}
               unit="음절/분"
-              note="280~340이 듣기 편한 범위"
+              low={280}
+              high={360}
+              range="280~360 권장"
             />
+            {/* 면접 코칭의 통념(1~2분)보다 아래를 넉넉히 열었습니다. 30초면
+                근거를 갖춘 답을 할 수 있고, 90초를 넘으면 듣는 쪽이 놓칩니다. */}
             <Metric
               label="답변 길이"
-              value={voice.meanAnswerS.toFixed(1)}
+              value={Math.round(voice.meanAnswerS)}
               unit="초 평균"
-              note={`답변 ${voice.answers.length}개 기준`}
+              low={30}
+              high={90}
+              range="30~90초 권장"
             />
+            {/* 보통 화자가 분당 5회, 이상적으로는 1회라고 봅니다(Quantified
+                Communications). 그 사이에서 조금 빡빡하게 3회로 잡았습니다. */}
+            <Metric
+              label="필러 워드"
+              value={
+                voice.spokenS > 0
+                  ? Math.round((coaching.fillers / voice.spokenS) * 60 * 10) / 10
+                  : 0
+              }
+              unit="회/분"
+              high={3}
+              range="분당 3회 이하 권장"
+            />
+            {/* 일상 대화는 0.2초 안에 답하고 0.7초를 넘으면 머뭇거림으로 읽힙니다
+                (Stivers et al., PNAS 2009). 면접은 생각할 시간이 필요한 자리라
+                그 기준을 그대로 쓰지 않고 3초로 넉넉히 뒀습니다. */}
+            <Metric
+              label="답변까지"
+              value={voice.meanStartDelayS === null ? null : Math.round(voice.meanStartDelayS * 10) / 10}
+              unit="초"
+              high={3}
+              range="3초 이내 권장"
+            />
+            {/* 자연스러운 발화에서 침묵이 23.9~31.9%로 보고됩니다(Journal of
+                Psycholinguistic Research). 면접은 준비된 답이라 그보다 조금
+                아래인 25%를 선으로 뒀습니다. */}
             <Metric
               label="답변 중 멈춤"
               value={Math.round(voice.pauseRatio * 100)}
               unit="%"
-              note="0.35초 이상 끊긴 시간"
+              high={25}
+              range="25% 이하 권장"
             />
+            {/* 이 값만 외부 근거가 없습니다. 우리 녹음에서 관찰한 범위로 잠정
+                선을 뒀습니다 — 면접이 쌓이면 분포를 보고 다시 정합니다. */}
             <Metric
               label="목소리 흔들림"
-              value={voice.loudnessVariation.toFixed(2)}
+              value={Math.round(voice.loudnessVariation * 100) / 100}
               unit=""
-              note="0에 가까울수록 고름"
+              high={0.45}
+              range="0.45 이하 권장"
             />
           </div>
         </section>
@@ -212,11 +257,15 @@ function ReportBody({
                           <p className="m-0 text-[13.5px] leading-[1.85] text-body-2">
                             {span.text}
                           </p>
-                          {span.pauses > 0 && (
-                            <span className="text-[11.5px] text-faintest">
-                              말이 {span.pauses}번 끊겼습니다
-                            </span>
-                          )}
+                          <span className="text-[11.5px] text-faintest">
+                            {[
+                              span.pauses > 0 && `말이 ${span.pauses}번 끊겼습니다`,
+                              answer.fillers.length > 0 &&
+                                `필러 워드 ${answer.fillers.join(' · ')}`,
+                            ]
+                              .filter(Boolean)
+                              .join('  ·  ')}
+                          </span>
                         </div>
                       </>
                     )}
@@ -271,17 +320,51 @@ function ReportBody({
   )
 }
 
+/**
+ * 지표 카드 하나.
+ *
+ * 숫자만 두면 좋은지 나쁜지 읽히지 않습니다. 권장 범위를 함께 보여주고,
+ * 그 범위 안이면 초록·밖이면 강조색으로 판정을 답니다. 막대는 범위 대비
+ * 위치라 한눈에 어느 쪽으로 벗어났는지 보입니다.
+ *
+ * 잴 수 없는 값(`value === null`)은 판정하지 않습니다 — 0으로 채우면
+ * "바로 대답했다"는 거짓말이 됩니다.
+ */
 function Metric({
   label,
   value,
   unit,
-  note,
+  low,
+  high,
+  range,
 }: {
   label: string
-  value: string | number
+  value: number | null
   unit: string
-  note: string
+  low?: number
+  high?: number
+  range: string
 }) {
+  if (value === null) {
+    return (
+      <div className="flex flex-col gap-[7px] rounded-card border border-line bg-surface p-4">
+        <span className="text-[12.5px] text-muted">{label}</span>
+        <span className="num text-[23px] font-bold tracking-[-.03em] text-faintest">—</span>
+        <div className="bg-line-3" style={{ height: 3 }} />
+        <span className="text-[11.5px] text-faintest">이 면접에서는 재지 못했습니다</span>
+      </div>
+    )
+  }
+
+  const tooLow = low !== undefined && value < low
+  const tooHigh = high !== undefined && value > high
+  const ok = !tooLow && !tooHigh
+  const color = ok ? 'var(--color-positive)' : 'var(--color-accent)'
+  const verdict = ok ? '적정' : tooHigh ? '다소 많음' : '다소 적음'
+  // 막대는 권장 상한 대비 위치. 하한만 있는 지표는 상한을 그 두 배로 본다.
+  const ceiling = high ?? (low ?? 1) * 2
+  const filled = Math.min(100, Math.max(4, (value / ceiling) * 100))
+
   return (
     <div className="flex flex-col gap-[7px] rounded-card border border-line bg-surface p-4">
       <span className="text-[12.5px] text-muted">{label}</span>
@@ -289,7 +372,15 @@ function Metric({
         <span className="num text-[23px] font-bold tracking-[-.03em]">{value}</span>
         {unit && <span className="text-[12px] text-faint">{unit}</span>}
       </div>
-      <span className="text-[11.5px] leading-[1.5] text-faintest">{note}</span>
+      <div className="bg-line-3" style={{ height: 3 }}>
+        <div className="h-full" style={{ width: `${filled}%`, background: color }} />
+      </div>
+      <div className="flex items-center gap-[6px]">
+        <span className="text-[11.5px] font-semibold" style={{ color }}>
+          {verdict}
+        </span>
+        <span className="text-[11.5px] text-faintest">{range}</span>
+      </div>
     </div>
   )
 }
