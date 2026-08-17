@@ -4,6 +4,7 @@
   GET /api/interviews/{id}        — 리포트를 포함한 면접 하나
   PUT /api/interviews/{id}/report — 검토로 고친 리포트 저장 + 질문 재생성
   GET /api/interviews/{id}/feedback — 면접이 끝난 뒤의 피드백 (없으면 상태만)
+  GET /api/interviews/{id}/audio    — 지원자 음성 (답변마다 다시 듣기)
 
 프론트가 자기 메모리에 카드를 들고 있으면 새로고침에 사라지고, 준비 데이터가
 없는 면접을 시작하려다 브리지에서 거절당한다. 목록의 진실은 파일 저장소다 —
@@ -19,6 +20,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from .preparation import InterviewPreparation
@@ -65,6 +67,9 @@ def create_interviews_router(
                     # 질문 풀까지 있어야 면접을 시작할 수 있다 — 브리지가 그것으로
                     # 시작 가능 여부를 판정하므로 화면도 같은 기준을 쓴다.
                     "ready": data.questions is not None,
+                    # 면접을 마쳐 피드백이 있으면 점수. 없으면 null.
+                    # 이게 없으면 홈에서 리포트로 돌아갈 길이 없다.
+                    "score": (data.feedback or {}).get("coaching", {}).get("score"),
                     "savedAt": store.saved_at(interview_id),
                 }
             )
@@ -116,5 +121,18 @@ def create_interviews_router(
         if status.feedback is not None:
             payload["feedback"] = status.feedback
         return payload
+
+    @router.get("/{interview_id}/audio")
+    def get_audio(interview_id: str) -> FileResponse:
+        """면접에서 녹음된 지원자 음성.
+
+        리포트가 답변마다 구간을 지정해 재생한다. FileResponse가 Range 요청을
+        받아 주므로 20분짜리를 통째로 내려받지 않고 그 구간만 가져간다
+        (starlette/responses.py FileResponse — accept-ranges: bytes).
+        """
+        path = store.directory(interview_id) / "mic.wav"
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="녹음이 없습니다")
+        return FileResponse(path, media_type="audio/wav")
 
     return router
