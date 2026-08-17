@@ -1,30 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { getPreparationStatus } from '@/api/preparation'
+import { getFeedback, getPreparationStatus } from '@/api/preparation'
 import { useActiveCard } from '@/store/app'
-
-/**
- * §타이머와 인터벌 — 프로토타입의 속도는 시연용입니다.
- * 실제로는 서버 작업 진행률로 대체됩니다.
- */
-function useProgress(stepMs: number, stepPct: number, onDone: () => void) {
-  const [pct, setPct] = useState(0)
-  useEffect(() => {
-    const id = setInterval(() => {
-      setPct((p) => {
-        const next = Math.min(100, p + stepPct)
-        if (next >= 100) {
-          clearInterval(id)
-          setTimeout(onDone, 250)
-        }
-        return next
-      })
-    }, stepMs)
-    // 화면을 벗어날 때 모든 인터벌을 정리해야 합니다
-    return () => clearInterval(id)
-  }, [stepMs, stepPct, onDone])
-  return pct
-}
 
 /**
  * README §7. 질문 재생성 — 검토에서 리포트를 고쳤을 때만 거칩니다. 헤더 숨김.
@@ -89,10 +66,62 @@ export function Regen() {
   )
 }
 
-/** README §9. 분석 중 — 헤더 숨김, 면접 화면과 같은 어두운 배경 */
+/**
+ * README §9. 분석 중 — 헤더 숨김, 면접 화면과 같은 어두운 배경
+ *
+ * 가짜 타이머가 아니라 서버를 기다린다. 지표 계산은 순식간이지만 코칭은 Grok
+ * 호출이라 수십 초 걸린다. 타이머로 넘기면 아직 없는 리포트를 열게 된다.
+ */
 export function Analyzing() {
   const nav = useNavigate()
-  const pct = useProgress(70, 4, () => nav('/report'))
+  const card = useActiveCard()
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    const timer = setInterval(async () => {
+      try {
+        const status = await getFeedback(card.id)
+        if (!alive) return
+        if (status.status === 'done') {
+          clearInterval(timer)
+          nav('/report')
+        } else if (status.status === 'failed' || status.status === 'absent') {
+          // absent는 면접이 아무것도 남기지 않았다는 뜻이다. 둘 다 기다려서
+          // 해결되지 않으므로 화면을 붙잡고 있지 않는다.
+          clearInterval(timer)
+          setFailed(true)
+        }
+      } catch {
+        // 서버가 없으면(프론트 단독 실행) 목업 리포트라도 보여준다.
+        clearInterval(timer)
+        if (alive) nav('/report')
+      }
+    }, 1500)
+    return () => {
+      alive = false
+      clearInterval(timer)
+    }
+  }, [card.id, nav])
+
+  if (failed) {
+    return (
+      <div className="fixed inset-0 z-60 flex flex-col items-center justify-center gap-[18px] bg-stage">
+        <h1 className="m-0 text-[19px] font-semibold text-stage-ink-2">
+          분석 결과를 만들지 못했습니다
+        </h1>
+        <p className="m-0 text-[13.5px] text-stage-muted">
+          녹음과 전사는 남아 있습니다. 다시 시도하려면 면접을 한 번 더 진행해 주세요.
+        </p>
+        <button
+          onClick={() => nav('/')}
+          className="mt-2 rounded-control border border-stage-line px-5 py-[10px] text-[13.5px] font-semibold text-stage-ink-2"
+        >
+          내 면접으로
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className="fixed inset-0 z-60 flex flex-col items-center justify-center gap-[18px] bg-stage">
@@ -108,9 +137,11 @@ export function Analyzing() {
       <h1 className="m-0 text-[19px] font-semibold text-stage-ink-2">
         면접이 끝났습니다. 수고하셨습니다
       </h1>
-      <p className="m-0 text-[13.5px] text-stage-muted">답변을 분석하고 있습니다 · 약 1분</p>
-      <div className="bg-stage-line-2" style={{ width: 240, height: 2.5 }}>
-        <div className="h-full bg-accent" style={{ width: `${pct}%`, transition: 'width .3s ease' }} />
+      {/* 진행률을 만들지 않는다. 코칭이 언제 끝날지 서버도 모른다 — 끝나면
+          바로 넘어가므로 막대가 차오르는 그림은 약속만 하고 못 지킨다. */}
+      <p className="m-0 text-[13.5px] text-stage-muted">답변을 분석하고 있습니다</p>
+      <div className="overflow-hidden bg-stage-line-2" style={{ width: 240, height: 2.5 }}>
+        <div className="animate-dm-slide h-full bg-accent" style={{ width: '25%' }} />
       </div>
     </div>
   )
