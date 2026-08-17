@@ -79,27 +79,6 @@ function Step1() {
           <Label>직무</Label>
           <TextField value={role} onChange={(e) => setRole(e.target.value)} placeholder="예) 서비스기획" />
         </div>
-        <div className="flex flex-col gap-[7px]">
-          <div className="flex items-center gap-[6px]">
-            <Label>채용공고 링크</Label>
-            <span className="text-[12px] text-faint">선택</span>
-          </div>
-          <TextField placeholder="https://" />
-        </div>
-        <div className="flex flex-col gap-[7px]">
-          <div className="flex items-center gap-[6px]">
-            <Label>직무 소개서 (JD)</Label>
-            <span className="text-[12px] text-faint">선택 · 있으면 질문이 더 정확해집니다</span>
-          </div>
-          <div className="flex items-center gap-[10px] rounded-control border border-dashed border-field bg-surface p-[18px]">
-            <span className="text-[13px] text-muted">파일을 끌어다 놓거나</span>
-            <button className="rounded-control border border-field bg-surface-2 px-3 py-[6px] text-[12.5px]">
-              파일 선택
-            </button>
-            <div className="flex-1" />
-            <button className="border-b border-field text-[12.5px] text-muted">직접 붙여넣기</button>
-          </div>
-        </div>
       </div>
 
       <div className="mt-8 flex">
