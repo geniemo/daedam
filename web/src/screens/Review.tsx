@@ -97,7 +97,11 @@ export function Review() {
         </aside>
 
         {/* 우측 문서 */}
-        <article className="flex-1 rounded-card border border-line bg-surface px-10 py-9">
+        {/* min-w-0가 없으면 안 됩니다: flex 항목의 기본 min-width는 auto라
+            내용의 min-content 폭 아래로 안 줄어듭니다. 편집란이
+            field-sizing:content라 그 폭이 본문 길이만큼 부풀고, 문서가 통째로
+            가로 스크롤이 됩니다(실측 1180px 컨테이너에 article 1458px). */}
+        <article className="min-w-0 flex-1 rounded-card border border-line bg-surface px-10 py-9">
           <h1 className="mt-[6px] mb-[8px] text-[23px] leading-[1.4] font-bold tracking-[-.03em]">
             {card.company} 면접 준비 리서치
           </h1>
