@@ -5,7 +5,17 @@ import type { ApplicationPart, DocSection, UncertainRef } from '@/data/types'
 
 export interface PreparationStatus {
   status: 'running' | 'done' | 'failed'
-  pct: number
+  /**
+   * 0~100. **null일 수 있다.** Deep Research는 진행률을 주지 않으므로 live에서는
+   * 서버도 모른다. 그때 화면은 막대 대신 단계와 경과 시간을 보여준다.
+   */
+  pct: number | null
+  /** 리서치가 지금까지 실제로 한 조사. 오래된 것부터. 없으면 빈 배열. */
+  activity?: string[]
+  /** 관측된 현재 단계 — 스텝 종류에서 나온다. */
+  phase?: string
+  /** 시작 후 경과 초. */
+  elapsedS?: number
   report?: DocSection[]
   uncertain?: UncertainRef[]
 }
@@ -22,11 +32,13 @@ export async function startPreparation(
   company: string,
   role: string,
   parts: ApplicationPart[],
+  /** 채용공고 링크 또는 본문. 서버가 파싱 없이 리서치 프롬프트에 그대로 싣는다. */
+  posting = '',
 ): Promise<string> {
   const res = await fetch('/api/preparation', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ company, role, application: toServerParts(parts) }),
+    body: JSON.stringify({ company, role, application: toServerParts(parts), posting }),
   })
   if (!res.ok) throw new Error(`리서치 시작 실패: ${res.status}`)
   const data = (await res.json()) as { task_id: string }

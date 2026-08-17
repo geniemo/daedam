@@ -81,6 +81,20 @@ export function ProgressBar({
   )
 }
 
+/**
+ * 총량을 모르는 작업용 막대. 채움 비율 대신 조각이 지나간다.
+ *
+ * ProgressBar와 굵기·색이 같아 화면에서 같은 자리를 차지하지만, 약속하는 것이
+ * 다르다 — 이건 "얼마나 남았다"가 아니라 "아직 돌고 있다"만 말한다.
+ */
+export function IndeterminateBar({ height = 3 }: { height?: number }) {
+  return (
+    <div className="w-full overflow-hidden bg-hair-2" style={{ height }}>
+      <div className="animate-dm-slide h-full bg-accent" style={{ width: '25%' }} />
+    </div>
+  )
+}
+
 /** 강조 점 + 라벨 — "면접 준비 완료" 등 */
 export function AccentDot({ size = 5 }: { size?: number }) {
   return (
@@ -140,11 +154,19 @@ export function TextField(props: InputHTMLAttributes<HTMLInputElement>) {
   )
 }
 
+/**
+ * 여러 줄 입력란. 내용만큼 세로로 자란다.
+ *
+ * 지원서 항목 본문이 200자를 넘는 일이 흔한데 고정 높이면 좁은 창으로 긴 글을
+ * 스크롤하며 쓰게 된다. field-sizing:content가 내용에 맞춰 늘리고, min-h가
+ * 빈 칸일 때의 바닥이 된다. resize-y는 남겨 둔다 — 사용자가 더 줄이거나
+ * 늘리고 싶을 때가 있다.
+ */
 export function TextArea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
       {...props}
-      className={`min-h-[96px] resize-y rounded-control border border-field-2 bg-surface px-[11px] py-[10px] text-[13.5px] leading-[1.65] ${props.className ?? ''}`}
+      className={`min-h-[140px] resize-y rounded-control border border-field-2 bg-surface px-[11px] py-[10px] text-[13.5px] leading-[1.65] [field-sizing:content] ${props.className ?? ''}`}
     />
   )
 }

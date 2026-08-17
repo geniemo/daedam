@@ -79,6 +79,9 @@
   --animate-dm-fade: dm-fade 0.3s ease;
   --animate-dm-fade-slow: dm-fade 0.4s ease;
   --animate-dm-grow: dm-grow 0.7s ease;
+  /* 총량을 모르는 작업용 막대. Deep Research는 진행률을 주지 않아 채움 비율로
+     약속할 수 있는 것이 없다 — 살아 있다는 것만 보여준다. */
+  --animate-dm-slide: dm-slide 1.6s ease-in-out infinite;
 
   @keyframes dm-pulse {
     0%,
@@ -138,6 +141,14 @@
   @keyframes dm-grow {
     from {
       width: 0;
+    }
+  }
+  @keyframes dm-slide {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(300%);
     }
   }
 }

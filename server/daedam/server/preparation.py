@@ -4,13 +4,14 @@
 전진과 무관한 순수 조회라, 사용자가 창을 닫아도 준비는 서버에서 계속된다 —
 진행 화면의 안내 문구가 여기서 참이 된다.
 
-pct 배분: 리서치 0~90(서비스 pct의 0.9배), 질문 생성 95, 완료 100. 화면
-진행 단계의 마지막 칸(질문 준비)이 실제 생성 구간과 일치한다.
+pct는 백엔드가 진행률을 아는 경우에만 흐른다. fixture는 총 소요 시간을 알아
+0~90(서비스 pct의 0.9배) → 95 → 100으로 가지만, live는 Deep Research가
+진행률을 주지 않아 끝까지 None이다 — 그때 화면은 단계와 경과 시간만 보여준다.
 
 완료의 증거는 메모리가 아니라 파일 저장소다 — 서버가 재시작돼도 저장된
 면접은 done으로 복원되고, 생성 도중 끊겼다면 부팅 복원이 생성만 이어서
-한다. 진행 중이던 리서치 자체는 재시작을 넘지 못한다(후속: live의
-interaction id를 저장해 워커 재기동).
+한다. 진행 중이던 리서치도 넘어간다: live 백엔드가 인터랙션 id를 파일에
+남기므로, 부팅 복원이 그 작업을 이어받아 끝까지 기다린다.
 """
 
 from __future__ import annotations
@@ -30,13 +31,27 @@ from .store import FileInterviewStore, InterviewData
 
 logger = logging.getLogger(__name__)
 
+#: 연속 조회 실패를 몇 번까지 견디는가. live 폴링 간격이 30초이므로 10번이면
+#: 5분이다 — 그보다 오래 응답이 없으면 일시적인 문제가 아니다.
+_POLL_STRIKES = 10
+
 
 @dataclass
 class _PipelineState:
     """워커가 갱신하고 status()가 읽기만 하는 진행 기록."""
 
     phase: Literal["researching", "generating", "failed"]
-    pct: int
+    #: 리서치 백엔드가 진행률을 아는 경우에만 숫자. live는 모른다(None).
+    pct: int | None
+    #: 리서치가 지금까지 실제로 한 조사. 워커가 폴링하면서 갱신한다.
+    activity: tuple[str, ...] = ()
+    #: 관측된 현재 단계.
+    label: str = ""
+    #: 워커가 마지막으로 받은 경과 초와, 그것을 받은 벽시계 시각. 워커는
+    #: live에서 30초에 한 번만 도는데 화면은 1초마다 물어본다. 받은 값을 그대로
+    #: 돌려주면 시계가 30초씩 튀므로, 읽을 때 그동안 흐른 시간을 더해 준다.
+    elapsed_s: float = 0.0
+    elapsed_at: float = 0.0
 
 
 class InterviewPreparation:
@@ -65,9 +80,15 @@ class InterviewPreparation:
         self._recover()
 
     def start(
-        self, company: str, role: str, application: list[dict[str, Any]]
+        self,
+        company: str,
+        role: str,
+        application: list[dict[str, Any]],
+        posting: str = "",
     ) -> str:
-        task_id = self._research.start(company, role, application)
+        # posting은 여기서만 쓰인다 — 리서치 프롬프트에 실려 나가고, 이후
+        # 재개·재생성 경로는 이미 만들어진 인터랙션을 따라가므로 필요 없다.
+        task_id = self._research.start(company, role, application, posting)
         # 등록되는 순간 파일에 남긴다. 리서치가 끝나야 저장하면 그동안 홈 목록에
         # 이 면접이 없어서, 방금 등록한 카드가 새로고침에 사라진다. 리포트는
         # 아직 비어 있고, 그 비어 있음이 "리서치 진행 중"의 표시다.
@@ -79,7 +100,13 @@ class InterviewPreparation:
             report=[],
             uncertain=[],
         )
-        self._states[task_id] = _PipelineState(phase="researching", pct=0)
+        # pct=None으로 시작한다. live는 첫 폴링이 30초 뒤라, 0으로 두면 그동안
+        # 화면에 0%가 떠 있는다 — 백엔드가 진행률을 아는지도 모르는 시점이다.
+        # elapsed_at을 지금으로 잡아 둔다. live는 첫 폴링이 30초 뒤라, 비워
+        # 두면 그동안 화면의 경과 시간이 0에 멈춰 있는다.
+        self._states[task_id] = _PipelineState(
+            phase="researching", pct=None, elapsed_at=time.time()
+        )
         # 이 면접 전담 워커 — 브라우저가 닫혀도 파이프라인은 여기서 완주한다.
         threading.Thread(
             target=self._run_pipeline,
@@ -100,7 +127,9 @@ class InterviewPreparation:
         data = self._store.load(interview_id)
         if data is None or not data.report:
             return False
-        self._states[interview_id] = _PipelineState(phase="generating", pct=95)
+        self._states[interview_id] = _PipelineState(
+            phase="generating", pct=None, label="질문 뽑는 중"
+        )
         threading.Thread(
             target=self._recover_generation, args=(interview_id, data), daemon=True
         ).start()
@@ -122,7 +151,17 @@ class InterviewPreparation:
             return ResearchStatus(state="failed", pct=0) if stored else None
         if state.phase == "failed":
             return ResearchStatus(state="failed", pct=0)
-        return ResearchStatus(state="running", pct=state.pct)
+        return ResearchStatus(
+            state="running",
+            pct=state.pct,
+            activity=state.activity,
+            phase=state.label,
+            elapsed_s=(
+                state.elapsed_s + (time.time() - state.elapsed_at)
+                if state.elapsed_at
+                else state.elapsed_s
+            ),
+        )
 
     def _run_pipeline(
         self,
@@ -134,14 +173,41 @@ class InterviewPreparation:
         state = self._states[task_id]
         try:
             # ① 리서치 완주 대기. 프론트의 1초 폴링과 무관하게 자기 속도로 묻는다.
+            strikes = 0
             while True:
-                research = self._research.status(task_id)
+                try:
+                    research = self._research.status(task_id)
+                except Exception:
+                    # 진행 중 조회는 이따금 400/403을 낸다(실측: 20~60분짜리
+                    # 작업에서 한 번). 그 한 번을 리서치 실패로 단정하면 이미
+                    # 돌고 있는 유료 작업을 버리게 된다 — 실제로 그렇게 버렸다.
+                    # 작업은 서버가 잡고 있으므로 우리가 다시 물어보면 된다.
+                    strikes += 1
+                    logger.warning(
+                        "리서치 조회 실패 %d/%d (interview=%s) — 다시 시도합니다",
+                        strikes,
+                        _POLL_STRIKES,
+                        task_id,
+                        exc_info=True,
+                    )
+                    if strikes >= _POLL_STRIKES:
+                        raise
+                    time.sleep(self._poll_interval_s)
+                    continue
+                strikes = 0
+
                 if research is None or research.state == "failed":
                     state.phase = "failed"
                     return
                 if research.state == "done":
                     break
-                state.pct = int(research.pct * 0.9)
+                # 리서치 구간을 0~90에 배정한다. 백엔드가 진행률을 모르면
+                # (live) 우리도 모른다 — 지어내지 않고 None을 그대로 통과시킨다.
+                state.pct = None if research.pct is None else int(research.pct * 0.9)
+                state.activity = research.activity
+                state.label = research.phase
+                state.elapsed_s = research.elapsed_s
+                state.elapsed_at = time.time()
                 time.sleep(self._poll_interval_s)
 
             # ② 산출물 저장 — 이 순간부터 서버가 죽어도 리서치를 잃지 않는다.
@@ -162,7 +228,12 @@ class InterviewPreparation:
 
     def _run_generation(self, task_id: str, data: InterviewData) -> None:
         state = self._states[task_id]
-        state.phase, state.pct = "generating", 95
+        state.phase = "generating"
+        # 퍼센트는 백엔드가 알 때만 쓴다. live는 리서치 진행률을 모르는데
+        # 생성 단계에서만 95%를 띄우면 그 숫자가 어디서 왔는지 알 수 없다.
+        state.pct = None if state.pct is None else 95
+        state.label = "질문 뽑는 중"
+        state.activity = state.activity + ("리서치를 마쳤습니다. 질문을 뽑고 있습니다",)
         questions = self._generate(
             company=data.company,
             role=data.role,
@@ -173,17 +244,47 @@ class InterviewPreparation:
         del self._states[task_id]  # 완료 — 이제부터 파일이 진실을 말한다
 
     def _recover(self) -> None:
-        """저장은 됐는데 질문이 없는 면접 — 재시작으로 끊긴 생성을 이어서 한다.
+        """저장은 됐는데 질문이 없는 면접 — 재시작으로 끊긴 준비를 이어서 한다.
 
-        리포트가 비어 있으면 리서치가 끝나기 전에 재시작된 것이다. 그 상태로
-        질문을 만들면 근거 없는 질문 풀이 나오므로 건드리지 않는다 — 그 면접은
-        홈 목록에 준비 중으로 남고, 리서치 자체는 재시작을 넘지 못한다.
+        두 갈래다. 리포트가 있으면 질문 생성만 남은 것이고, 비어 있으면 리서치가
+        끝나기 전에 재시작된 것이다. 후자는 리서치 백엔드가 그 작업을 아직
+        아는지에 달렸다 — live 백엔드는 인터랙션 id를 파일에 남기므로 이어서
+        기다릴 수 있고, 모르면(fixture·기록 없음) 손대지 않는다. 리포트 없이
+        질문을 만들면 근거 없는 질문 풀이 나온다.
         """
         for interview_id in self._store.list_ids():
             data = self._store.load(interview_id)
-            if data is None or data.questions is not None or not data.report:
+            if data is None or data.questions is not None:
                 continue
-            self._states[interview_id] = _PipelineState(phase="generating", pct=95)
+
+            if not data.report:
+                # 기동 중이라 여기서 터지면 서버가 아예 안 뜬다. 조회가 실패하면
+                # 이번 기동에서는 이어받지 않고 넘어간다 — 기록은 파일에 남아
+                # 있으므로 다음 기동에서 다시 시도한다.
+                try:
+                    running = self._research.status(interview_id)
+                except Exception:
+                    logger.exception(
+                        "끊긴 리서치 상태를 확인하지 못했습니다 (interview=%s)",
+                        interview_id,
+                    )
+                    continue
+                if running is None:
+                    continue
+                logger.info("끊긴 리서치를 이어받습니다 (interview=%s)", interview_id)
+                self._states[interview_id] = _PipelineState(
+                    phase="researching", pct=None, elapsed_at=time.time()
+                )
+                threading.Thread(
+                    target=self._run_pipeline,
+                    args=(interview_id, data.company, data.role, data.application),
+                    daemon=True,
+                ).start()
+                continue
+
+            self._states[interview_id] = _PipelineState(
+                phase="generating", pct=None, label="질문 뽑는 중"
+            )
             threading.Thread(
                 target=self._recover_generation, args=(interview_id, data), daemon=True
             ).start()

@@ -22,6 +22,8 @@ class PreparationRequest(BaseModel):
     company: str
     role: str
     application: list[dict[str, Any]] = Field(default_factory=list)
+    #: 채용공고 링크 또는 본문. 파싱하지 않고 리서치 프롬프트에 그대로 실린다.
+    posting: str = ""
 
 
 def create_preparation_router(preparation: InterviewPreparation) -> APIRouter:
@@ -38,7 +40,7 @@ def create_preparation_router(preparation: InterviewPreparation) -> APIRouter:
     @router.post("", status_code=202)
     def start_preparation(request: PreparationRequest) -> dict[str, str]:
         task_id = preparation.start(
-            request.company, request.role, request.application
+            request.company, request.role, request.application, request.posting
         )
         return {"task_id": task_id}
 
@@ -47,7 +49,17 @@ def create_preparation_router(preparation: InterviewPreparation) -> APIRouter:
         status = preparation.status(task_id)
         if status is None:
             raise HTTPException(status_code=404, detail="리서치 작업이 없습니다")
-        payload: dict[str, Any] = {"status": status.state, "pct": status.pct}
+        payload: dict[str, Any] = {
+            "status": status.state,
+            # null일 수 있다 — Deep Research는 진행률을 주지 않는다. 그때 화면은
+            # 막대 대신 단계와 경과 시간을 보여준다.
+            "pct": status.pct,
+            # 진행 화면이 그리는 조사 목록. 빈 목록이면 화면은 아무 단계도
+            # 지어내지 않고 "리서치를 시작하고 있습니다"만 둔다.
+            "activity": list(status.activity),
+            "phase": status.phase,
+            "elapsedS": status.elapsed_s,
+        }
         if status.report is not None:
             payload["report"] = status.report
             payload["uncertain"] = status.uncertain or []
