@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { startPreparation } from '@/api/preparation'
-import { FALLBACK_COMPANY, FALLBACK_ROLE, useAppStore } from '@/store/app'
+import { useAppStore } from '@/store/app'
 import { Label, TextArea, TextField } from '@/components/ui'
 
 /** README §2·§3. 등록 STEP 1·2 */
@@ -56,7 +56,10 @@ function StepHeading({ step, title, desc }: { step: number; title: string; desc:
 
 function Step1() {
   const nav = useNavigate()
-  const { company, role, setCompany, setRole } = useAppStore()
+  const { company, role, posting, setCompany, setRole, setPosting } = useAppStore()
+  // 회사명과 직무는 리서치 프롬프트의 첫 줄이 됩니다. 비어 있으면 조사할
+  // 대상이 없는데, live에서 등록은 20~60분짜리 유료 작업입니다.
+  const ready = company.trim() !== '' && role.trim() !== ''
 
   return (
     <main className="mx-auto max-w-(--container-reg1) px-8 pb-20 animate-dm-fade">
@@ -79,26 +82,20 @@ function Step1() {
           <Label>직무</Label>
           <TextField value={role} onChange={(e) => setRole(e.target.value)} placeholder="예) 서비스기획" />
         </div>
+        {/* 파싱하지 않고 리서치 프롬프트에 그대로 실립니다. 링크면 조사
+            에이전트가 열어 보고, 본문이면 본문대로 읽습니다. 비워 두면
+            에이전트가 직접 공고를 찾는데, 유사 직무 공고가 여럿인 회사에서는
+            다른 공고의 요구역량으로 질문이 만들어집니다. */}
         <div className="flex flex-col gap-[7px]">
           <div className="flex items-center gap-[6px]">
-            <Label>채용공고 링크</Label>
-            <span className="text-[12px] text-faint">선택</span>
+            <Label>채용공고</Label>
+            <span className="text-[12px] text-faint">선택 · 링크 또는 내용을 붙여넣기</span>
           </div>
-          <TextField placeholder="https://" />
-        </div>
-        <div className="flex flex-col gap-[7px]">
-          <div className="flex items-center gap-[6px]">
-            <Label>직무 소개서 (JD)</Label>
-            <span className="text-[12px] text-faint">선택 · 있으면 질문이 더 정확해집니다</span>
-          </div>
-          <div className="flex items-center gap-[10px] rounded-control border border-dashed border-field bg-surface p-[18px]">
-            <span className="text-[13px] text-muted">파일을 끌어다 놓거나</span>
-            <button className="rounded-control border border-field bg-surface-2 px-3 py-[6px] text-[12.5px]">
-              파일 선택
-            </button>
-            <div className="flex-1" />
-            <button className="border-b border-field text-[12.5px] text-muted">직접 붙여넣기</button>
-          </div>
+          <TextArea
+            value={posting}
+            onChange={(e) => setPosting(e.target.value)}
+            placeholder="https://... 또는 공고 내용을 그대로 붙여넣어 주세요"
+          />
         </div>
       </div>
 
@@ -106,7 +103,10 @@ function Step1() {
         <div className="flex-1" />
         <button
           onClick={() => nav('/register/2')}
-          className="rounded-control bg-ink px-[30px] py-[12px] text-[14px] font-semibold text-white"
+          disabled={!ready}
+          className={`rounded-control px-[30px] py-[12px] text-[14px] font-semibold ${
+            ready ? 'bg-ink text-white' : 'bg-field-2 text-faint'
+          }`}
         >
           다음
         </button>
@@ -115,11 +115,53 @@ function Step1() {
   )
 }
 
+/**
+ * 이름 옆에 붙는 연필. 이름은 클릭해야 고칠 수 있다는 것을 알리는 표시라,
+ * 평소엔 흐리게 두고 그 줄에 마우스를 올리면 진해진다.
+ */
+function PencilMark() {
+  return (
+    <svg
+      viewBox="0 0 12 12"
+      aria-hidden
+      className="shrink-0 text-faintest transition-colors group-hover:text-muted"
+      style={{ width: 11, height: 11 }}
+    >
+      <path
+        d="M8.2 1.3 10.7 3.8 4.3 10.2 1.3 10.7 1.8 7.7z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 function Step2() {
   const nav = useNavigate()
-  const { company, role, parts, setParts, submitRegister } = useAppStore()
+  const { company, role, posting, parts, setParts, submitRegister } = useAppStore()
   const [openPart, setOpenPart] = useState(0)
-  const [openItem, setOpenItem] = useState(0)
+  // 어느 파트의 몇 번째 항목이 열렸는지. 인덱스만 들고 있으면 A파트의 첫
+  // 항목을 열 때 B파트의 첫 항목도 같이 열린다.
+  const [openItem, setOpenItem] = useState('0-0')
+
+  /**
+   * 방금 만든 입력란으로 커서를 옮기기 위한 표시.
+   *
+   * 추가 버튼을 누른 뒤 사용자가 다시 펼치고 눌러야 입력이 시작되는 것이
+   * 불편하다는 피드백에서 나왔다. 요소가 마운트될 때 이 표시와 맞으면 스스로
+   * 포커스를 가져가고 표시를 지운다.
+   */
+  const [focusOn, setFocusOn] = useState<string | null>(null)
+  // 삭제를 물어보는 중인 파트. 지원서는 다시 쓰기 번거로워 되돌릴 수단이 없다.
+  const [confirmPart, setConfirmPart] = useState<number | null>(null)
+  const takeFocus = (key: string) => (el: HTMLInputElement | null) => {
+    if (!el || focusOn !== key) return
+    el.focus()
+    el.select()
+    setFocusOn(null)
+  }
 
   const updateItem = (pi: number, ii: number, body: string) =>
     setParts(
@@ -144,14 +186,26 @@ function Step2() {
       ),
     )
 
-  const addItem = (pi: number) =>
+  const addItem = (pi: number) => {
+    const added = parts[pi].items.length
     setParts(
       parts.map((p, i) =>
         i !== pi
           ? p
-          : { ...p, items: [...p.items, { title: `${p.name} ${p.items.length + 1}`, body: '', len: '작성 필요' }] },
+          : { ...p, items: [...p.items, { title: `${p.name} ${added + 1}`, body: '', len: '작성 필요' }] },
       ),
     )
+    // 펼치고 커서까지 옮겨 준다 — 누른 사람은 바로 이름을 고칠 참이다.
+    setOpenItem(`${pi}-${added}`)
+    setFocusOn(`item-${pi}-${added}`)
+  }
+
+  const addPart = () => {
+    const added = parts.length
+    setParts([...parts, { name: `파트 ${added + 1}`, items: [] }])
+    setOpenPart(added)
+    setFocusOn(`part-${added}`)
+  }
 
   const removeItem = (pi: number, ii: number) =>
     setParts(parts.map((p, i) => (i !== pi ? p : { ...p, items: p.items.filter((_, j) => j !== ii) })))
@@ -183,48 +237,58 @@ function Step2() {
                 onClick={() => setOpenPart(open ? -1 : pi)}
                 className="flex cursor-pointer items-center gap-[9px] border-b border-hair px-[18px] py-[15px]"
               >
-                {/* 이름 입력란과 삭제는 아코디언 토글을 타지 않는다 */}
-                <input
-                  value={part.name}
-                  onChange={(e) => renamePart(pi, e.target.value)}
+                {/* 이름 입력란과 삭제는 아코디언 토글을 타지 않는다.
+                    점선 밑줄과 연필이 "고칠 수 있다"를 알린다 — 평범한 글자로
+                    두면 눌러볼 생각 자체를 안 한다. */}
+                {/* min-w-0가 없으면 field-sizing:content가 내용만큼 자라며
+                    행 밖으로 밀고 나간다 — 긴 이름이 카드를 뚫는다. */}
+                <label
+                  className="group flex min-w-0 items-center gap-[5px]"
                   onClick={(e) => e.stopPropagation()}
-                  placeholder="파트 이름"
-                  className="min-w-[40px] rounded-chip bg-transparent px-[3px] text-[15px] font-bold outline-none [field-sizing:content] focus:bg-surface-2"
-                />
+                >
+                  <input
+                    ref={takeFocus(`part-${pi}`)}
+                    value={part.name}
+                    onChange={(e) => renamePart(pi, e.target.value)}
+                    placeholder="파트 이름"
+                    className="w-full min-w-[40px] rounded-chip border-b border-dashed border-field bg-transparent px-[3px] text-[15px] font-bold outline-none [field-sizing:content] hover:bg-surface-2 focus:border-solid focus:border-accent focus:bg-surface-2"
+                  />
+                  <PencilMark />
+                </label>
                 <span className="num rounded-chip border border-line px-[6px] py-px text-[11.5px] text-faint">
                   {part.items.length}
                 </span>
                 <div className="flex-1" />
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    removePart(pi)
-                  }}
-                  className="text-[12px] text-faint"
-                >
-                  파트 삭제
-                </button>
+                {/* 파트 삭제는 여기 없다. 접기·펼치기 화살표 바로 옆이라 자꾸
+                    잘못 눌렸다. 펼친 안쪽으로 옮기고 한 번 더 묻는다. */}
                 <span className="text-[12px] text-faintest">{open ? '▲' : '▼'}</span>
               </div>
 
               {open && (
                 <div className="flex flex-col gap-[10px] px-[18px] py-4">
                   {part.items.map((item, ii) => {
-                    const itemOpen = openItem === ii
+                    const itemKey = `${pi}-${ii}`
+                    const itemOpen = openItem === itemKey
                     return (
                       <div key={ii} className="rounded-control border border-line-2 bg-surface-2">
                         {/* 항목 제목은 헤더에만 — 펼쳤을 때 제목 입력란을 두면 같은 문자열이 두 번 보입니다 */}
                         <div
-                          onClick={() => setOpenItem(itemOpen ? -1 : ii)}
+                          onClick={() => setOpenItem(itemOpen ? '' : itemKey)}
                           className="flex cursor-pointer items-center gap-[9px] px-[13px] py-[11px]"
                         >
-                          <input
-                            value={item.title}
-                            onChange={(e) => updateItemTitle(pi, ii, e.target.value)}
+                          <label
+                            className="group flex min-w-0 flex-1 items-center gap-[5px]"
                             onClick={(e) => e.stopPropagation()}
-                            placeholder="항목 이름"
-                            className="min-w-[40px] rounded-chip bg-transparent px-[3px] text-[13px] font-semibold text-body outline-none [field-sizing:content] focus:bg-surface"
-                          />
+                          >
+                            <input
+                              ref={takeFocus(`item-${pi}-${ii}`)}
+                              value={item.title}
+                              onChange={(e) => updateItemTitle(pi, ii, e.target.value)}
+                              placeholder="항목 이름"
+                              className="w-full min-w-[40px] rounded-chip border-b border-dashed border-field bg-transparent px-[3px] text-[13px] font-semibold text-body outline-none [field-sizing:content] hover:bg-surface focus:border-solid focus:border-accent focus:bg-surface"
+                            />
+                            <PencilMark />
+                          </label>
                           <div className="flex-1" />
                           <span className="text-[11.5px] text-faint">
                             {item.body ? item.len : '비어 있음'}
@@ -264,6 +328,39 @@ function Step2() {
                   >
                     + 항목 추가
                   </button>
+
+                  <div className="flex items-center border-t border-hair pt-[10px]">
+                    <div className="flex-1" />
+                    {confirmPart === pi ? (
+                      <div className="flex items-center gap-[10px]">
+                        <span className="text-[12px] text-muted">
+                          이 파트와 항목 {part.items.length}개를 지울까요?
+                        </span>
+                        <button
+                          onClick={() => {
+                            removePart(pi)
+                            setConfirmPart(null)
+                          }}
+                          className="text-[12px] font-semibold text-accent"
+                        >
+                          지우기
+                        </button>
+                        <button
+                          onClick={() => setConfirmPart(null)}
+                          className="text-[12px] text-faint"
+                        >
+                          취소
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmPart(pi)}
+                        className="text-[12px] text-faint"
+                      >
+                        파트 삭제
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -271,11 +368,10 @@ function Step2() {
         })}
 
         <button
-          onClick={() => setParts([...parts, { name: `파트 ${parts.length + 1}`, items: [] }])}
-          className="flex flex-col items-center gap-[4px] rounded-card border border-dashed border-field bg-surface p-[15px]"
+          onClick={addPart}
+          className="flex items-center justify-center rounded-card border border-dashed border-field bg-surface p-[15px]"
         >
           <span className="text-[13px] text-faint">+ 파트 추가</span>
-          <span className="text-[12px] text-faintest">경력 · 포트폴리오 · 기타</span>
         </button>
       </div>
 
@@ -283,16 +379,16 @@ function Step2() {
         <button onClick={() => nav('/register/1')} className="text-[13.5px] text-muted">
           ← 이전
         </button>
-        <span className="text-[12.5px] text-faint">파일로 올리기 (PDF · DOCX)</span>
         <div className="flex-1" />
         <button
           onClick={async () => {
             // §서버 연동 1 — 리서치를 시작하고 task_id를 카드 id로 쓴다.
             // 서버가 없으면(프론트 단독 실행) 프로토타입의 로컬 진행으로 돌아간다.
             const taskId = await startPreparation(
-              company.trim() || FALLBACK_COMPANY,
-              role.trim() || FALLBACK_ROLE,
+              company.trim(),
+              role.trim(),
               parts,
+              posting,
             ).catch(() => undefined)
             submitRegister(taskId)
             nav('/research')

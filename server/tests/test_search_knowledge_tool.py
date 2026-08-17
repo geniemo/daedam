@@ -58,11 +58,11 @@ def test_source로_지원서만_좁힌다() -> None:
     assert all(item["source"] == "지원서" for item in result["results"])
 
 
-def test_무관한_질의는_빈_결과와_note() -> None:
+def test_무관한_질의는_빈_결과와_지시() -> None:
     """모델이 '없음'을 지어내지 않고 말할 수 있어야 한다."""
     result = search_knowledge(tool_context=ContextStub(STATE), query="등산 코스 추천")
     assert result["results"] == []
-    assert "note" in result
+    assert "instruction" in result
 
 
 def test_시딩_안_된_세션은_크게_실패한다() -> None:

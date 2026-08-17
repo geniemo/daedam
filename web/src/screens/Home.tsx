@@ -1,14 +1,56 @@
+import { useEffect } from 'react'
 import { useNavigate } from 'react-router'
+import { useQuery } from '@tanstack/react-query'
+import { listInterviews } from '@/api/preparation'
 import { useAppStore } from '@/store/app'
 import { AccentDot, ProgressBar } from '@/components/ui'
-import { researchSteps } from '@/data/mock'
+import { initialCards } from '@/data/mock'
 import type { Card as CardT } from '@/data/types'
+
+/** 저장 시각(epoch 초) → "8월 17일". 카드 우상단에 붙는다. */
+const savedLabel = (savedAt: number) => {
+  const date = new Date(savedAt * 1000)
+  return `${date.getMonth() + 1}월 ${date.getDate()}일`
+}
 
 /** README §1. 홈 — 내 면접 */
 export function Home() {
   const nav = useNavigate()
   const cards = useAppStore((s) => s.cards)
   const setActiveCard = useAppStore((s) => s.setActiveCard)
+  const setCards = useAppStore((s) => s.setCards)
+  const resetRegister = useAppStore((s) => s.resetRegister)
+
+  // 등록 폼은 스토어에 남는다. 새로 등록하러 들어갈 때 비우지 않으면 앞 회사의
+  // 회사명·직무·채용공고·지원서가 그대로 떠 있다.
+  const startRegister = () => {
+    resetRegister()
+    nav('/register/1')
+  }
+
+  // 목록의 진실은 서버 파일이다. 프론트 메모리로 들고 있으면 새로고침에
+  // 사라지고, 준비 데이터가 없는 면접을 시작하려다 브리지에서 거절당한다.
+  const { data, isError } = useQuery({ queryKey: ['interviews'], queryFn: listInterviews })
+
+  useEffect(() => {
+    // 서버가 없으면(프론트 단독 실행) 목업으로 화면 모양만 유지한다. 성공했는데
+    // 목록이 비어 있는 것은 정상이다 — 그때 목업을 넣으면 없는 면접이 생긴다.
+    if (isError) {
+      setCards(initialCards)
+      return
+    }
+    if (!data) return
+    setCards(
+      data.map((item) => ({
+        id: item.id,
+        company: item.company,
+        role: item.role,
+        date: savedLabel(item.savedAt),
+        // 질문 풀까지 있어야 시작할 수 있다 — 아니면 아직 준비 중이다.
+        status: item.ready ? 'ready' : 'researching',
+      })),
+    )
+  }, [data, isError, setCards])
 
   // 홈 카드 클릭: ready → 준비 완료 / researching → 리서치 진행 / done → 리포트
   const open = (card: CardT) => {
@@ -27,7 +69,7 @@ export function Home() {
         </div>
         <div className="flex-1" />
         <button
-          onClick={() => nav('/register/1')}
+          onClick={startRegister}
           className="rounded-control bg-ink px-5 py-[11px] text-[14px] font-semibold text-white"
         >
           회사 등록하기
@@ -39,7 +81,7 @@ export function Home() {
           <CompanyCard key={c.id} card={c} onClick={() => open(c)} />
         ))}
         <button
-          onClick={() => nav('/register/1')}
+          onClick={startRegister}
           className="flex min-h-[172px] items-center justify-center rounded-card border border-dashed border-field text-[13.5px] text-faint"
         >
           + 새 회사 등록
@@ -50,9 +92,9 @@ export function Home() {
 }
 
 function CompanyCard({ card, onClick }: { card: CardT; onClick: () => void }) {
-  const pct = card.pct ?? 0
-  // 진행 중인 단계 라벨 — 20%마다 한 단계
-  const stepLabel = researchSteps[Math.min(4, Math.floor(pct / 20))].label
+  // 서버 목록에는 진행률이 없다 — 준비 중이라는 사실만 안다. 0%를 지어내
+  // 보여주면 멈춘 것처럼 읽히므로, 진행률을 아는 경우에만 바를 그린다.
+  const pct = card.pct
 
   return (
     <div
@@ -77,7 +119,6 @@ function CompanyCard({ card, onClick }: { card: CardT; onClick: () => void }) {
             <span className="text-[12.5px] font-semibold text-accent">면접 준비 완료</span>
           </div>
           <div className="flex items-center border-t border-hair-2 pt-[11px]">
-            <span className="text-[12.5px] text-muted">4단계 · 15~20분</span>
             <div className="flex-1" />
             <span className="text-[13px] font-semibold">시작하기 →</span>
           </div>
@@ -87,12 +128,13 @@ function CompanyCard({ card, onClick }: { card: CardT; onClick: () => void }) {
       {card.status === 'researching' && (
         <div className="flex flex-col gap-[9px]">
           <div className="flex items-center">
-            <span className="num text-[12.5px] text-muted">면접 준비 중 · {pct}%</span>
+            <span className="num text-[12.5px] text-muted">
+              면접 준비 중{pct === undefined ? '' : ` · ${pct}%`}
+            </span>
             <div className="flex-1" />
             <span className="text-[12px] text-faint">자세히 보기 →</span>
           </div>
-          <ProgressBar pct={pct} />
-          <div className="text-[12.5px] text-muted">{stepLabel}</div>
+          {pct !== undefined && <ProgressBar pct={pct} />}
         </div>
       )}
 

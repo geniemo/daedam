@@ -72,10 +72,9 @@ export function useVoiceSession(cardId: string, onFinished: () => void) {
       setConnection('live')
     }
 
-    // 1초 간격 타이머. 일시정지 중에는 진행하지 않습니다 (store.tick이 처리).
+    // 1초 간격 타이머 — 화면의 남은 시간과 진행 바를 움직입니다.
     const clock = setInterval(() => {
       const before = useInterviewStore.getState()
-      if (before.paused) return
       tick()
 
       if (!USE_BACKEND) {
@@ -102,8 +101,6 @@ export function useVoiceSession(cardId: string, onFinished: () => void) {
       const st = useInterviewStore.getState()
       if (USE_BACKEND && session.current) {
         levels.current = session.current.levels()
-      } else if (st.paused) {
-        levels.current = { input: 0, output: 0 }
       } else {
         const t = performance.now() / 1000
         const wobble = (0.55 + 0.45 * Math.sin(t * 7.3)) * (0.7 + 0.3 * Math.sin(t * 2.1))
@@ -134,14 +131,10 @@ export function useVoiceSession(cardId: string, onFinished: () => void) {
     tick,
   ])
 
-  const setPaused = useCallback((paused: boolean) => {
-    session.current?.setPaused(paused)
-  }, [])
-
   const end = useCallback(() => {
     session.current?.stop()
     finish()
   }, [finish])
 
-  return { levels, setPaused, end }
+  return { levels, end }
 }

@@ -38,10 +38,6 @@ export interface CompanyContext {
   news: string
 }
 
-export interface ResearchStep {
-  label: string
-  detail: string
-}
 
 /* ── Research report document (§6 리포트 검토) ───────────────── */
 
@@ -49,15 +45,15 @@ export interface DocParagraph {
   type: 'p' | 'li'
   text: string
 }
-export interface DocTableRow {
-  a: string
-  b: string
-  c: string
-}
+/**
+ * 표. 열 수는 리포트마다 다르므로 고정하지 않는다 — 회사가 바뀌면 Deep
+ * Research가 내는 표의 모양도 바뀐다. `rows[i]`의 길이는 `head`와 같다
+ * (서버 파서가 짧은 행을 빈 칸으로 채운다).
+ */
 export interface DocTable {
   type: 'table'
-  head: [string, string, string]
-  rows: DocTableRow[]
+  head: string[]
+  rows: string[][]
 }
 export interface DocRefs {
   type: 'refs'

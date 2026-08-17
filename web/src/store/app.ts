@@ -1,16 +1,11 @@
 import { create } from 'zustand'
-import { useShallow } from 'zustand/react/shallow'
 import type { ApplicationPart, Card } from '@/data/types'
-import { initialCards, initialParts } from '@/data/mock'
+import { initialParts } from '@/data/mock'
 
 // README §State Management, minus the fields that became routes
 // (`screen`, `regStep`) and minus everything that changes at audio rate —
 // waveform amplitudes and ring scale live in refs, never here. See
 // `src/audio/useAudioLevels.ts` for why.
-
-/** 빈 폼 데모용 기본값 — 등록과 서버 요청이 같은 값을 쓴다. */
-export const FALLBACK_COMPANY = '누리테크'
-export const FALLBACK_ROLE = '서비스기획 · 신입'
 
 interface AppState {
   cards: Card[]
@@ -19,49 +14,60 @@ interface AppState {
   /* 등록 폼 */
   company: string
   role: string
+  /** 채용공고 링크 또는 본문. 파싱하지 않고 리서치 프롬프트로 그대로 나간다. */
+  posting: string
   parts: ApplicationPart[]
 
-  /* §6 리포트 검토 — 원문을 수정하지 않는 주석(delta)으로만 쌓인다 */
-  flags: Record<string, boolean>
-  memos: Record<string, string[]>
-
   setActiveCard: (id: string) => void
+  /** 서버 목록으로 카드를 갈아끼운다. 홈이 마운트될 때 한 번 — 파일이 진실이다. */
+  setCards: (cards: Card[]) => void
   setCompany: (v: string) => void
   setRole: (v: string) => void
+  setPosting: (v: string) => void
   setParts: (parts: ApplicationPart[]) => void
   resetRegister: () => void
   /** 등록 완료 → researching 카드를 목록 맨 앞에 넣고 id 반환.
       서버 리서치가 시작됐으면 task_id를 카드 id로 쓴다. */
   submitRegister: (id?: string) => string
   setCardProgress: (id: string, pct: number) => void
-
-  toggleFlag: (blockId: string) => void
-  addMemo: (blockId: string, text: string) => void
-  removeMemo: (blockId: string, index: number) => void
-  clearAnnotations: () => void
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
-  cards: initialCards,
-  activeCardId: initialCards[0].id,
+  // 목록은 서버 파일에서 채운다. 목업으로 시작하면 실제로는 없는 면접이 잠깐
+  // 보였다 사라지고, 그 사이에 카드를 누르면 준비 데이터가 없는 면접이 열린다.
+  cards: [],
+  activeCardId: null,
 
   company: '',
   role: '',
+  posting: '',
   parts: initialParts,
 
-  flags: {},
-  memos: {},
-
   setActiveCard: (id) => set({ activeCardId: id }),
+
+  // 활성 카드가 새 목록에 없으면 첫 카드로 옮긴다 — 없는 카드를 가리킨 채로
+  // 두면 useActiveCard의 폴백이 조용히 엉뚱한 면접을 열어 준다.
+  setCards: (cards) =>
+    set((s) => ({
+      cards,
+      activeCardId: cards.some((c) => c.id === s.activeCardId)
+        ? s.activeCardId
+        : (cards[0]?.id ?? null),
+    })),
   setCompany: (company) => set({ company }),
   setRole: (role) => set({ role }),
+  setPosting: (posting) => set({ posting }),
   setParts: (parts) => set({ parts }),
-  resetRegister: () => set({ company: '', role: '' }),
+  // parts까지 비운다. 지원서는 회사마다 다시 쓰는 것이고, 남겨 두면 다음 등록
+  // 화면에 앞 회사에 낸 지원서가 그대로 떠 있다.
+  resetRegister: () => set({ company: '', role: '', posting: '', parts: [] }),
 
   submitRegister: (id) => {
     const { company, role, cards } = get()
-    const name = company.trim() || FALLBACK_COMPANY
-    const position = role.trim() || FALLBACK_ROLE
+    // 기본값으로 메우지 않는다. 비어 있으면 등록 화면이 막아 주는데, 여기서
+    // 다시 메우면 엉뚱한 회사로 리서치가 돌고 live에서는 그것이 유료다.
+    const name = company.trim()
+    const position = role.trim()
     const cardId = id ?? `new${Date.now()}`
     set({
       cards: [{ id: cardId, company: name, role: position, date: '방금 등록', status: 'researching', pct: 0 }, ...cards],
@@ -76,31 +82,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         c.id === id ? { ...c, pct, status: pct >= 100 ? 'ready' : 'researching' } : c,
       ),
     })),
-
-  toggleFlag: (blockId) => set((s) => ({ flags: { ...s.flags, [blockId]: !s.flags[blockId] } })),
-
-  addMemo: (blockId, text) =>
-    set((s) => ({ memos: { ...s.memos, [blockId]: [...(s.memos[blockId] ?? []), text] } })),
-
-  removeMemo: (blockId, index) =>
-    set((s) => ({
-      memos: { ...s.memos, [blockId]: (s.memos[blockId] ?? []).filter((_, i) => i !== index) },
-    })),
-
-  clearAnnotations: () => set({ flags: {}, memos: {} }),
 }))
 
 /** 활성 카드. 없으면 첫 카드로 폴백 — 프로토타입과 동일한 동작. */
 export const useActiveCard = () =>
   useAppStore((s) => s.cards.find((c) => c.id === s.activeCardId) ?? s.cards[0])
-
-/** 하단 고정 바 요약 (§6): "정정 N건 · 메모 M건" */
-export const useAnnotationCounts = () =>
-  useAppStore(
-    // 객체를 새로 만들어 돌려주는 셀렉터라 얕은 비교가 없으면 매 렌더가 새
-    // 스냅샷이 된다 — useShallow로 값이 같으면 같은 참조를 유지한다.
-    useShallow((s) => ({
-      flagged: Object.values(s.flags).filter(Boolean).length,
-      memoed: Object.values(s.memos).reduce((n, list) => n + list.length, 0),
-    })),
-  )

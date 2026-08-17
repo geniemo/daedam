@@ -7,7 +7,7 @@
 import time
 from pathlib import Path
 
-from daedam.research.service import FixtureResearch
+from daedam.research.service import FixtureResearch, ResearchStatus
 from daedam.server.preparation import InterviewPreparation
 from daedam.server.store import FileInterviewStore
 
@@ -103,3 +103,51 @@ def test_재시작_후_끊긴_생성은_이어서_한다(tmp_path: Path) -> None
     restarted, store2 = _preparation(tmp_path)
     _wait_until(lambda: store2.load("resumed").questions is not None)
     assert restarted.status("resumed").state == "done"
+
+# ── 폴링이 삐끗해도 돌고 있는 리서치를 버리지 않는다 ────────────────
+
+
+class _FlakyResearch:
+    """진행 중 조회가 이따금 터지는 백엔드. 실측에서 400을 한 번 냈다."""
+
+    def __init__(self, fail_at: set[int]) -> None:
+        self._fail_at = fail_at
+        self._calls = 0
+
+    def start(self, company, role, application, posting="") -> str:  # noqa: ANN001
+        return "itx"
+
+    def status(self, task_id: str):  # noqa: ANN201
+        self._calls += 1
+        if self._calls in self._fail_at:
+            raise RuntimeError("Request contains an invalid argument.")
+        if self._calls < 4:
+            return ResearchStatus(state="running", pct=None)
+        return ResearchStatus(state="done", pct=100, report=[{"title": "t", "blocks": []}], uncertain=[])
+
+
+def test_조회가_한_번_실패해도_준비가_이어진다(tmp_path) -> None:
+    """이 한 번을 실패로 단정하면 이미 돌고 있는 유료 작업을 통째로 버린다."""
+    store = FileInterviewStore(tmp_path)
+    preparation = InterviewPreparation(
+        research=_FlakyResearch(fail_at={2}),
+        store=store,
+        generate=lambda **_: [{"id": "q1", "stage": 0, "text": "질문", "priority": 1, "tags": []}],
+        poll_interval_s=0.01,
+    )
+    task_id = preparation.start("컬리", "서비스기획", [])
+    _wait_until(lambda: store.load(task_id) is not None and store.load(task_id).questions is not None)
+    assert store.load(task_id).questions is not None
+
+
+def test_조회가_계속_실패하면_결국_실패로_끝난다(tmp_path) -> None:
+    store = FileInterviewStore(tmp_path)
+    preparation = InterviewPreparation(
+        research=_FlakyResearch(fail_at=set(range(1, 40))),
+        store=store,
+        generate=lambda **_: [],
+        poll_interval_s=0.001,
+    )
+    task_id = preparation.start("컬리", "서비스기획", [])
+    _wait_until(lambda: preparation.status(task_id).state == "failed")
+    assert preparation.status(task_id).state == "failed"

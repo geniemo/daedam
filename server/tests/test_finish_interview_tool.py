@@ -50,7 +50,7 @@ def test_마무리_단계가_아니면_반려한다() -> None:
     assert result["done"] is False
     assert STATE_CLOSING not in context.state
     # 반려로 끝내지 않고 이어갈 방법을 알려준다 — 모델이 다시 시도할 곳이 있어야 한다.
-    assert "get_next_question" in result["note"]
+    assert "ask_question" in result["instruction"]
 
 
 def test_하드캡을_넘었으면_단계와_무관하게_받는다() -> None:

@@ -87,10 +87,21 @@ def test_자기소개와_마무리는_고정_질문이_채운다() -> None:
 
 
 def test_여는_질문은_자기소개가_먼저다() -> None:
-    """우선순위가 순서를 정한다 — 지원 동기보다 자기소개가 앞이다."""
+    """중요도가 순서를 정한다 — 지원 동기보다 자기소개가 앞이다."""
     raw = _generate(_minimum_pool())
     openers = [q for q in raw if q["stage"] == 0]
     assert openers[0]["priority"] < openers[1]["priority"]
+
+
+def test_고정_질문의_중요도가_척도_안에_있다() -> None:
+    """면접 중 모델이 매기는 값과 같은 자로 비교되므로 1~5를 벗어나면 안 된다."""
+    raw = _generate(_minimum_pool())
+    fixed = [q for q in raw if q["stage"] in (0, 3)]
+    assert all(1 <= q["priority"] <= 5 for q in fixed)
+    # 마무리 문항은 합격 판단을 가르지 않는다 — 여는 문항보다 뒤다.
+    assert max(q["priority"] for q in fixed if q["stage"] == 0) < min(
+        q["priority"] for q in fixed if q["stage"] == 3
+    )
 
 
 def test_유효한_근거_인용은_보존된다() -> None:
@@ -147,6 +158,23 @@ def test_생성_대상_밖_단계는_실패한다(stage: int) -> None:
     questions = _minimum_pool() + [_question(stage)]
     with pytest.raises(ValueError, match="생성 대상이 아닌 단계"):
         _generate(questions)
+
+
+@pytest.mark.parametrize("priority", [0, 6])
+def test_척도를_벗어난_중요도는_실패한다(priority: int) -> None:
+    """면접 중 문턱 계산이 이 값을 그대로 쓴다 — 범위를 벗어나면 판정이 깨진다."""
+    questions = _minimum_pool()
+    questions[0] = _GeneratedQuestion(
+        stage=1, text="질문?", priority=priority, tags=["태그"], source_chunk_ids=[]
+    )
+    with pytest.raises(ValueError, match="1~5를 벗어남"):
+        _generate(questions)
+
+
+def test_같은_중요도가_겹쳐도_통과한다() -> None:
+    """순서 번호가 아니라 기여도다 — 실제로 같은 무게인 질문이 있을 수 있다."""
+    raw = _generate(_minimum_pool())
+    assert len([q for q in raw if q["stage"] == 1]) == 3
 
 
 def test_태그_없는_질문은_실패한다() -> None:

@@ -49,11 +49,13 @@ _OPENING_QUESTIONS: list[dict[str, Any]] = [
 ]
 
 #: 역질문 유도("궁금한 점")는 면접 에이전트가 현장에서 처리한다.
+#: 중요도가 3·4인 것은 척도대로다 — 마무리 문항은 합격 판단을 가르지 않는다.
+#: 대화 순서와도 어긋나지 않아 따로 손볼 것이 없다.
 _CLOSING_QUESTIONS: list[dict[str, Any]] = [
     {"id": "q-close-0", "stage": 3, "text": "입사하시면 가장 해보고 싶은 일은 무엇인가요?",
-     "priority": 1, "tags": ["입사 포부"], "source_chunk_ids": []},
+     "priority": 3, "tags": ["입사 포부"], "source_chunk_ids": []},
     {"id": "q-close-1", "stage": 3, "text": "마지막으로 하고 싶은 말씀이 있으신가요?",
-     "priority": 2, "tags": ["마지막 한마디"], "source_chunk_ids": []},
+     "priority": 4, "tags": ["마지막 한마디"], "source_chunk_ids": []},
 ]
 
 
@@ -68,8 +70,12 @@ class _GeneratedQuestion(BaseModel):
         " 공백 포함 40자 안팎. 괄호·따옴표·줄임표를 쓰지 않고, 예/아니오로 답이 끝나지 않게"
     )
     priority: int = Field(
-        description="단계 안에서 나가는 순서. 1부터 1씩 올리고 같은 단계 안에서 중복 없이."
-        " 대답의 폭이 넓어 뒤이어 파고들 여지가 큰 질문일수록 낮은 숫자"
+        description="이 답을 듣는 것이 합격 판단에 얼마나 결정적인지 1~5로."
+        " 1 핵심 검증 — 못 들으면 판단이 안 서는 질문."
+        " 2 근거 확인 — 내세운 성과·판단의 근거, 본인이 맡은 몫."
+        " 3 역량의 폭 — 다른 각도에서 같은 역량 재확인."
+        " 4 맥락 보완 — 배경·동기·협업 방식."
+        " 5 곁가지 — 흥미롭지만 평가와 연결이 옅음."
     )
     tags: list[str] = Field(
         description="이 질문의 주제 이름 1~2개. 2~6자 한국어 명사구로 쓰고 복합어는 띄어 씁니다"
@@ -228,6 +234,11 @@ def _validated(
             raise ValueError(f"생성 대상이 아닌 단계: {question.stage} — {question.text}")
         if not question.tags:
             raise ValueError(f"태그 없는 질문: {question.text}")
+        # 범위를 벗어난 중요도는 면접 중 문턱 계산을 깨뜨린다
+        # (`interviewer.tools.ask_question`). 분포는 검사하지 않는다 — 값은
+        # 질문마다의 실제 기여도이고, 한쪽으로 쏠려도 자유 질문 상한이 받는다.
+        if not 1 <= question.priority <= 5:
+            raise ValueError(f"중요도가 1~5를 벗어남: {question.priority} — {question.text}")
         unknown = set(question.source_chunk_ids) - known_chunk_ids
         if unknown:
             raise ValueError(f"실존하지 않는 근거 청크 {unknown} — {question.text}")

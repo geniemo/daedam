@@ -100,12 +100,21 @@ class FileInterviewStore:
         )
 
     def list_ids(self) -> list[str]:
-        """저장된 면접 id 목록. 부팅 시 복원 스캔에 쓴다."""
+        """저장된 면접 id 목록. 부팅 시 복원 스캔과 홈 목록에 쓴다."""
         if not self._root.exists():
             return []
         return sorted(
             path.name for path in self._root.iterdir() if (path / "meta.json").exists()
         )
+
+    def saved_at(self, interview_id: str) -> float:
+        """면접이 마지막으로 저장된 epoch 초. 없으면 0.
+
+        등록 시각을 따로 적지 않고 파일 수정 시각을 쓴다 — 홈 목록의 정렬
+        기준으로만 필요하고, 그 용도에는 파일 시각이 곧 진실이다.
+        """
+        meta_path = self._directory(interview_id) / "meta.json"
+        return meta_path.stat().st_mtime if meta_path.exists() else 0.0
 
     def _directory(self, interview_id: str) -> Path:
         if not _SAFE_ID.match(interview_id):

@@ -28,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 from typing import Any, Mapping
 
@@ -72,6 +73,9 @@ _CLOSING_GRACE_S = 30.0
 #: 있는 오디오가 있어서, 바로 닫으면 마지막 인사가 잘려 들린다.
 _PLAYBACK_TAIL_S = 3.0
 
+#: TRACE_EVENTS=1이면 run_live 이벤트를 순서대로 남긴다 (`_event_trace`).
+_TRACE_EVENTS = os.environ.get("TRACE_EVENTS") == "1"
+
 
 def _client_messages_from(event: Event) -> list[tuple[str, Any]]:
     """에이전트 이벤트를 프론트 프로토콜 메시지로 번역한다.
@@ -109,7 +113,7 @@ def _client_messages_from(event: Event) -> list[tuple[str, Any]]:
             )
         )
 
-    # get_next_question이 실행되면 그 이벤트의 state 델타에 늘어난 asked가
+    # ask_question이 뼈대질문을 배달하면 그 이벤트의 state 델타에 늘어난 asked가
     # 실려 온다 — 뼈대질문이 하나 나간 순간이고, 낸 질문 수가 곧 번호다.
     # 같은 델타의 stage로 화면 상단의 단계 표시가 함께 움직인다.
     delta = (event.actions.state_delta or {}) if event.actions else {}
@@ -142,6 +146,37 @@ def _client_messages_from(event: Event) -> list[tuple[str, Any]]:
     if event.go_away is not None:
         messages.append(("json", {"type": "goAway"}))
     return messages
+
+
+def _event_trace(event: Event) -> str | None:
+    """이벤트 하나를 한 줄로 요약한다. 오디오만 실린 이벤트면 None.
+
+    자막 로그(턴당 최종 전사 한 줄)로는 발화와 툴 호출의 순서를 못 가른다.
+    실측에서 한 전사 안에 지원자 발화 하나와 면접관 발화 셋이 섞여 나온 적이
+    있어, 그 줄을 "무슨 말이 나갔는가"의 증인으로 쓸 수 없다는 것이 드러났다.
+    순서를 봐야 할 때만 TRACE_EVENTS=1로 켠다 — 상시로 켜면 로그가 묻힌다.
+    """
+    bits: list[str] = []
+    for part in (event.content.parts if event.content else None) or []:
+        if part.text:
+            bits.append(f"text {part.text[:60]!r}")
+        if part.function_call is not None:
+            # 인자까지 찍는다. 모델이 문장을 만들어 넘겼는지가, 그 문장이 소리로도
+            # 나가는 이유를 가르는 유일한 증거다.
+            bits.append(f"호출 {part.function_call.name}({part.function_call.args})")
+        if part.function_response is not None:
+            bits.append(f"응답 {part.function_response.name}")
+    if (out := event.output_transcription) is not None:
+        bits.append(f"면접관전사 fin={bool(out.finished)} {(out.text or '')[:60]!r}")
+    if (inp := event.input_transcription) is not None:
+        bits.append(f"지원자전사 fin={bool(inp.finished)} {(inp.text or '')[:60]!r}")
+    if event.interrupted:
+        bits.append("끼어들기")
+    if event.turn_complete:
+        bits.append("턴완료")
+    if event.partial:
+        bits.append("partial")
+    return f"[{event.author}] " + " · ".join(bits) if bits else None
 
 
 def _elapsed_s(state: Mapping[str, Any]) -> float:
@@ -304,16 +339,21 @@ def create_live_router(
             # 면접관이 먼저 인사하게 한다. 재연결·재입장은 이력이 있으므로
             # 다시 인사하지 않는다.
             #
-            # 개시 지시가 instruction이 아니라 여기 있는 이유: instruction은 매
-            # 턴 다시 읽혀서 "첫 턴에는"이 조건 판정이 되지만, 이 메시지는 처음
-            # 한 번만 존재하므로 판정할 조건이 없다.
+            # 지시문이 아니라 인사말인 이유: 이 채널은 지원자의 목소리다. 여기에
+            # "(지원자가 입장했습니다…)" 같은 3인칭 지문을 넣으면 user 채널에
+            # 지원자의 말과 지문이 섞이고, 그것이 세션 이벤트로 저장돼
+            # (base_llm_flow._send_to_model) 재접속마다 다시 실린다. 면접이 대화가
+            # 아니라 모델이 같이 쓰는 대본으로 읽히는 자리가 여기라고 보고 있다 —
+            # 실측에서 모델이 지원자의 답변을 1인칭으로 대신 말한 적이 네 번 있다.
+            #
+            # 인사를 받으면 면접을 시작하라는 것은 instruction이 나른다. 모델은
+            # 입력이 와야 입을 여는데, 지원자가 먼저 말을 걸어야 면접이 시작되는
+            # UX는 어색하다. 그래서 첫 인사만 서버가 대신 건넨다.
             queue.send_content(
                 types.Content(
                     role="user",
                     parts=[
-                        types.Part(
-                            text="(지원자가 입장했습니다. 짧게 인사한 뒤 면접을 시작하세요.)"
-                        )
+                        types.Part(text="안녕하세요.")
                     ],
                 )
             )
@@ -367,7 +407,17 @@ def create_live_router(
                 )
             ) as agen:
                 nonlocal turn_count, turns_at_closing
+                audio_run = 0  # 연속된 오디오 프레임 — 묶어서 한 줄로 낸다
                 async for event in agen:
+                    if _TRACE_EVENTS:
+                        line = _event_trace(event)
+                        if line is None:
+                            audio_run += 1
+                        else:
+                            if audio_run:
+                                logger.info("추적: 오디오 %d프레임", audio_run)
+                                audio_run = 0
+                            logger.info("추적: %s", line)
                     if _marks_closing(event) and not closing.is_set():
                         # 인사 대기의 기준선은 여기서 잡는다. 종료 태스크가
                         # 깨어난 시점에 잡으면 그 사이에 끝난 인사 턴을 놓치고
