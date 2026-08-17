@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { ApplicationPart, Card } from '@/data/types'
-import { initialCards, initialParts } from '@/data/mock'
+import { initialParts } from '@/data/mock'
 
 // README §State Management, minus the fields that became routes
 // (`screen`, `regStep`) and minus everything that changes at audio rate —
@@ -34,8 +34,10 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
-  cards: initialCards,
-  activeCardId: initialCards[0].id,
+  // 목록은 서버 파일에서 채운다. 목업으로 시작하면 실제로는 없는 면접이 잠깐
+  // 보였다 사라지고, 그 사이에 카드를 누르면 준비 데이터가 없는 면접이 열린다.
+  cards: [],
+  activeCardId: null,
 
   company: '',
   role: '',

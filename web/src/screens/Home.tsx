@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { listInterviews } from '@/api/preparation'
 import { useAppStore } from '@/store/app'
 import { AccentDot, ProgressBar } from '@/components/ui'
-import { researchSteps } from '@/data/mock'
+import { initialCards, researchSteps } from '@/data/mock'
 import type { Card as CardT } from '@/data/types'
 
 /** 저장 시각(epoch 초) → "8월 17일". 카드 우상단에 붙는다. */
@@ -22,10 +22,15 @@ export function Home() {
 
   // 목록의 진실은 서버 파일이다. 프론트 메모리로 들고 있으면 새로고침에
   // 사라지고, 준비 데이터가 없는 면접을 시작하려다 브리지에서 거절당한다.
-  // 서버가 없으면(프론트 단독 실행) 실패한 채로 두고 목업 카드가 남는다.
-  const { data } = useQuery({ queryKey: ['interviews'], queryFn: listInterviews })
+  const { data, isError } = useQuery({ queryKey: ['interviews'], queryFn: listInterviews })
 
   useEffect(() => {
+    // 서버가 없으면(프론트 단독 실행) 목업으로 화면 모양만 유지한다. 성공했는데
+    // 목록이 비어 있는 것은 정상이다 — 그때 목업을 넣으면 없는 면접이 생긴다.
+    if (isError) {
+      setCards(initialCards)
+      return
+    }
     if (!data) return
     setCards(
       data.map((item) => ({
@@ -37,7 +42,7 @@ export function Home() {
         status: item.ready ? 'ready' : 'researching',
       })),
     )
-  }, [data, setCards])
+  }, [data, isError, setCards])
 
   // 홈 카드 클릭: ready → 준비 완료 / researching → 리서치 진행 / done → 리포트
   const open = (card: CardT) => {
