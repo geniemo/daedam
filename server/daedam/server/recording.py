@@ -56,6 +56,10 @@ class InterviewRecording:
 
     directory: Path
     utterances: list[Utterance] = field(default_factory=list)
+    #: 면접관의 말이 **브라우저에서** 끝난 시각들. 지원자가 질문을 다 들은
+    #: 순간이라, "답변까지 걸린 시간"의 기준선이 된다. 서버는 모델이 생성을
+    #: 마친 시각만 알아서 재생 지연만큼 이르다.
+    question_ends: list[float] = field(default_factory=list)
     _bytes: int = 0
     _handle: Any = None
 
@@ -76,6 +80,7 @@ class InterviewRecording:
         except (OSError, ValueError):
             logger.exception("앞선 전사를 읽지 못했습니다 (%s)", self._transcript_path)
             return []
+        self.question_ends = list(saved.get("questionEnds", []))
         return [
             Utterance(speaker=item["speaker"], text=item["text"], at=item["at"])
             for item in saved.get("utterances", [])
@@ -102,6 +107,15 @@ class InterviewRecording:
             self._bytes += len(pcm)
         except OSError:
             logger.exception("녹음 쓰기 실패 (%s)", self._pcm_path)
+
+    def mark_question_end(self) -> None:
+        """면접관의 말이 브라우저에서 끝났다. 지금 위치를 적어 둔다.
+
+        재생 버퍼가 잠깐 마르는 것으로도 신호가 오므로 한 질문에 여러 번
+        찍힐 수 있다. 거르지 않고 다 남긴다 — 어느 것이 진짜 끝인지는 답변
+        시작과 견줘야 알 수 있고, 그건 지표 쪽 판단이다.
+        """
+        self.question_ends.append(self.elapsed_s)
 
     def note(self, speaker: Speaker, text: str) -> None:
         """전사 한 토막을 지금 위치에 적는다. 빈 문자열은 무시한다."""
@@ -151,6 +165,7 @@ class InterviewRecording:
             "sampleRate": SAMPLE_RATE,
             "durationS": round(self.elapsed_s, 2),
             "utterances": [utterance.as_dict() for utterance in self.utterances],
+            "questionEnds": [round(at, 2) for at in self.question_ends],
         }
         try:
             self._transcript_path.write_text(

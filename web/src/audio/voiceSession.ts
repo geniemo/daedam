@@ -80,8 +80,15 @@ export class VoiceSession {
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         channelCount: 1,
+        // 스피커로 들을 때 모델이 자기 목소리를 다시 듣는 것을 막는다.
         echoCancellation: true,
+        // 침묵을 진짜 0으로 만든다. 음성 지표의 구간 나누기가 이것에 기댄다 —
+        // 끄면 배경 소음이 발화로 잡힌다.
         noiseSuppression: true,
+        // 켠 채로 둔다. 끄면 목소리 레벨이 실제값으로 내려가면서 Live API의
+        // 발화 종료 판정이 쉬워져, 말하다 쉬는 구간을 끝으로 보고 모델이
+        // 먼저 말하기 시작한다 — 실측에서 그 턴이 끼어들기로 취소되며 세션이
+        // 멈췄다. 대가로 목소리 흔들림 지표는 사람이 아니라 AGC를 잰다.
         autoGainControl: true,
       },
     })
@@ -123,6 +130,10 @@ export class VoiceSession {
     this.player.port.onmessage = (e) => {
       if (e.data?.type === 'playing') {
         this.opts.handlers.onPhase?.(e.data.value ? 'speaking' : 'listening')
+        // 재생 버퍼가 마른 순간이 지원자가 질문을 다 들은 순간이다. 서버는
+        // 모델이 생성을 마친 시각만 알아서 재생 지연만큼 이르다 — "답변까지
+        // 걸린 시간"을 재려면 이 시각이 있어야 한다.
+        if (!e.data.value) this.send({ type: 'playbackEnd' })
       }
     }
     this.player.connect(this.outAnalyser)
@@ -242,6 +253,10 @@ export class VoiceSession {
 
   private sendBinary(pcm: ArrayBuffer): void {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(pcm)
+  }
+
+  private send(message: Record<string, unknown>): void {
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(message))
   }
 
   /** Peak levels in 0–1, for the waveform and the avatar rings. */
