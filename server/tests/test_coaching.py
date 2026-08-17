@@ -190,3 +190,64 @@ def test_화면이_읽을_형태로_바꾼다() -> None:
     assert payload["score"] == 90
     assert payload["strengths"] == ["구조가 분명함"]
     assert payload["answers"][0]["suggestion"] == "측정 방법을 덧붙이세요"
+
+
+def test_말버릇은_문맥으로_센다() -> None:
+    """'그 프로젝트'의 '그'와 '어… 그러니까'의 '그'는 같은 글자다 —
+    낱말 목록으로는 못 가르므로 평가가 답변을 읽으며 함께 센다."""
+    review = InterviewReview(
+        answers=[
+            AnswerReview(
+                question="질문",
+                score=60,
+                strength="",
+                gap="",
+                suggestion="",
+                fillers=["음", "어", "um"],
+            )
+        ],
+        summary="총평",
+        strengths=[],
+        improvements=[],
+    )
+    client = _StubClient(review)
+    coaching = evaluate(
+        company="A",
+        role="B",
+        transcript=_transcript(
+            ("interviewer", "질문"), ("applicant", "음 어 um 잘 모르겠습니다")
+        ),
+        client=client,
+    )
+    assert coaching.fillers == 3
+    assert coaching.as_dict()["fillers"] == 3
+    # 개수만이 아니라 찾은 낱말이 함께 남아야 화면에서 짚을 수 있다.
+    assert coaching.as_dict()["answers"][0]["fillers"] == ["음", "어", "um"]
+
+
+def test_지시어와_대답은_말버릇이_아니라고_일러둔다() -> None:
+    from daedam.eval.coaching import AnswerReview as _A
+
+    description = _A.model_fields["fillers"].description
+    assert "그 프로젝트" in description and "아, 네" in description
+
+
+def test_한_답변이_여러_조각으로_와도_이어_붙인다() -> None:
+    """말하다 잠깐 쉬면 Live API가 거기서 finished를 낸다.
+
+    실측: "안녕하십니까? 음" 다음에 "어, 박지호입니다. 음."이 따로 왔다.
+    첫 조각만 쓰면 코칭이 반쪽 답변을 채점한다.
+    """
+    pairs = exchanges_from(
+        _transcript(
+            ("interviewer", "자기소개 부탁드립니다."),
+            ("applicant", "안녕하십니까? 음"),
+            ("applicant", "어, 박지원입니다."),
+            ("interviewer", "지원 이유는요?"),
+            ("applicant", "방향성에 공감했습니다."),
+        )
+    )
+    assert pairs == [
+        Exchange("자기소개 부탁드립니다.", "안녕하십니까? 음 어, 박지원입니다."),
+        Exchange("지원 이유는요?", "방향성에 공감했습니다."),
+    ]

@@ -14,6 +14,10 @@
 쓰게 한다. 말하지 않은 것을 두고 "이런 점이 좋았다"가 나오면 코칭이 아니라
 소설이다.
 
+**필러 워드는 목록이 아니라 문맥으로 센다.** "그 프로젝트"의 "그"와 "어… 그러니까"의
+"그"는 같은 글자다. 정규식으로는 못 가르므로 평가에 함께 맡기고, 개수만이 아니라
+찾은 낱말을 받아 화면에서 짚을 수 있게 한다.
+
 **짧은 답변도 평가한다.** 답변이 짧았다는 것 자체가 해줘야 할 피드백이다 —
 빼면 코칭이 그 얘기를 못 한다. 거르는 것은 전사 잡음뿐이다.
 
@@ -53,17 +57,30 @@ def exchanges_from(transcript: dict[str, Any]) -> list[Exchange]:
     말했으면 마지막 것을 질문으로 본다 — 인사와 질문이 한 턴에 오는 경우가
     있어서(실측: "안녕하세요 … 먼저 자기소개 부탁드립니다") 첫 번째를 잡으면
     질문이 아니라 인사가 붙는다.
+
+    **지원자 발화가 연달아 오면 이어 붙인다.** 한 답변이 전사 여러 조각으로
+    온다 — 말하다 잠깐 쉬면 Live API가 거기서 발화가 끝난 것으로 보고
+    finished를 낸다(실측: "안녕하십니까? 음" 다음에 "어, 박지호입니다. 음.").
+    첫 조각만 쓰면 코칭이 반쪽 답변을 채점한다.
     """
     pairs: list[Exchange] = []
     question: str | None = None
+    parts: list[str] = []
+
+    def flush() -> None:
+        if question is not None and parts:
+            pairs.append(Exchange(question=question, answer=" ".join(parts)))
+        parts.clear()
+
     for utterance in transcript.get("utterances", []):
         if utterance.get("speaker") == "interviewer":
+            flush()
             question = utterance.get("text", "")
             continue
         if question is None:
             continue  # 질문 없이 나온 말 — 첫 인사 같은 것
-        pairs.append(Exchange(question=question, answer=utterance.get("text", "")))
-        question = None
+        parts.append(utterance.get("text", ""))
+    flush()
     return pairs
 
 
@@ -89,6 +106,13 @@ class AnswerReview(BaseModel):
         description="다시 답한다면 어떻게 할지. 지원자가 실제로 가진 경험 안에서"
         " 제안하십시오. 없는 경력을 가정하지 마십시오."
     )
+    fillers: list[str] = Field(
+        default_factory=list,
+        description="이 답변에서 **필러 워드로** 쓰인 낱말을 나온 순서대로."
+        " 음·어·그·저기·um·uh 같은 것입니다. 다만 뜻을 가지고 쓰였으면 빼십시오"
+        " — '그 프로젝트'의 '그'는 지시어이고 '아, 네'의 '아'는 대답입니다."
+        " 없으면 빈 목록으로 두십시오.",
+    )
 
 
 class InterviewReview(BaseModel):
@@ -110,9 +134,15 @@ class Coaching:
     #: 답변 점수의 평균. 평가 대상이 없으면 None — 0점과 다르다.
     score: int | None
 
+    @property
+    def fillers(self) -> int:
+        """필러 워드로 쓴 낱말의 총 개수."""
+        return sum(len(answer.fillers) for answer in self.review.answers)
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "score": self.score,
+            "fillers": self.fillers,
             "summary": self.review.summary,
             "strengths": list(self.review.strengths),
             "improvements": list(self.review.improvements),

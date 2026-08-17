@@ -66,8 +66,10 @@ def _coaching(score=70):
     return SimpleNamespace(
         review=review,
         score=score,
+        fillers=0,
         as_dict=lambda: {
             "score": score,
+            "fillers": 0,
             "summary": "총평",
             "strengths": ["강점"],
             "improvements": ["개선"],
