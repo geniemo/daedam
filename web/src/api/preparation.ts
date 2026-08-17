@@ -68,14 +68,26 @@ export interface Feedback {
   voice?: {
     syllablesPerMinute: number
     meanAnswerS: number
+    /** 멈춘 시간을 뺀 실제 발화 시간(초). 분당 지표의 분모. */
+    spokenS: number
     pauseRatio: number
     loudness: number
     loudnessVariation: number
-    answers: { startS: number; endS: number; text: string; pauses: number }[]
+    /** 질문이 끝나고 답을 시작하기까지의 평균 초. 잴 수 없으면 null. */
+    meanStartDelayS: number | null
+    answers: {
+      startS: number
+      endS: number
+      text: string
+      pauses: number
+      startDelayS: number | null
+    }[]
   }
   coaching: {
     /** 답변 점수의 평균. 평가할 답변이 없으면 null — 0점과 다르다. */
     score: number | null
+    /** 말버릇으로 쓴 낱말의 총 개수. 목록이 아니라 문맥으로 센다. */
+    fillers: number
     summary: string
     strengths: string[]
     improvements: string[]
@@ -85,6 +97,8 @@ export interface Feedback {
       strength: string
       gap: string
       suggestion: string
+      /** 이 답변에서 말버릇으로 쓴 낱말. 나온 순서대로. */
+      fillers: string[]
     }[]
   }
 }

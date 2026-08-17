@@ -25,6 +25,7 @@ def _silence(seconds: float) -> np.ndarray:
 
 
 def _wav(tmp_path, *chunks: np.ndarray):
+    tmp_path.mkdir(parents=True, exist_ok=True)
     path = tmp_path / "mic.wav"
     with wave.open(str(path), "wb") as handle:
         handle.setnchannels(1)
@@ -115,9 +116,24 @@ def test_면접관_전사는_답변에_붙지_않는다(tmp_path) -> None:
 
 def test_목소리_흔들림은_변동계수다(tmp_path) -> None:
     """크기가 고르면 0에 가깝다. 값이 커지면 들쭉날쭉하다는 뜻이다."""
-    path = _wav(tmp_path, _tone(1.0, 3000), _silence(1.0), _tone(1.0, 3000))
-    metrics = analyze(path, _transcript(("applicant", "가", 1.5), ("applicant", "나", 3.5)))
+    path = _wav(tmp_path, _tone(1.0, 3000), _silence(2.0), _tone(1.0, 3000))
+    metrics = analyze(path, _transcript(("applicant", "가", 1.5), ("applicant", "나", 4.5)))
     assert metrics.loudness_variation < 0.05
+
+
+def test_멈춤이_많다고_작은_목소리가_되지_않는다(tmp_path) -> None:
+    """조용한 프레임까지 넣어 평균을 내면 멈춤과 성량이 섞인다 — 또박또박
+    같은 크기로 말했는데도 뜸을 들였다는 이유로 흔들림이 커진다."""
+    steady = _wav(tmp_path / "a", _tone(2.0, 3000))
+    paused = _wav(
+        tmp_path / "b", _tone(0.6, 3000), _silence(0.6), _tone(0.6, 3000)
+    )
+    a = analyze(steady, _transcript(("applicant", "가", 2.5)))
+    b = analyze(paused, _transcript(("applicant", "나", 2.5)))
+
+    assert b.answers[0].pauses  # 멈춤은 잡히고
+    assert abs(a.loudness - b.loudness) < a.loudness * 0.05  # 크기는 같다
+    assert b.loudness_variation < 0.05
 
 
 def test_구간_나누기는_임계값에_둔감하다() -> None:
@@ -142,3 +158,101 @@ def test_떨어진_잡음_두_점은_답변이_아니다(tmp_path) -> None:
 
     assert metrics.answered == 1
     assert metrics.answers[0].text == "진짜 답변입니다"
+
+
+def test_답변까지_걸린_시간은_직전_재생_종료에서_잰다(tmp_path) -> None:
+    """재생 버퍼가 잠깐 마르면 신호가 여러 번 온다 — 직전 것이 진짜 끝이다."""
+    path = _wav(tmp_path, _silence(5.0), _tone(1.0))
+    transcript = _transcript(("applicant", "답변", 6.5))
+    # 3.0은 질문 도중 생긴 틈, 4.2가 진짜 끝. 답변은 5.0에 시작한다.
+    transcript["questionEnds"] = [3.0, 4.2]
+
+    metrics = analyze(path, transcript)
+    assert metrics.answers[0].start_delay_s == pytest.approx(0.8, abs=0.05)
+    assert metrics.mean_start_delay_s == pytest.approx(0.8, abs=0.05)
+
+
+def test_재생_종료_신호가_없으면_재지_않는다(tmp_path) -> None:
+    """0초로 채우면 '바로 대답했다'는 거짓말이 된다."""
+    path = _wav(tmp_path, _silence(1.0), _tone(1.0))
+    metrics = analyze(path, _transcript(("applicant", "답변", 2.5)))
+    assert metrics.answers[0].start_delay_s is None
+    assert metrics.mean_start_delay_s is None
+
+
+def test_띄엄띄엄한_잡음은_길어도_답변이_아니다(tmp_path) -> None:
+    """소리 난 프레임 수만 보면 몇 초짜리 잡음이 답변으로 살아남는다.
+
+    실측에서 평균 RMS 92~113짜리 구간이 셋 나왔고(말 임계값은 200),
+    그것이 말하기 속도를 60음절/분으로 끌어내렸다. 구간 평균도 봐야 한다.
+    """
+    # 짧고 작은 소리가 띄엄띄엄 — 소리 난 프레임은 충분하지만 구간 평균은
+    # 말 수준(200)에 못 미친다. 실측 잡음 구간의 평균이 92~113이었다.
+    noise = []
+    for _ in range(6):
+        noise += [_tone(0.08, 700), _silence(0.9)]
+    path = _wav(tmp_path, *noise, _silence(2.0), _tone(1.5))
+    # 전사는 발화가 끝난 뒤에 도착한다 — 구간 끝(9.4초)보다 뒤여야 한다.
+    metrics = analyze(path, _transcript(("applicant", "진짜 답변", 10.0)))
+
+    assert metrics.answered == 1
+    assert metrics.answers[0].text == "진짜 답변"
+
+
+def test_생각하느라_쉰_것은_답변을_가르지_않는다(tmp_path) -> None:
+    """경계는 침묵 길이가 아니라 면접관이 다시 말한 지점이다.
+
+    2초를 쉬어도 그다음 질문이 오기 전이면 같은 답변이다 — 침묵 길이로
+    가르면 한 답변이 둘로 쪼개진다.
+    """
+    path = _wav(tmp_path, _silence(1.0), _tone(1.0), _silence(2.0), _tone(1.0))
+    transcript = _transcript(("applicant", "쉬었다가 이어서 말했습니다", 5.5))
+    transcript["questionEnds"] = [0.8]
+
+    metrics = analyze(path, transcript)
+
+    assert metrics.answered == 1
+    answer = metrics.answers[0]
+    assert answer.start_s == pytest.approx(1.0, abs=0.05)
+    assert answer.end_s == pytest.approx(5.0, abs=0.05)
+    # 쉰 시간은 답변 안의 멈춤으로 남는다.
+    assert len(answer.pauses) == 1
+
+
+def test_다음_질문이_오면_거기서_답변이_끝난다(tmp_path) -> None:
+    path = _wav(tmp_path, _silence(0.5), _tone(1.0), _silence(2.0), _tone(1.0))
+    transcript = _transcript(("applicant", "첫 답변", 2.0), ("applicant", "둘째 답변", 5.0))
+    # 3.0초에 다음 질문이 끝났다 — 그 앞뒤는 다른 답변이다.
+    transcript["questionEnds"] = [0.3, 3.0]
+
+    metrics = analyze(path, transcript)
+    assert [a.text for a in metrics.answers] == ["첫 답변", "둘째 답변"]
+
+
+def test_질문_경계가_없으면_침묵으로_가른다(tmp_path) -> None:
+    """옛 녹음에는 재생 종료 표시가 없다 — 그때는 폴백한다."""
+    path = _wav(tmp_path, _tone(1.0), _silence(2.0), _tone(1.0))
+    metrics = analyze(path, _transcript(("applicant", "첫", 1.5), ("applicant", "둘", 4.5)))
+    assert metrics.answered == 2
+
+
+def test_질문_경계를_놓쳐도_면접_전체를_한_답변으로_보지_않는다(tmp_path) -> None:
+    """모델이 멈추면 재생 종료 표시가 안 찍혀 한 창이 몇 분을 삼킨다.
+
+    실측: 406초짜리 면접에 표시가 둘뿐이라 389초짜리 창이 생겼고, 그 전체를
+    한 답변으로 보니 평균이 침묵 수준으로 내려가 발화가 통째로 버려졌다.
+    """
+    path = _wav(
+        tmp_path,
+        _silence(0.5),
+        _tone(2.0),        # 진짜 답변
+        _silence(20.0),    # 그 뒤로 한참 조용
+        _tone(0.3),        # 뒤늦은 잡소리
+    )
+    transcript = _transcript(("applicant", "답변입니다", 3.0))
+    transcript["questionEnds"] = [0.3]  # 그다음 질문 표시가 없다
+
+    metrics = analyze(path, transcript)
+
+    assert metrics.answered == 1
+    assert metrics.answers[0].duration_s == pytest.approx(2.0, abs=0.15)

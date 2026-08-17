@@ -131,15 +131,20 @@ def _voice_payload(metrics: Any) -> dict[str, Any]:
     return {
         "syllablesPerMinute": metrics.syllables_per_minute,
         "meanAnswerS": metrics.mean_answer_s,
+        # 분당 지표(필러 워드)의 분모. 멈춘 시간을 뺀 실제 발화 시간이다.
+        "spokenS": metrics.spoken_s,
         "pauseRatio": metrics.pause_ratio,
         "loudness": metrics.loudness,
         "loudnessVariation": metrics.loudness_variation,
+        # 잴 수 없으면 null로 둔다 — 0으로 채우면 "바로 대답했다"는 거짓말이 된다.
+        "meanStartDelayS": metrics.mean_start_delay_s,
         "answers": [
             {
                 "startS": answer.start_s,
                 "endS": answer.end_s,
                 "text": answer.text,
                 "pauses": len(answer.pauses),
+                "startDelayS": answer.start_delay_s,
             }
             for answer in metrics.answers
         ],
