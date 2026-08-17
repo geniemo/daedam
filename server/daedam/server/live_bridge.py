@@ -2,7 +2,7 @@
 
 프론트(web/src/audio/voiceSession.ts)가 기대하는 /ws/interview 계약을 구현한다:
   클라 → 서버: 바이너리 프레임 = 16kHz PCM,
-               JSON 텍스트 = 컨트롤 {"type": "start"|"pause"|"resume"|"end"}
+               JSON 텍스트 = 컨트롤 {"type": "start"|"end"|"playbackEnd"}
   서버 → 클라: 바이너리 프레임 = 24kHz PCM,
                JSON 텍스트 = {"type": "session"|"caption"|"question"|
                               "interrupted"|"resumeToken"|"goAway"|"ended"}
@@ -42,8 +42,9 @@ from google.adk.utils.context_utils import Aclosing
 from google.genai import types
 
 from daedam.interview.stages import DEFAULT_PROFILE, SessionFlow
+from daedam.interview.vocabulary import interview_vocabulary
 from daedam.research.report import search_sections_from_report
-from interviewer.instruction import STATE_COMPANY, STATE_ROLE
+from interviewer.instruction import STATE_CANDIDATE, STATE_COMPANY, STATE_ROLE
 from interviewer.tools import (
     STATE_APPLICATION,
     STATE_ASKED,
@@ -62,6 +63,15 @@ logger = logging.getLogger(__name__)
 
 #: 단일 사용자 앱 — 세션은 카드 id로만 구분한다.
 _USER_ID = "user"
+
+#: 전사에 줄 언어 힌트. 면접은 한국어로 진행되는데 자동 감지로 두면 "음"이
+#: "um"으로, "팹"이 "fab"으로 떨어져 한 전사에 두 언어가 섞인다.
+#: (genai types.AudioTranscriptionConfig.language_codes — BCP-47)
+_LANGUAGE_CODES = ["ko-KR"]
+
+#: 발화가 끝났다고 보기까지 필요한 침묵. 면접에서는 문장 사이 숨(0.3~0.5초)으로
+#: 끊기면 안 되고, 정말 끝났을 때 1.2초 뜸 들이는 것은 부자연스럽지 않다.
+_SILENCE_MS = 1200
 
 #: Live API 입력 규격. 프론트 pcm-recorder가 이 형식 그대로 보낸다.
 _INPUT_MIME = "audio/pcm;rate=16000"
@@ -206,6 +216,9 @@ def _session_state_from(data: InterviewData, profile: str) -> dict[str, Any]:
     return {
         STATE_COMPANY: data.company,
         STATE_ROLE: data.role,
+        # instruction이 "지원자 OO님과 면접을 진행합니다"로 쓴다. 비어 있으면
+        # "지원자와"로 떨어지므로 없는 이름을 지어내지 않는다.
+        STATE_CANDIDATE: data.name,
         STATE_APPLICATION: data.application,
         STATE_RESEARCH_REPORT: search_sections_from_report(data.report),
         STATE_QUESTION_POOL: data.questions,
@@ -268,6 +281,10 @@ def create_live_router(
         )
         is_new_interview = session is None
         if is_new_interview:
+            # 새 면접이면 앞 판의 흔적을 지운다. 녹음은 이어 쓰기라 남겨 두면
+            # 새 면접이 앞 면접 뒤에 붙고, 피드백은 앞 판의 것이라 새 면접이
+            # 끝나기 전까지 화면이 옛 결과를 보여준다.
+            InterviewRecording.discard(store.directory(card))
             data = store.load(card)
             if data is None or data.questions is None:
                 # 준비 데이터 없는 면접은 시작하지 않는다. 조용한 폴백으로
@@ -382,11 +399,45 @@ def create_live_router(
                     ],
                 )
             )
+        # 이 면접에서 나올 말들. 세션 state가 아니라 준비 데이터에서 뽑는다 —
+        # 재접속이면 state는 이미 진행 중이지만 어휘는 그대로다.
+        prepared = store.load(card)
+        vocabulary = (
+            interview_vocabulary(
+                name=prepared.name,
+                company=prepared.company,
+                role=prepared.role,
+                application=prepared.application,
+                questions=prepared.questions,
+            )
+            if prepared is not None
+            else []
+        )
         run_config = RunConfig(
             response_modalities=["AUDIO"],
             # Live 커넥션 재개 핸들을 받기 위해 켠다. 자막용 양방향 전사는
             # RunConfig 기본값이 이미 켜 준다(run_config.py의 default_factory).
             session_resumption=types.SessionResumptionConfig(),
+            # 전사 힌트. 언어를 못 박고, 그날 나올 낱말을 미리 준다 — 실측에서
+            # 이름과 기술 용어가 계속 깨졌다("박지원"→"박지훈", "Jetson AGX
+            # Orin"→"Jeston Ajax 올인"). ADK가 이 설정을 그대로 Live 연결로
+            # 넘긴다(adk/flows/llm_flows/basic.py:117).
+            input_audio_transcription=types.AudioTranscriptionConfig(
+                language_codes=_LANGUAGE_CODES,
+                custom_vocabulary=vocabulary,
+            ),
+            # 발화 종료 판정을 늦춘다. 기본값이 면접에는 너무 급하다 —
+            # genai types.py EndSensitivity: "The default is
+            # END_SENSITIVITY_HIGH for Gemini Live". 지원자가 생각하느라 쉬는
+            # 것을 끝으로 보고 모델이 먼저 말하기 시작하면, 지원자가 이어
+            # 말할 때 끼어들기로 그 턴이 취소된다. 툴 응답이 이미 나간 뒤에
+            # 취소되면 세션이 통째로 멈춘다(실측: 2분간 무응답).
+            realtime_input_config=types.RealtimeInputConfig(
+                automatic_activity_detection=types.AutomaticActivityDetection(
+                    end_of_speech_sensitivity=types.EndSensitivity.END_SENSITIVITY_LOW,
+                    silence_duration_ms=_SILENCE_MS,
+                )
+            ),
         )
 
         async def pump_client_to_agent() -> None:
@@ -407,7 +458,13 @@ def create_live_router(
                     queue.send_realtime(types.Blob(mime_type=_INPUT_MIME, data=data))
                     recording.write_audio(data)
                 elif text := message.get("text"):
-                    if json.loads(text).get("type") == "end":
+                    control = json.loads(text).get("type")
+                    if control == "playbackEnd":
+                        # 면접관의 말이 브라우저에서 끝났다. 지원자가 질문을
+                        # 다 들은 순간이라 "답변까지 걸린 시간"의 기준선이다.
+                        recording.mark_question_end()
+                        continue
+                    if control == "end":
                         # 지원자가 끝냈다. 큐를 닫아 봐야 ADK가 재연결로 받으므로
                         # (end_interview 주석 참고) 이 펌프를 끝내 커넥션째 정리한다.
                         # 어느 쪽이 끝냈든 종료는 서버가 알린다 — 계약이 하나다.
@@ -564,6 +621,20 @@ def create_live_router(
             # 받으므로 중간 저장이고, 마지막 커넥션의 것이 최종본이 된다 —
             # 면접이 어떻게 끝나든(정상 종료·하드캡·창 닫기) 기록이 남는다.
             recording.finish()
+            if ended_notified:
+                # 면접이 끝났다. 세션을 지워야 다음 접속이 새 면접으로 시작한다 —
+                # 남겨 두면 브리지가 재접속으로 보아 시간 예산과 진행 단계를
+                # 이어받아, 두 번째 면접이 첫 면접의 뒷부분이 된다.
+                #
+                # 커넥션이 그냥 끊긴 경우(창 닫기·네트워크)는 지우지 않는다.
+                # 그건 재접속이고, 이어가는 것이 맞다.
+                try:
+                    await runner.session_service.delete_session(
+                        app_name=runner.app_name, user_id=_USER_ID, session_id=card
+                    )
+                    logger.info("면접 종료 — 세션을 비웠다 (card=%s)", card)
+                except Exception:  # noqa: BLE001 — 이미 없으면 그만
+                    logger.warning("세션 삭제 실패 (card=%s)", card, exc_info=True)
             # 기록이 남은 직후에 피드백 생성을 깨운다. 재접속이면 다음
             # 커넥션이 이어가므로 그때 다시 깨워지고, 이미 돌고 있으면
             # evaluation이 스스로 무시한다.

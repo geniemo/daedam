@@ -107,8 +107,12 @@ class _FakeRunner:
     def __init__(self) -> None:
         self.session_service = InMemorySessionService()
         self.heard: list = []  # LiveRequest 순서 그대로 — 개시 신호 검증용
+        # 면접이 끝나면 브리지가 세션을 지운다. 시딩을 검증하려면 돌던 중에
+        # 붙잡아 둬야 한다.
+        self.session = None
 
     async def run_live(self, *, session, live_request_queue, run_config):
+        self.session = session
         while True:
             request = await live_request_queue.get()
             self.heard.append(request)
@@ -198,11 +202,8 @@ def test_새_세션은_준비_데이터가_시딩되고_개시_신호로_시작�
     assert opening.content.role == "user"
     assert opening.content.parts[0].text == "안녕하세요."
 
-    session = asyncio.run(
-        runner.session_service.get_session(
-            app_name="daedam", user_id="user", session_id="fresh"
-        )
-    )
+    session = runner.session
+    assert session is not None
     assert session.state["company"] == "한결물류"
     assert session.state["question_pool"][0]["id"] == "q-0-0"
     # 리포트는 화면 형태에서 검색 입력 형태(blk 좌표 id)로 변환돼 들어간다.
@@ -356,12 +357,8 @@ def test_세션은_카드_id로_만들어진다(tmp_path) -> None:
         websocket.send_bytes(b"\x00")
         websocket.receive_bytes()
 
-    session = asyncio.run(
-        runner.session_service.get_session(
-            app_name="daedam", user_id="user", session_id="card-77"
-        )
-    )
-    assert session is not None
+    assert runner.session is not None
+    assert runner.session.id == "card-77"
 
 
 # ── 면접이 남기는 것 (§리포트의 재료) ────────────────────────────────
@@ -420,3 +417,71 @@ def test_면접이_음성과_전사를_남긴다(tmp_path) -> None:
 
     with wave.open(str(directory / "mic.wav"), "rb") as wav:
         assert wav.getnframes() == 16_000
+
+
+# ── 끝난 면접은 이어지지 않는다 ──────────────────────────────────────
+
+
+def test_면접이_끝나면_세션을_비운다(tmp_path) -> None:
+    """남겨 두면 다음 접속이 재접속으로 잡혀 두 번째 면접이 첫 면접의
+    뒷부분이 된다 — 시간 예산과 진행 단계를 이어받는다."""
+    runner = _FakeRunner()
+    client = _client(runner, _seeded_store(tmp_path, "again"))
+    with client.websocket_connect("/ws/interview?card=again") as websocket:
+        _handshake(websocket)
+        websocket.send_bytes(b"\x00")
+        websocket.receive_bytes()  # 대역 러너가 먼저 내는 오디오
+        while websocket.receive_json()["type"] != "ended":
+            pass
+
+    session = asyncio.run(
+        runner.session_service.get_session(
+            app_name="daedam", user_id="user", session_id="again"
+        )
+    )
+    assert session is None
+
+
+def test_새_면접은_앞_판의_기록을_지운다(tmp_path) -> None:
+    """녹음은 이어 쓰기라 남기면 새 면접이 앞 면접 뒤에 붙는다."""
+    store = _seeded_store(tmp_path, "clean")
+    directory = store.directory("clean")
+    for name in ("mic.pcm", "mic.wav", "transcript.json", "feedback.json"):
+        (directory / name).write_bytes(b"x")
+
+    client = _client(_FakeRunner(), store)
+    with client.websocket_connect("/ws/interview?card=clean") as websocket:
+        _handshake(websocket)
+        websocket.send_bytes(b"\x00")
+        websocket.receive_bytes()
+
+    # 앞 판의 피드백도 지운다 — 새 면접이 끝나기 전까지 옛 결과를 보여준다.
+    assert not (directory / "feedback.json").exists()
+
+
+def test_지원자_이름이_세션에_실린다(tmp_path) -> None:
+    """instruction이 "지원자 OO님과 면접을 진행합니다"로 쓰고, 전사 어휘
+    힌트로도 나간다 — 이름은 ASR이 가장 자주 틀리는 낱말이다."""
+    store = FileInterviewStore(tmp_path / "data")
+    store.save(
+        "named",
+        company="SK 하이닉스",
+        role="기반기술",
+        application=[],
+        report=[{"title": "개요", "blocks": []}],
+        uncertain=[],
+        name="박지원",
+    )
+    store.save_questions(
+        "named",
+        [{"id": "q-0-0", "stage": 0, "text": "질문?", "priority": 1, "tags": ["태그"]}],
+    )
+
+    runner = _FakeRunner()
+    client = _client(runner, store)
+    with client.websocket_connect("/ws/interview?card=named") as websocket:
+        _handshake(websocket)
+        websocket.send_bytes(b"\x00")
+        websocket.receive_bytes()
+
+    assert runner.session.state["candidate"] == "박지원"
