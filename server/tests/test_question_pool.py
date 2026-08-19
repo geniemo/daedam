@@ -163,3 +163,61 @@ def test_Question은_불변이다() -> None:
     question = Question(id="q", stage=0, text="t", priority=1)
     with pytest.raises(Exception):
         question.text = "바꿀 수 없음"  # type: ignore[misc]
+
+
+# ── 같은 경험 이어가기 ────────────────────────────────────────────────────
+
+
+def _experience_pool() -> QuestionPool:
+    return QuestionPool.from_dicts([
+        {"id": "d1", "stage": 1, "text": "디밀리언 1", "priority": 1,
+         "tags": ["a"], "source_chunk_ids": ["app-0-1#1", "blk-3-0"]},
+        {"id": "f1", "stage": 1, "text": "딥페이크 1", "priority": 1,
+         "tags": ["b"], "source_chunk_ids": ["app-0-2#0"]},
+        {"id": "d2", "stage": 1, "text": "디밀리언 2", "priority": 2,
+         "tags": ["c"], "source_chunk_ids": ["app-0-1#2"]},
+        {"id": "g1", "stage": 2, "text": "인성 디밀리언", "priority": 1,
+         "tags": ["d"], "source_chunk_ids": ["app-0-1#1"]},
+    ])
+
+
+def test_경험은_첫_지원서_청크의_항목_id다() -> None:
+    pool = _experience_pool()
+    assert pool.by_id("d1").experience == "app-0-1"
+    assert pool.by_id("d2").experience == "app-0-1"  # "#2" 조각이어도 같은 항목
+    assert pool.by_id("f1").experience == "app-0-2"
+
+
+def test_지원서_근거가_없으면_경험도_없다() -> None:
+    pool = QuestionPool.from_dicts([
+        {"id": "x", "stage": 1, "text": "회사 자료만", "priority": 1,
+         "tags": ["t"], "source_chunk_ids": ["blk-1-0"]},
+    ])
+    assert pool.by_id("x").experience is None
+
+
+def test_방금_물은_질문과_같은_경험이_먼저다() -> None:
+    """우선순위만 보면 d1 → f1(동점 p1)인데, d1 뒤에는 같은 경험 d2(p2)가 먼저다."""
+    pool = _experience_pool()
+    first = pool.next(stage=1)
+    assert first.id == "d1"
+    assert pool.next(stage=1, exclude=["d1"], follow=first).id == "d2"
+    assert pool.next(stage=1, exclude=["d1", "d2"], follow=pool.by_id("d2")).id == "f1"
+
+
+def test_같은_경험이_없으면_우선순위로_돌아간다() -> None:
+    pool = _experience_pool()
+    assert pool.next(stage=1, exclude=["d1", "d2"], follow=pool.by_id("d2")).id == "f1"
+
+
+def test_같은_경험은_태그보다_먼저다() -> None:
+    pool = _experience_pool()
+    assert pool.next(stage=1, exclude=["d1"], tag="b", follow=pool.by_id("d1")).id == "d2"
+
+
+def test_경험_이어가기는_단계를_넘지_않는다() -> None:
+    """인성 단계의 디밀리언 질문은 직무 단계의 디밀리언을 잇는 것이 아니다."""
+    pool = _experience_pool()
+    # 1단계 소진 → follow가 있어도 2단계에서는 경험으로 고르지 않는다 (툴 쪽 규칙이라
+    # 여기서는 next가 단계를 안 넘는다는 것만 확인)
+    assert pool.next(stage=1, exclude=["d1", "d2", "f1"], follow=pool.by_id("d2")) is None

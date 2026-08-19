@@ -18,7 +18,7 @@ from conftest import ContextStub
 from google.adk.models.llm_request import LlmRequest
 from google.genai import types
 
-from daedam.interview.probes import Probe
+from daedam.interview.probes import Extraction, Probe
 from interviewer import tools
 from interviewer.tools import (
     STATE_ASKED,
@@ -68,10 +68,11 @@ class _FakeExtract:
     def __init__(self) -> None:
         self.calls: list[dict] = []
         self.result: list[Probe] = list(PROBES)
+        self.leads_with: str = ""
 
-    def __call__(self, *, question: str, answer: str) -> list[Probe]:
-        self.calls.append({"question": question, "answer": answer})
-        return list(self.result)
+    def __call__(self, *, question: str, answer: str, experiences=None) -> Extraction:
+        self.calls.append({"question": question, "answer": answer, "experiences": experiences or []})
+        return Extraction(probes=list(self.result), leads_with=self.leads_with)
 
 
 @pytest.fixture
@@ -158,10 +159,9 @@ def test_답변이_오면_파볼_곳을_뽑아_첫_번째를_준다(probes) -> N
     context.hear("구조적 결함은 YOLO로, 질감은 EfficientNet으로 했습니다.")
 
     result = _call(context)
-    assert probes.calls == [
-        {"question": "맡으신 역할을 설명해 주세요.",
-         "answer": "구조적 결함은 YOLO로, 질감은 EfficientNet으로 했습니다."}
-    ]
+    assert len(probes.calls) == 1
+    assert probes.calls[0]["question"] == "맡으신 역할을 설명해 주세요."
+    assert probes.calls[0]["answer"] == "구조적 결함은 YOLO로, 질감은 EfficientNet으로 했습니다."
     assert result["probe"] == "분류 기준"
     assert result["hint"] == "어떤 기준으로 나눴는지 안 나왔다"
     assert "ask" not in result
@@ -179,17 +179,17 @@ def test_뼈대질문_뒤_여러_조각의_답변을_이어_붙인다(probes) ->
 
 def test_뼈대질문_전의_말은_답변에_넣지_않는다(probes) -> None:
     """앞 질문의 답변이 섞이면 엉뚱한 곳을 판다."""
-    context = ContextStub(_state(stage=1), said=["앞 질문에 대한 답입니다."])
+    context = ContextStub(_state(stage=1), said=["앞 질문에 대한 답으로 한참 말했습니다."])
     _call(context)
-    context.hear("이번 질문의 답입니다.")
+    context.hear("이번 질문의 답은 YOLO와 EfficientNet을 결합한 것입니다.")
     _call(context)
-    assert probes.calls[0]["answer"] == "이번 질문의 답입니다."
+    assert probes.calls[0]["answer"] == "이번 질문의 답은 YOLO와 EfficientNet을 결합한 것입니다."
 
 
 def test_yes로_신고하면_다음_파볼_곳을_준다(probes) -> None:
     context = ContextStub(_state(stage=1))
     _call(context)
-    context.hear("답변")
+    context.hear("구조적 결함은 YOLO로, 질감은 EfficientNet으로 나눠서 결합했습니다.")
     assert _call(context)["probe"] == "분류 기준"
 
     context.hear("기준은 결함의 형태였습니다.")
@@ -205,7 +205,7 @@ def test_yes로_신고하면_다음_파볼_곳을_준다(probes) -> None:
 def test_다_닫히면_다음_뼈대질문이다(probes) -> None:
     context = ContextStub(_state(stage=1))
     _call(context)
-    context.hear("답변")
+    context.hear("구조적 결함은 YOLO로, 질감은 EfficientNet으로 나눠서 결합했습니다.")
     _call(context)
     _call(context, answered="yes", evidence="e1")
     result = _call(context, answered="yes", evidence="e2")
@@ -217,7 +217,7 @@ def test_no로_돌아오면_한_번_더_묻고_그다음엔_포기한다(probes)
     """두 번 물어도 안 나오면 닫는다 — 세 번째는 심문이다."""
     context = ContextStub(_state(stage=1))
     _call(context)
-    context.hear("답변")
+    context.hear("구조적 결함은 YOLO로, 질감은 EfficientNet으로 나눠서 결합했습니다.")
     first = _call(context)
     assert first["probe"] == "분류 기준"  # 1회
     retry = _call(context, answered="no")  # 못 들음 → 2회
@@ -236,7 +236,7 @@ def test_신고를_빼먹으면_못_들은_것으로_본다(probes) -> None:
     """들었는지 모르니 한 번 더 묻는다 — 못 들은 것을 들은 것으로 닫는 쪽이 나쁘다."""
     context = ContextStub(_state(stage=1))
     _call(context)
-    context.hear("답변")
+    context.hear("구조적 결함은 YOLO로, 질감은 EfficientNet으로 나눠서 결합했습니다.")
     _call(context)
     assert _call(context)["probe"] == "분류 기준"  # answered 없음 → 재시도
     result = _call(context)  # 또 없음 → 포기
@@ -279,7 +279,7 @@ def test_응답은_물을_것과_다음_행동뿐이다(probes) -> None:
     """단계 이름·힌트 밖의 설명은 싣지 않는다 — 입으로 샌다."""
     context = ContextStub(_state(stage=1))
     _call(context)
-    context.hear("답변")
+    context.hear("구조적 결함은 YOLO로, 질감은 EfficientNet으로 나눠서 결합했습니다.")
     result = _call(context)
     assert set(result) == {"probe", "hint", "instruction"}
     assert "단계" not in result["instruction"]
@@ -299,7 +299,7 @@ def test_단계가_넘어가면_열린_파볼_곳을_버린다(probes) -> None:
     """지난 단계를 계속 파면 뒤 단계가 통째로 잘린다."""
     context = ContextStub(_state(0.0, stage=0))
     _call(context, tag="자기소개")  # a 배달
-    context.hear("답변")
+    context.hear("구조적 결함은 YOLO로, 질감은 EfficientNet으로 나눠서 결합했습니다.")
     assert _call(context)["probe"] == "분류 기준"
     # 시계를 2단계로 민다
     context.state[STATE_STARTED_AT] = time.time() - 100.0
@@ -332,3 +332,46 @@ def test_질문을_다_쓰면_꼬리질문으로_이어가라고_한다(probes) 
 def test_시작_시각_없는_세션은_크게_실패한다(probes) -> None:
     with pytest.raises(ValueError, match="시딩"):
         _call(ContextStub({STATE_QUESTION_POOL: POOL_RAW}))
+
+
+# ── 이어갈 경험 ──────────────────────────────────────────────────────────
+
+POOL_EXP = [
+    {"id": "a", "stage": 0, "text": "자기소개 부탁드립니다.", "priority": 1,
+     "tags": ["자기소개"], "source_chunk_ids": []},
+    {"id": "d1", "stage": 1, "text": "디밀리언에서 결합 기준은?", "priority": 1,
+     "tags": ["모델 선택"], "source_chunk_ids": ["app-0-1#1"]},
+    {"id": "f1", "stage": 1, "text": "딥페이크에서 DCT 계기는?", "priority": 1,
+     "tags": ["데이터 표현"], "source_chunk_ids": ["app-0-2#0"]},
+    {"id": "d2", "stage": 1, "text": "디밀리언 배포 범위는?", "priority": 2,
+     "tags": ["엣지 배포"], "source_chunk_ids": ["app-0-1#2"]},
+]
+
+
+def test_자기소개가_가리킨_경험부터_간다(probes) -> None:
+    """자기소개에서 딥페이크 얘기를 길게 했으면 디밀리언(우선순위 동점, 앞)이
+    아니라 딥페이크부터. 추출이 후보 중 골라 주고, 다음 배달이 그것을 따른다."""
+    probes.leads_with = "딥페이크에서 DCT 계기는?"
+    context = ContextStub(_state(0.0, stage=0, **{STATE_QUESTION_POOL: POOL_EXP}))
+    _call(context, tag="자기소개")  # a 배달
+    context.hear("학부 연구생 때 딥페이크 탐지 모델을 개발하면서 데이터를 분석했습니다.")
+    _call(context)  # 추출 → leads_with 저장, 파볼 곳 1
+    # 후보에 1단계 경험 둘이 실렸어야 한다
+    assert set(probes.calls[0]["experiences"]) == {"디밀리언에서 결합 기준은?", "딥페이크에서 DCT 계기는?"}
+    # 파볼 곳 둘 닫고 다음 뼈대질문 → 시계는 그대로라 0단계 소진으로 1단계 진입
+    _call(context, answered="yes", evidence="e")
+    result = _call(context, answered="yes", evidence="e")
+    assert result["ask"] == "딥페이크에서 DCT 계기는?"
+
+
+def test_같은_경험이_남아_있으면_그것부터(probes) -> None:
+    """d1 뒤에는 f1(동점)이 아니라 d2(같은 경험)."""
+    probes.result = []
+    context = ContextStub(_state(0.0, stage=1, **{STATE_QUESTION_POOL: POOL_EXP}))
+    assert _call(context, tag="모델 선택")["ask"] == "디밀리언에서 결합 기준은?"
+    context.hear("구조적 결함은 YOLO로, 질감은 EfficientNet으로 나눠서 결합했습니다.")
+    assert _call(context)["ask"] == "디밀리언 배포 범위는?"
+    context.hear("구조적 결함은 YOLO로, 질감은 EfficientNet으로 나눠서 결합했습니다.")
+    assert _call(context)["ask"] == "딥페이크에서 DCT 계기는?"
+
+

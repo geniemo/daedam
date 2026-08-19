@@ -17,6 +17,16 @@ from .tools import AskQuestionTool, search_knowledge
 #: 문제가 있으면 gemini-2.5-flash-native-audio-preview-12-2025로 폴백한다.
 MODEL = "gemini-3.1-flash-live-preview"
 
+#: 면접관 목소리 — 프리빌트 8종(Puck·Charon·Kore·Fenrir·Aoede·Leda·Orus·Zephyr,
+#: ~/refs/adk-docs/docs/live/dev-guide/part5.md:633) 중 하나로 고정한다. 세션마다
+#: 목소리가 바뀌지 않게. 브리지가 RunConfig의 speech_config로 싣고 ADK가 Live
+#: 연결로 넘긴다(adk/flows/llm_flows/basic.py:111).
+#:
+#: 같은 이름으로 TTS 클립을 만들어 추임새로 쓰려 했으나 뺐다 — 이름이 같아도
+#: TTS와 Live는 다른 음성 엔진이라 같은 목소리로 들리지 않았고(실측: 기계음),
+#: 모델은 클립을 못 들으니 자기도 추임새를 해서 "알겠습니다. 알겠습니다"가 됐다.
+VOICE = "Aoede"
+
 root_agent = LlmAgent(
     name="interviewer",
     model=MODEL,
