@@ -1,32 +1,40 @@
-"""면접 툴 — 질문 게이트와 회사 지식 검색.
+"""면접 툴 — 질문 배달과 회사 지식 검색.
 
 면접을 끝내는 것은 서버도 모델도 아니라 지원자다 — 화면의 종료 버튼. 그래서
 여기에는 끝내는 툴이 없고, 시간 예산은 단계를 옮기는 데만 쓴다.
 
-질문은 전부 `ask_question`을 지난다. 모델의 자율을 뺏자는 게 아니라, 페이싱
-판단을 프롬프트가 아니라 툴 쪽에 두려는 것이다 — 대화가 길어질수록 시스템
-프롬프트의 영향은 그 뒤에 쌓인 대화에 묻히지만, 툴 선언과 툴 출력은 매
-호출마다 새로 도착한다.
+질문은 전부 `ask_question`을 지난다. 모델의 자율을 뺏자는 게 아니라, **무엇을
+물을지**의 판단을 프롬프트가 아니라 툴 쪽에 두려는 것이다 — 대화가 길어질수록
+시스템 프롬프트의 영향은 그 뒤에 쌓인 대화에 묻히지만, 툴 선언과 툴 출력은
+매 호출마다 새로 도착한다.
 
-응답은 어느 경로든 한 모양이다: **물을 문장 하나 + 다음 행동 한 문장.** 준비된
-질문이든 허가된 꼬리질문이든 ask에 실려 오고, 그 밖의 것은 싣지 않는다.
-네이티브 오디오 모델은 텍스트를 읽고 골라내는 것이 아니라 들어온 것에 끌려가서,
-행동을 못 바꾸는 문장은 입으로 새는 통로일 뿐이다(`_ASK_INSTRUCTION` 주석).
+**꼬리질문의 방향은 서버가 정한다.** 뼈대질문에 답변이 오면 서버가 그 답변을
+읽고(`daedam.interview.probes`) 파볼 곳을 둘 고른다. 모델은 그 주제와 힌트를
+받아 제 문장으로 묻고, 답을 들었는지(`answered`)를 신고한다. 파볼 곳이 다
+닫히면 다음 뼈대질문이다.
 
-이 모양은 instruction의 "툴을 먼저 부르고 그다음에 말하라"와 한 세트다. 모델이
-툴 전에 말하던 때는 초안을 되돌려주면 한 번 더 말했다(실측 9턴 중 8턴). 지금은
-툴 뒤에 말하므로(실측 5/5) 되돌려줘도 두 번 말할 것이 없다.
+앞서는 모델이 초안(draft_question)을 들고 오고 서버가 중요도·문턱·상한으로
+허가·반려만 했다. 그랬더니 꼬리질문이 답변에 붙지 않았다 — "직접 눈으로 보고
+분류했다"를 듣고도 다음 키워드로 넘어갔다(실측). 게이트는 "물어도 되는가"만 보고
+"무엇을 물을지"는 모델 혼자 즉석에서 정했기 때문이다. 그리고 모델이 물을 것을
+툴보다 먼저 알고 있으니 툴보다 먼저 말해서 같은 질문이 두 번 나갔다. 방향을
+서버가 주면 모델은 툴이 돌아오기 전에 물을 것을 모르므로 미리 말할 수 없다.
 
-`ask_question`의 선언은 Live 커넥션을 열 때 한 번 실린다. 그 시점에 세션 풀의 태그 어휘를
-tag 파라미터의 enum으로 주입해, 모델이 이 세션에 실제로 존재하는 태그만
-고르게 한다. enum은 단계별이 아니라 풀 전체 어휘다 — 커넥션(~10분)이 단계
-여러 개에 걸치기 때문이다(`QuestionPool.tags` 참고).
+응답은 어느 경로든 **물을 것 하나 + 다음 행동 한 문장**이다. 뼈대질문이면 문장을
+그대로(`ask`), 파볼 곳이면 주제와 힌트(`probe`·`hint`)를 준다. 그 밖의 것은 싣지
+않는다 — 네이티브 오디오 모델은 텍스트를 읽고 골라내는 것이 아니라 들어온 것에
+끌려가서, 행동을 못 바꾸는 문장은 입으로 새는 통로일 뿐이다(실측: "지원해 주신
+직무와 관련된 질문입니다" 같은 예고, "툴을 호출합니다"를 대사로 읽음).
 
-단계 전환은 질문 소진이 아니라 시간이 정한다. 다만 모델에게 시계를 보여
-주지는 않는다 — 남은 시간을 알려 봐야 정작 늘어질 때는 툴을 부르지 않고
-있고, 꼬리질문의 필요는 시간이 아니라 답변 내용이 정하기 때문이다. 툴이
-세션 시작 시각으로 경과를 재서 예산보다 뒤처진 단계를 끌어올리고, 모델은
-결과만 통보받는다(`daedam.interview.stages`).
+`ask_question`의 선언은 Live 커넥션을 열 때 한 번 실린다. 그 시점에 세션 풀의
+태그 어휘를 tag 파라미터의 enum으로 주입해, 모델이 이 세션에 실제로 존재하는
+태그만 고르게 한다. enum은 단계별이 아니라 풀 전체 어휘다 — 커넥션(~10분)이
+단계 여러 개에 걸치기 때문이다(`QuestionPool.tags` 참고).
+
+단계 전환은 질문 소진이 아니라 시간이 정한다. 다만 모델에게 시계를 보여 주지는
+않는다 — 남은 시간을 알려 봐야 정작 늘어질 때는 툴을 부르지 않고 있다. 툴이
+세션 시작 시각으로 경과를 재서 예산보다 뒤처진 단계를 끌어올리고, 모델은 결과만
+통보받는다(`daedam.interview.stages`). 단계가 넘어가면 열린 파볼 곳은 버린다.
 
 선언 주입 경로 (설치된 ADK 2.6.3 소스에서 확인):
   google/adk/flows/llm_flows/base_llm_flow.py  `_process_agent_tools`
@@ -35,6 +43,11 @@ tag 파라미터의 enum으로 주입해, 모델이 이 세션에 실제로 존�
     — JSON_SCHEMA_FOR_FUNC_DECL이 기본 활성이라 선언은 parameters_json_schema
   google/adk/models/llm_request.py  `append_tools`
     — 선언을 config.tools에 병합하고 tools_dict에 등록
+
+세션 이력에서 답변을 읽는 경로 (설치된 ADK 2.6.3 소스에서 확인):
+  google/adk/runners.py  `run_live` 이벤트 append 분기 (1497행 부근)
+    — partial이 아닌 이벤트만 세션에 append한다. 완료된 전사(finished=True)는
+      partial=False라 쌓인다 (gemini_llm_connection.py 395~440행)
 """
 
 from __future__ import annotations
@@ -43,12 +56,13 @@ import json
 import logging
 import time
 from functools import lru_cache
-from typing import Any, Mapping, override
+from typing import Any, Callable, Literal, Mapping, override
 
 from google.adk.models.llm_request import LlmRequest
 from google.adk.tools import FunctionTool, ToolContext
 from google.genai import types
 
+from daedam.interview.probes import Probe, extract_probes
 from daedam.interview.question_pool import Question, QuestionPool
 from daedam.interview.stages import DEFAULT_PROFILE, STAGE_NAMES, SessionFlow
 from daedam.knowledge.chunk import Source, chunks_from_application, chunks_from_report
@@ -71,38 +85,57 @@ STATE_STARTED_AT = "started_at"
 STATE_PROFILE = "profile"
 
 #: 이미 낸 질문 id 목록과 현재 단계 인덱스. 툴이 갱신하고 브리지가 state
-#: 델타에서 읽어 화면의 질문 번호·단계 표시를 움직인다.
+#: 델타에서 읽어 화면의 질문 번호를 움직인다.
 STATE_ASKED = "asked"
 STATE_STAGE = "stage"
 
-#: 마지막 뼈대질문 이후 모델이 자기 문장으로 물은 질문 수. 주제가 아니라
-#: "준비된 질문에서 얼마나 멀어졌는가"를 센다 — 꼬리질문마다 태그가 달라지므로
-#: 주제를 상태로 붙들 수 없고, 붙들 필요도 없다. 새 뼈대질문이 나가면 0이 된다.
-STATE_FREE_QUESTIONS = "free_questions"
-
-#: 자유 질문 개수 상한. 준비된 질문 사이에 자작 질문이 이보다 길게 끼면
-#: 어떤 경우에도 면접이 아니다. 문턱과 무관하게 먼저 걸린다.
-_FREE_QUESTION_CAP = 3
-
-#: 질문을 돌려줄 때 붙는 지시 — 셋 중 어느 경로든 이 한 문장뿐이다. 무엇을
-#: 말할지(ask)와 다음에 뭘 할지, 그 둘 밖의 것은 싣지 않는다.
+#: 현재 뼈대질문의 파볼 곳. `[{"topic", "hint", "status", "attempts"}]`.
+#: status는 open(아직 안 물음·답 못 받음) / covered(들음) / unanswered(두 번
+#: 물어도 안 나옴) / dropped(단계가 넘어가 버림). 새 뼈대질문이 나가면 비운다.
 #:
-#: 앞서는 단계 이름·그 단계의 태그 목록·"N번째 꼬리질문"·"이 주제는 여기까지"를
-#: 함께 실었다. 전부 모델의 다음 행동을 바꾸지 못하는 정보다 — 태그는 이미 선언
-#: enum에 있고, 단계와 횟수는 모델이 쓸 데가 없다. 그런데 네이티브 오디오
-#: 모델은 텍스트를 읽고 골라내지 않고 들어온 것에 끌려간다(실측: "인사와 함께"
-#: 다섯 글자에 끌려 자기소개를 했고, 툴이 준 "자기소개 부탁드립니다" 문맥에
-#: 끌려 지원자 이름을 썼다). 쓸 데 없는 문장은 입으로 새는 통로일 뿐이다 —
-#: 실측에서 "지원해 주신 직무와 관련된 질문입니다" 같은 예고가 붙어 나왔다.
-#:
-#: 뒷문장은 시스템 프롬프트의 같은 규칙과 달리 툴을 부를 때마다 새로 도착하고
-#: 도착 시점이 바로 다음 결정 직전이다. 다만 툴을 안 부르는 모델에게는 닿지
-#: 않는다 — 습관을 시작시키는 장치가 아니라 유지시키는 장치다.
+#: 추출은 뼈대질문을 배달한 **다음** 호출에서 한다 — 그때야 답변이 세션에 쌓여
+#: 있다. 그래서 뼈대질문 배달 직후에는 이 목록이 비어 있고, 그것이 "아직 안
+#: 뽑았다"는 표시다(`STATE_PROBES_FOR`로 어느 질문 것인지 가른다).
+STATE_PROBES = "probes"
+STATE_PROBES_FOR = "probes_for"
+
+#: 마지막 뼈대질문을 배달한 시점의 세션 이벤트 수. 그 뒤의 지원자 전사가 이
+#: 질문에 대한 답변이다.
+STATE_ANSWER_MARKER = "answer_marker"
+
+#: 닫힌 파볼 곳의 기록. 답변을 못 받아 닫힌 것(unanswered)은 코칭이 "끝내
+#: 설명하지 못했다"의 근거로 쓴다. 면접 내내 쌓인다.
+STATE_PROBE_LOG = "probe_log"
+
+#: 한 파볼 곳을 몇 번까지 묻는가. 두 번 물어도 안 나오면 닫는다 — 세 번째는
+#: 심문이다.
+_PROBE_ATTEMPTS = 2
+
+#: 질문을 돌려줄 때 붙는 지시. 무엇을 말할지와 다음에 뭘 할지, 그 둘 밖의 것은
+#: 싣지 않는다. 시스템 프롬프트의 같은 규칙과 달리 툴을 부를 때마다 새로
+#: 도착하고 도착 시점이 바로 다음 결정 직전이다. 다만 툴을 안 부르는 모델에게는
+#: 닿지 않는다 — 습관을 시작시키는 장치가 아니라 유지시키는 장치다.
 _ASK_INSTRUCTION = "이 질문을 물어보세요. 답변을 들으면 다음 질문 전에 이 툴을 다시 부르세요."
+_PROBE_INSTRUCTION = (
+    "이것을 당신의 문장으로 물어보세요. 답변을 들으면 다음 질문 전에 이 툴을 다시"
+    " 부르세요 — 답을 들었으면 answered=yes와 들은 내용(evidence)을, 못 들었으면"
+    " answered=no를."
+)
 
-#: 첫 자유 질문에 주는 여유. 방금 들은 답변을 한 번 되묻는 것은 거의 항상
-#: 값어치를 하므로, 첫 질문은 다음 뼈대질문보다 한 칸 덜 중요해도 통과시킨다.
-_FREE_QUESTION_SLACK = 2
+#: 재시도 지시 — 첫 응답과 같은 문장을 다시 주면 모델이 "또?"로 읽고 다른 것을
+#: 묻는다(실측: 같은 probe를 두 번 받자 "그럼 다른 질문을 드릴게요"로 새 주제를
+#: 내고, 그 답을 yes로 신고해 원래 probe가 엉뚱한 근거로 닫혔다). 재시도임을
+#: 말하고, 같은 것을 다른 말로 묻되 이번이 마지막이라고 못 박는다.
+_PROBE_RETRY_INSTRUCTION = (
+    "아직 이 답을 못 들었습니다. 다른 질문으로 넘어가지 말고, 같은 것을 다른 말로"
+    " 한 번만 더 물어보세요. 그래도 안 나오면 다음 호출에 answered=no를 — 그때는"
+    " 넘어갑니다."
+)
+
+#: 테스트가 대역을 끼우는 자리. 모듈 전역인 이유는 `ask_question`이 ADK가 선언을
+#: 읽는 순수 함수라 인자를 늘릴 수 없기 때문이다.
+_extract_probes: Callable[..., list[Probe]] = extract_probes
+
 
 def _question_pool_from(state: Mapping[str, Any]) -> QuestionPool:
     """세션 state의 질문 풀을 되살린다.
@@ -151,44 +184,126 @@ def _next_in_pool(
     return found, at
 
 
-def _free_question_threshold(nxt: Question | None, free: int) -> int | None:
-    """자유 질문이 통과하려면 가져야 할 중요도. None이면 비교 대상이 없다.
-
-    다음 뼈대질문의 중요도에 여유를 얹고 이미 쓴 자유 질문 수만큼 뺀다. 한 번
-    더 물을수록 더 중요해야 하고, 다음에 물을 것이 중요할수록 조건이 까다로워진다.
-    문턱이 고정이면 모델이 매번 1을 신고해 영원히 빠져나간다.
-
-    단계가 진행돼 중요한 질문이 소진될수록 문턱이 저절로 낮아지는 것은 이
-    식에서 따라 나온다 — 남은 게 곁가지뿐이면 파던 자리를 더 파는 편이 낫다.
-    """
-    return None if nxt is None else nxt.priority + _FREE_QUESTION_SLACK - free
-
-
-def _stage_on_schedule(state: Any, flow: SessionFlow, elapsed_s: float) -> int:
-    """예산보다 뒤처진 단계를 끌어올린 현재 단계.
+def _stage_on_schedule(state: Any, flow: SessionFlow, elapsed_s: float) -> bool:
+    """예산보다 뒤처진 단계를 끌어올린다. 옮겼으면 True.
 
     남은 질문이 있어도 건너뛴다 — 지난 단계에 계속 머무르면 뒤 단계가 통째로
     잘린다. 반대로 예산보다 앞서 가는 것(질문 소진)은 막지 않는다.
     """
     stage = int(state.get(STATE_STAGE, 0))
     on_schedule = flow.stage_index_at(elapsed_s)
-    if on_schedule > stage:
-        logger.info(
-            "시간 경과로 단계 이동: %s → %s (경과 %.0f초)",
-            STAGE_NAMES[stage],
-            STAGE_NAMES[on_schedule],
-            elapsed_s,
-        )
-        stage = on_schedule
-    return stage
+    if on_schedule <= stage:
+        return False
+    logger.info(
+        "시간 경과로 단계 이동: %s → %s (경과 %.0f초)",
+        STAGE_NAMES[stage],
+        STAGE_NAMES[on_schedule],
+        elapsed_s,
+    )
+    state[STATE_STAGE] = on_schedule
+    return True
+
+
+# ── 답변 읽기 ────────────────────────────────────────────────────────────
+
+
+def _applicant_said_since(tool_context: ToolContext, marker: int) -> tuple[str, int]:
+    """마지막 뼈대질문 뒤에 지원자가 한 말과, 지금 이벤트 수.
+
+    세션 이벤트에서 완료된 입력 전사(지원자)를 모은다. marker는 앞선 호출이
+    읽은 지점(이벤트 수)이라, 그 뒤의 것만 본다.
+
+    전사가 없으면(테스트 대역·꺼진 전사) 빈 문자열이다 — 그때는 파볼 곳을 못
+    뽑고 다음 뼈대질문으로 간다. 못 보는 것이 지어내는 것보다 낫다.
+    """
+    session = getattr(tool_context, "session", None)
+    events = list(getattr(session, "events", None) or [])
+    spoken: list[str] = []
+    for event in events[marker:]:
+        transcription = getattr(event, "input_transcription", None)
+        if transcription is None or not getattr(transcription, "finished", False):
+            continue
+        text = (getattr(transcription, "text", "") or "").strip()
+        if text:
+            spoken.append(text)
+    return " ".join(spoken), len(events)
+
+
+# ── 파볼 곳 ──────────────────────────────────────────────────────────────
+
+
+def _open_probe(probes: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """아직 열려 있는 파볼 곳 중 첫 번째. 없으면 None."""
+    for probe in probes:
+        if probe["status"] == "open":
+            return probe
+    return None
+
+
+def _close_probe(
+    state: Any, probe: dict[str, Any], status: str, evidence: str = ""
+) -> None:
+    """파볼 곳을 닫고 기록에 남긴다."""
+    probe["status"] = status
+    if evidence:
+        probe["evidence"] = evidence
+    log = list(state.get(STATE_PROBE_LOG, []))
+    log.append(
+        {
+            "question_id": state.get(STATE_PROBES_FOR),
+            "topic": probe["topic"],
+            "hint": probe["hint"],
+            "status": status,
+            "evidence": evidence,
+        }
+    )
+    state[STATE_PROBE_LOG] = log
+
+
+def _mark_answered(state: Any, probe: dict[str, Any], evidence: str) -> None:
+    """직전에 건넨 파볼 곳의 답을 들었다 — 닫고 근거를 남긴다.
+
+    어느 항목인지는 서버가 안다(방금 건넨 것). 모델에게 주제 이름을 되받지
+    않는다 — 받아 봤더니 9회 중 9회가 다른 이름이었다(실측: 직전 뼈대질문의
+    태그를 적어 보냄). 이름 맞추기는 모델이 못 하는 일이고 서버는 할 필요가
+    없는 일이다.
+    """
+    _close_probe(state, probe, "covered", evidence)
+    logger.info("파볼 곳 확인: %s — %s", probe["topic"], evidence[:60])
+
+
+def _retry_or_close(state: Any, probe: dict[str, Any]) -> None:
+    """신고 없이 돌아왔다 — 못 들은 것이다. 한 번 더 묻거나, 다 썼으면 닫는다."""
+    probe["attempts"] = int(probe.get("attempts", 0)) + 1
+    if probe["attempts"] >= _PROBE_ATTEMPTS:
+        _close_probe(state, probe, "unanswered")
+        logger.info("파볼 곳 포기: %s (%d번 물음)", probe["topic"], probe["attempts"])
+
+
+def _probe_response(probe: dict[str, Any]) -> dict:
+    """열린 파볼 곳을 모델에게 건넨다. 두 번째부터는 재시도 지시가 붙는다."""
+    probe["asked"] = True
+    retry = int(probe.get("attempts", 0)) > 0
+    return {
+        "probe": probe["topic"],
+        "hint": probe["hint"],
+        "instruction": _PROBE_RETRY_INSTRUCTION if retry else _PROBE_INSTRUCTION,
+    }
+
+
+def _drop_open_probes(state: Any, probes: list[dict[str, Any]]) -> None:
+    """단계가 넘어갔다 — 열린 파볼 곳은 버린다. 뒤 단계가 잘리는 것보다 낫다."""
+    for probe in probes:
+        if probe["status"] == "open":
+            _close_probe(state, probe, "dropped")
 
 
 def _deliver(
     state: Any,
+    tool_context: ToolContext,
     pool: QuestionPool,
     *,
     tag: str | None,
-    stage: int,
     asked: list[str],
     elapsed_s: float,
 ) -> dict:
@@ -197,9 +312,10 @@ def _deliver(
     남은 게 없어도 면접을 끝내지 않는다 — 끝내는 것은 지원자의 종료 버튼이다.
     그때까지는 모델이 제 문장으로 이어간다.
     """
+    stage = int(state.get(STATE_STAGE, 0))
     found, at = _next_in_pool(pool, stage=stage, tag=tag, exclude=asked)
+    state[STATE_STAGE] = at
     if found is None:
-        state[STATE_STAGE] = at
         logger.info("질문 소진 (경과 %.0f초, %d개 배달)", elapsed_s, len(asked))
         return {
             "instruction": "준비된 질문이 다 나갔습니다. 지금까지의 답변에서 더 확인할 것을"
@@ -208,8 +324,12 @@ def _deliver(
 
     asked = [*asked, found.id]
     state[STATE_ASKED] = asked
-    state[STATE_STAGE] = at
-    state[STATE_FREE_QUESTIONS] = 0
+    # 파볼 곳은 다음 호출에서 뽑는다 — 답변이 그때야 세션에 있다. 지금은
+    # "이 질문 것은 아직 안 뽑았다"만 남긴다.
+    state[STATE_PROBES] = []
+    state[STATE_PROBES_FOR] = found.id
+    _, marker = _applicant_said_since(tool_context, 0)
+    state[STATE_ANSWER_MARKER] = marker
     logger.info(
         "뼈대질문 %d번 배달 [%s] %s (경과 %.0f초)",
         len(asked) - 1,
@@ -221,86 +341,91 @@ def _deliver(
 
 
 def ask_question(
-    tool_context: ToolContext, tag: str, priority: int, draft_question: str = ""
+    tool_context: ToolContext,
+    tag: str,
+    answered: Literal["yes", "no", ""] = "",
+    evidence: str = "",
 ) -> dict:
-    """질문하기 전에 반드시 호출하세요. 새 주제든 방금 들은 답변을 파고드는 꼬리질문이든 예외가 없습니다.
+    """질문하기 전에 반드시 호출하세요. 무엇을 물을지는 이 툴이 정합니다.
 
-    draft_question을 비우면 지금 주제를 충분히 확인했다는 뜻이고, 준비된 다음
-    질문이 ask에 담겨 옵니다. 채우면 그 꼬리질문을 물어도 되는지 판정합니다 —
-    통과하면 그 문장이, 아니면 준비된 다음 질문이 ask에 담겨 옵니다.
+    돌아오는 것은 둘 중 하나입니다.
+      ask          — 준비된 질문입니다. 이 문장을 그대로 물어보세요.
+      probe + hint — 방금 답변에서 더 파볼 곳입니다. 주제(probe)와 무엇이 빠졌는지
+                     (hint)를 보고 당신의 문장으로 물어보세요.
 
-    돌아오는 것은 ask — 이 문장을 물어보세요. 준비된 질문이 다 나갔으면 ask 없이
-    instruction만 옵니다.
+    파볼 곳(probe)을 물은 뒤의 호출에서는 answered를 반드시 적으세요. 답을 들었으면
+    yes, 못 들었으면(모른다고 했거나, 기억이 안 난다고 했거나, 딴 얘기를 했으면)
+    no. no면 이 툴이 한 번 더 물을지 넘어갈지 정합니다.
 
     Args:
         tag: 다음으로 확인하고 싶은 주제. 준비된 질문을 고르는 기준입니다.
-        priority: 물으려는 것이 합격 판단에 얼마나 결정적인지 1~5로.
-            1 핵심 검증 — 못 들으면 판단이 안 서는 질문.
-            2 근거 확인 — 내세운 성과·판단의 근거, 본인이 맡은 몫.
-            3 역량의 폭 — 다른 각도에서 같은 역량 재확인.
-            4 맥락 보완 — 배경·동기·협업 방식.
-            5 곁가지 — 흥미롭지만 평가와 연결이 옅음.
-        draft_question: 물으려는 꼬리질문 문장. 아직 말하지 않은 후보입니다.
-            질문 문장만 담으세요 — "네, 그렇군요" 같은 반응은 넣지 마세요.
-            반응은 이 툴을 부르기 전에 이미 하셨고, 여기 담으면 돌아온 문장을
-            읽을 때 한 번 더 들립니다. 더 물을 것이 없으면 비워 두세요 — 그때는
-            이 툴이 질문을 정합니다.
+        answered: 직전에 받은 probe의 답을 들었는지. yes 또는 no. 준비된 질문(ask)
+            뒤의 호출에서는 비워 두세요.
+        evidence: answered=yes일 때, 지원자가 실제로 한 말의 요지를 한 문장으로.
+            없는 말을 적지 마세요 — 이것이 리포트의 근거가 됩니다.
 
     Returns:
-        ask와 instruction을 담은 dict.
+        ask 또는 probe·hint와 instruction을 담은 dict.
     """
-    # 빈 draft_question이 "이 주제는 끝났다"는 신호다. 종류를 따로 받지 않는 이유는
-    # 신호가 범주적이어야 흔들리지 않아서다 — 문장을 썼거나 안 썼거나 둘뿐이고,
-    # 크기 척도 위의 센티널(예: priority 6)처럼 이웃 값과 헷갈릴 여지가 없다.
     state = tool_context.state
     pool = _question_pool_from(state)
     flow = _session_flow_from(state)
     elapsed_s = _elapsed_s_from(state)
-    stage = _stage_on_schedule(state, flow, elapsed_s)
     asked = list(state.get(STATE_ASKED, []))
+    probes = list(state.get(STATE_PROBES, []))
 
-    if not draft_question:
-        return _deliver(state, pool, tag=tag, stage=stage, asked=asked, elapsed_s=elapsed_s)
+    # 단계가 넘어가면 파던 것을 버리고 다음 뼈대질문이다 — 뒤 단계가 잘리는
+    # 것보다 낫다.
+    if _stage_on_schedule(state, flow, elapsed_s):
+        _drop_open_probes(state, probes)
+        state[STATE_PROBES] = probes
+        return _deliver(state, tool_context, pool, tag=tag, asked=asked, elapsed_s=elapsed_s)
 
-    free = int(state.get(STATE_FREE_QUESTIONS, 0))
-    # 비교 대상은 태그 없이 뽑는다 — 이 주제를 파느라 못 하고 있는 것 중 가장
-    # 중요한 질문이 기회비용이다. 모델이 태그로 지목하게 하면 문턱을 스스로
-    # 정하는 셈이라, 중요한 질문이 영영 안 나간 채 면접이 끝날 수 있다.
-    nxt, _ = _next_in_pool(pool, stage=stage, tag=None, exclude=asked)
-    threshold = _free_question_threshold(nxt, free)
-    passes = free < _FREE_QUESTION_CAP and (threshold is None or priority <= threshold)
-    logger.info(
-        "꼬리질문 %s: %s (중요도 %d, 문턱 %s, 누적 %d/%d, 경과 %.0f초)",
-        "허가" if passes else "반려",
-        draft_question,
-        priority,
-        "없음" if threshold is None else threshold,
-        free,
-        _FREE_QUESTION_CAP,
-        elapsed_s,
-    )
+    # 직전에 건넨 파볼 곳이 있으면 신고를 처리한다. yes/no 둘 중 하나여야
+    # 한다 — 빈 값은 "못 들음"으로 보지 않는다. 앞서 빈 값을 그 신호로 뒀더니
+    # 모델이 빈 값을 내지 않아 재시도 경로가 한 번도 안 돌았다(실측 0/9).
+    # 신호는 범주적이어야 흔들리지 않는다.
+    current = next((p for p in probes if p["status"] == "open" and p.get("asked")), None)
+    if current is not None:
+        if answered == "yes":
+            _mark_answered(state, current, evidence)
+        elif answered == "no":
+            _retry_or_close(state, current)
+        else:
+            # 신고를 빼먹었다. 들었는지 모르니 못 들은 것으로 본다 — 한 번 더
+            # 물어서 손해 볼 것은 없고, 못 들은 것을 들은 것으로 닫는 쪽이 나쁘다.
+            logger.info("answered 누락 — 못 들은 것으로 봅니다: %s", current["topic"])
+            _retry_or_close(state, current)
 
-    if passes:
-        state[STATE_STAGE] = stage
-        state[STATE_FREE_QUESTIONS] = free + 1
-        # 허가도 배달과 같은 모양이다 — 초안을 ask에 그대로 실어 돌려준다. 모델이
-        # 받는 것은 어느 경로든 "이 문장을 물어보라" 하나뿐이다.
-        #
-        # 앞서는 판정만 돌려주고 문장을 안 줬다. 모델이 물을 것을 정하는 순간
-        # 이미 말하고 있어서 되돌려주면 한 번 더 말했기 때문이다(실측 9턴 중
-        # 8턴). 그 실측은 모델이 툴 **전에** 말하던 때 것이다. 지금 instruction은
-        # 툴을 먼저 부르고 그다음에 말하게 하고(실측 5/5), 그 순서에서는 아직
-        # 아무 말도 안 했으니 되돌려줘도 두 번 말할 것이 없다. 즉 이 응답은
-        # 그 지시와 한 세트다 — 순서가 다시 뒤집히면 이 경로가 먼저 깨진다.
-        return {"ask": draft_question, "instruction": _ASK_INSTRUCTION}
+    # 아직 안 뽑았으면 지금 뽑는다 — 뼈대질문 뒤 첫 호출이다. 마무리 단계는
+    # 빼고: "마지막으로 하고 싶은 말씀"에 파볼 곳은 없다. 파면 "꼭 입사하고
+    # 싶습니다"에서 입사 동기를 캐게 된다(실측) — 그건 마무리가 아니라 심문이다.
+    in_closing = int(state.get(STATE_STAGE, 0)) == len(STAGE_NAMES) - 1
+    if not probes and state.get(STATE_PROBES_FOR) and asked and not in_closing:
+        question = pool.by_id(state[STATE_PROBES_FOR])
+        answer, _ = _applicant_said_since(tool_context, int(state.get(STATE_ANSWER_MARKER, 0)))
+        if question is not None and answer:
+            found = _extract_probes(question=question.text, answer=answer)
+            probes = [
+                {"topic": p.topic, "hint": p.hint, "status": "open", "attempts": 0}
+                for p in found
+            ]
+            logger.info(
+                "파볼 곳 %d개: %s",
+                len(probes),
+                " / ".join(p["topic"] for p in probes) or "(없음)",
+            )
+        # 뽑았든 못 뽑았든 이 질문에 대해서는 끝이다. 못 뽑았으면(전사 없음·
+        # LLM 실패) 빈 목록이 남아 바로 다음 뼈대질문으로 간다.
+        state[STATE_PROBES_FOR] = None
+    elif in_closing:
+        state[STATE_PROBES_FOR] = None
+    state[STATE_PROBES] = probes
 
-    # 반려는 준비된 다음 질문을 같은 모양으로 돌려준다. 초안 대신 다른 문장이
-    # 왔으면 그걸 물으라는 뜻이고, 그건 instruction이 이미 말한다("ask가 돌아오면
-    # 그 질문은 넘기고 돌아온 문장을 물어보세요"). "이 주제는 여기까지" 같은
-    # 전환 멘트는 싣지 않는다 — 모델이 그대로 입 밖에 낼 뿐 행동은 안 바뀐다.
-    # 어느 주제로 갈지는 모델이 넘긴 태그를 따른다 — 넘어갈지 말지는 서버가,
-    # 어디로 갈지는 모델이 정한다.
-    return _deliver(state, pool, tag=tag, stage=stage, asked=asked, elapsed_s=elapsed_s)
+    nxt = _open_probe(probes)
+    if nxt is not None:
+        return _probe_response(nxt)
+    return _deliver(state, tool_context, pool, tag=tag, asked=asked, elapsed_s=elapsed_s)
 
 
 class AskQuestionTool(FunctionTool):

@@ -1,11 +1,12 @@
-"""질문 게이트 툴 테스트.
+"""질문 툴 테스트.
 
 선언 주입은 네트워크 없이 LlmRequest에 대해 검증한다. 시간 예산은 세션의
 시작 시각을 과거로 밀어 만든다 — 툴이 벽시계를 읽으므로 시계를 재는 대신
 면접이 언제 시작했는지를 바꾼다.
 
-문턱은 `남은 것 중 최고 중요도 + 2 − 누적 꼬리질문 수`다. 아래 풀에서 1단계의
-최고 중요도는 1(b)이라 아무것도 안 나갔을 때 문턱은 3에서 시작한다.
+파볼 곳 추출(Grok)은 대역으로 바꾼다 — 모듈 전역 `_extract_probes`를
+monkeypatch한다. 여기서 보는 것은 흐름이다: 뼈대질문 → 답변 → 파볼 곳 → 신고
+→ 다음 파볼 곳 → 다음 뼈대질문.
 """
 
 import asyncio
@@ -17,9 +18,12 @@ from conftest import ContextStub
 from google.adk.models.llm_request import LlmRequest
 from google.genai import types
 
+from daedam.interview.probes import Probe
+from interviewer import tools
 from interviewer.tools import (
     STATE_ASKED,
-    STATE_FREE_QUESTIONS,
+    STATE_PROBE_LOG,
+    STATE_PROBES,
     STATE_PROFILE,
     STATE_QUESTION_POOL,
     STATE_STAGE,
@@ -37,10 +41,11 @@ POOL_RAW = [
      "tags": ["문제해결"]},
 ]
 
-DRAFT = "그 18%는 어떤 기준으로 재셨나요?"
-
 #: demo 프로필 단계 경계: 90 / 270 / 420 / 480초.
 PROFILE = "demo"
+
+PROBES = [Probe("분류 기준", "어떤 기준으로 나눴는지 안 나왔다"),
+          Probe("본인 역할", "본인이 한 일이 안 갈렸다")]
 
 
 def _state(started_s_ago: float = 0.0, **overrides: Any) -> dict[str, Any]:
@@ -53,20 +58,27 @@ def _state(started_s_ago: float = 0.0, **overrides: Any) -> dict[str, Any]:
     }
 
 
-def _new_topic(context: ContextStub, tag: str = "경험상세") -> dict:
-    """draft_question을 비우면 이 주제는 끝났다는 뜻이다."""
-    return ask_question(tool_context=context, tag=tag, priority=1)
+def _call(context: ContextStub, tag: str = "경험상세", answered: str = "", evidence: str = "") -> dict:
+    return ask_question(tool_context=context, tag=tag, answered=answered, evidence=evidence)
 
 
-def _follow_up(context: ContextStub, priority: int, tag: str = "경험상세") -> dict:
-    return ask_question(
-        tool_context=context, tag=tag, priority=priority, draft_question=DRAFT
-    )
+class _FakeExtract:
+    """추출 대역. 호출 기록을 남기고 정해 둔 목록을 돌려준다."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+        self.result: list[Probe] = list(PROBES)
+
+    def __call__(self, *, question: str, answer: str) -> list[Probe]:
+        self.calls.append({"question": question, "answer": answer})
+        return list(self.result)
 
 
-def _approved(result: dict) -> bool:
-    """허가면 초안이 그대로 ask에 실려 온다. 반려면 준비된 다른 문장이 온다."""
-    return result.get("ask") == DRAFT
+@pytest.fixture
+def probes(monkeypatch) -> _FakeExtract:
+    fake = _FakeExtract()
+    monkeypatch.setattr(tools, "_extract_probes", fake)
+    return fake
 
 
 def _inject(state: dict[str, Any] | None = None) -> LlmRequest:
@@ -94,18 +106,12 @@ def test_세션_풀의_태그가_enum으로_실린다() -> None:
     assert prop["type"] == "string"
 
 
-def test_draft_question은_필수가_아니다() -> None:
-    """비어 있는 것이 "이 주제는 끝났다"는 신호다 — 필수로 두면 모델이 부르기
-    전에 질문을 지어내고, 지어낸 것을 말해버려 툴이 준 질문과 겹친다."""
+def test_answered는_enum이고_필수가_아니다() -> None:
+    """yes/no가 스키마에 보여야 모델이 고른다 — 산문으로 부탁하는 것보다 세다.
+    뼈대질문 뒤 호출에서는 비우므로 필수는 아니다."""
     schema = _declaration(_inject(_state())).parameters_json_schema
-    assert set(schema["required"]) == {"tag", "priority"}
-
-
-def test_중요도_척도가_모델에게_실린다() -> None:
-    """모델이 자기 질문에 값을 매길 때 읽는 곳은 선언뿐이다. ADK는 docstring
-    전문을 함수 description에 싣고 파라미터 스키마에는 설명을 넣지 않는다."""
-    described = _declaration(_inject(_state())).description
-    assert "핵심 검증" in described and "곁가지" in described
+    assert set(schema["required"]) == {"tag"}
+    assert set(schema["properties"]["answered"]["enum"]) >= {"yes", "no"}
 
 
 def test_시딩_안_된_세션은_크게_실패한다() -> None:
@@ -117,148 +123,212 @@ def test_시딩_안_된_세션은_크게_실패한다() -> None:
 def test_선언과_등록은_한_번만_된다() -> None:
     """super() 호출 뒤의 패치가 이중 등록을 만들면 안 된다."""
     request = _inject(_state())
-    _declaration(request)  # 툴 하나, 선언 하나가 아니면 여기서 언패킹이 깨진다
+    _declaration(request)
     assert list(request.tools_dict) == ["ask_question"]
 
 
-# ── 새 주제 (draft_question 비움) ────────────────────────────────────────
+# ── 뼈대질문 배달 ────────────────────────────────────────────────────────
 
 
-def test_준비된_질문이_ask로_나간다() -> None:
+def test_준비된_질문이_ask로_나간다(probes) -> None:
     context = ContextStub(_state(stage=1))
-    assert _new_topic(context)["ask"] == "맡으신 역할을 설명해 주세요."
+    result = _call(context)
+    assert result["ask"] == "맡으신 역할을 설명해 주세요."
     assert context.state[STATE_ASKED] == ["b"]
+    assert set(result) == {"ask", "instruction"}
 
 
-def test_tag로_해당_주제의_질문을_고른다() -> None:
-    result = _new_topic(ContextStub(_state(stage=1)), tag="문제해결")
+def test_tag로_해당_주제의_질문을_고른다(probes) -> None:
+    result = _call(ContextStub(_state(stage=1)), tag="문제해결")
     assert result["ask"] == "가장 어려웠던 판단은 무엇이었나요?"
 
 
-def test_배달하면_꼬리질문_카운터가_풀린다() -> None:
-    context = ContextStub(_state(stage=1, **{STATE_FREE_QUESTIONS: 2}))
-    _new_topic(context)
-    assert context.state[STATE_FREE_QUESTIONS] == 0
+def test_배달_직후에는_추출하지_않는다(probes) -> None:
+    """답변이 아직 없다. 뽑는 것은 다음 호출이다."""
+    _call(ContextStub(_state(stage=1)))
+    assert probes.calls == []
 
 
-def test_응답은_문장과_다음_행동뿐이다() -> None:
-    """단계 이름·태그 목록·횟수는 모델의 다음 행동을 못 바꾼다 — 입으로 새는
-    통로일 뿐이다. 태그는 이미 선언 enum에 있다."""
-    result = _new_topic(ContextStub(_state(stage=1)))
-    assert set(result) == {"ask", "instruction"}
-    assert "물어보세요" in result["instruction"]
-    assert "경험상세" not in result["instruction"]
+# ── 파볼 곳 흐름 ─────────────────────────────────────────────────────────
+
+
+def test_답변이_오면_파볼_곳을_뽑아_첫_번째를_준다(probes) -> None:
+    context = ContextStub(_state(stage=1))
+    _call(context)  # 뼈대질문 b 배달
+    context.hear("구조적 결함은 YOLO로, 질감은 EfficientNet으로 했습니다.")
+
+    result = _call(context)
+    assert probes.calls == [
+        {"question": "맡으신 역할을 설명해 주세요.",
+         "answer": "구조적 결함은 YOLO로, 질감은 EfficientNet으로 했습니다."}
+    ]
+    assert result["probe"] == "분류 기준"
+    assert result["hint"] == "어떤 기준으로 나눴는지 안 나왔다"
+    assert "ask" not in result
+
+
+def test_뼈대질문_뒤_여러_조각의_답변을_이어_붙인다(probes) -> None:
+    """말하다 쉬면 전사가 조각으로 온다 — 첫 조각만 읽으면 반쪽 답변을 판단한다."""
+    context = ContextStub(_state(stage=1))
+    _call(context)
+    context.hear("구조적 결함은 YOLO로,")
+    context.hear("질감은 EfficientNet으로 했습니다.")
+    _call(context)
+    assert probes.calls[0]["answer"] == "구조적 결함은 YOLO로, 질감은 EfficientNet으로 했습니다."
+
+
+def test_뼈대질문_전의_말은_답변에_넣지_않는다(probes) -> None:
+    """앞 질문의 답변이 섞이면 엉뚱한 곳을 판다."""
+    context = ContextStub(_state(stage=1), said=["앞 질문에 대한 답입니다."])
+    _call(context)
+    context.hear("이번 질문의 답입니다.")
+    _call(context)
+    assert probes.calls[0]["answer"] == "이번 질문의 답입니다."
+
+
+def test_yes로_신고하면_다음_파볼_곳을_준다(probes) -> None:
+    context = ContextStub(_state(stage=1))
+    _call(context)
+    context.hear("답변")
+    assert _call(context)["probe"] == "분류 기준"
+
+    context.hear("기준은 결함의 형태였습니다.")
+    result = _call(context, answered="yes", evidence="결함 형태를 기준으로")
+    assert result["probe"] == "본인 역할"
+    # 닫힌 것은 기록에 남는다 — 리포트의 근거가 된다.
+    log = context.state[STATE_PROBE_LOG]
+    assert log[-1]["topic"] == "분류 기준"
+    assert log[-1]["status"] == "covered"
+    assert log[-1]["evidence"] == "결함 형태를 기준으로"
+
+
+def test_다_닫히면_다음_뼈대질문이다(probes) -> None:
+    context = ContextStub(_state(stage=1))
+    _call(context)
+    context.hear("답변")
+    _call(context)
+    _call(context, answered="yes", evidence="e1")
+    result = _call(context, answered="yes", evidence="e2")
+    assert result["ask"] == "가장 어려웠던 판단은 무엇이었나요?"
+    assert context.state[STATE_ASKED] == ["b", "c"]
+
+
+def test_no로_돌아오면_한_번_더_묻고_그다음엔_포기한다(probes) -> None:
+    """두 번 물어도 안 나오면 닫는다 — 세 번째는 심문이다."""
+    context = ContextStub(_state(stage=1))
+    _call(context)
+    context.hear("답변")
+    first = _call(context)
+    assert first["probe"] == "분류 기준"  # 1회
+    retry = _call(context, answered="no")  # 못 들음 → 2회
+    assert retry["probe"] == "분류 기준"
+    # 재시도는 첫 응답과 다른 지시여야 한다 — 같으면 모델이 "또?"로 읽고 다른
+    # 것을 묻는다(실측).
+    assert retry["instruction"] != first["instruction"]
+    assert "다른 질문으로 넘어가지 말고" in retry["instruction"]
+    result = _call(context, answered="no")  # 또 못 들음 → 포기, 다음 파볼 곳
+    assert result["probe"] == "본인 역할"
+    log = context.state[STATE_PROBE_LOG]
+    assert log[-1]["topic"] == "분류 기준" and log[-1]["status"] == "unanswered"
+
+
+def test_신고를_빼먹으면_못_들은_것으로_본다(probes) -> None:
+    """들었는지 모르니 한 번 더 묻는다 — 못 들은 것을 들은 것으로 닫는 쪽이 나쁘다."""
+    context = ContextStub(_state(stage=1))
+    _call(context)
+    context.hear("답변")
+    _call(context)
+    assert _call(context)["probe"] == "분류 기준"  # answered 없음 → 재시도
+    result = _call(context)  # 또 없음 → 포기
+    assert result["probe"] == "본인 역할"
+    assert context.state[STATE_PROBE_LOG][-1]["status"] == "unanswered"
+
+
+def test_마무리_단계에서는_파볼_곳을_뽑지_않는다(probes) -> None:
+    """"마지막으로 하고 싶은 말씀"에 파볼 곳은 없다 — 파면 심문이 된다."""
+    pool = POOL_RAW + [{"id": "z", "stage": 3, "text": "마지막으로 하고 싶은 말씀은?",
+                        "priority": 4, "tags": ["마지막 한마디"]}]
+    context = ContextStub(_state(stage=3, **{STATE_QUESTION_POOL: pool}))
+    assert _call(context, tag="마지막 한마디")["ask"] == "마지막으로 하고 싶은 말씀은?"
+    context.hear("꼭 입사하고 싶습니다.")
+    result = _call(context)
+    assert probes.calls == []
+    assert "probe" not in result
+
+
+def test_파볼_곳이_없으면_바로_다음_뼈대질문이다(probes) -> None:
+    """LLM이 빈 목록을 냈거나 실패했다 — 면접은 돈다."""
+    probes.result = []
+    context = ContextStub(_state(stage=1))
+    _call(context)
+    context.hear("충분히 설명했습니다.")
+    result = _call(context)
+    assert result["ask"] == "가장 어려웠던 판단은 무엇이었나요?"
+
+
+def test_답변_전사가_없으면_추출하지_않고_다음_뼈대질문이다(probes) -> None:
+    """못 보는 것이 지어내는 것보다 낫다."""
+    context = ContextStub(_state(stage=1))
+    _call(context)
+    result = _call(context)  # hear() 없음
+    assert probes.calls == []
+    assert result["ask"] == "가장 어려웠던 판단은 무엇이었나요?"
+
+
+def test_응답은_물을_것과_다음_행동뿐이다(probes) -> None:
+    """단계 이름·힌트 밖의 설명은 싣지 않는다 — 입으로 샌다."""
+    context = ContextStub(_state(stage=1))
+    _call(context)
+    context.hear("답변")
+    result = _call(context)
+    assert set(result) == {"probe", "hint", "instruction"}
     assert "단계" not in result["instruction"]
-
-
-# ── 꼬리질문 게이트 ──────────────────────────────────────────────────────
-
-
-def test_허가는_초안을_그대로_돌려준다() -> None:
-    """어느 경로든 응답은 "이 문장을 물어보라" 하나다. 모델이 툴 뒤에 말하는
-    지금 순서에서는 되돌려줘도 두 번 말할 것이 없다."""
-    result = _follow_up(ContextStub(_state(stage=1)), priority=3)
-    assert result["ask"] == DRAFT
-    assert set(result) == {"ask", "instruction"}
-
-
-def test_문턱을_넘으면_카운터가_오른다() -> None:
-    context = ContextStub(_state(stage=1))
-    _follow_up(context, priority=3)  # 문턱 3
-    assert context.state[STATE_FREE_QUESTIONS] == 1
-
-
-def test_반려는_준비된_질문을_같은_모양으로_준다() -> None:
-    """초안 대신 다른 문장이 왔으면 그걸 물으라는 뜻이다 — 전환 멘트는 싣지
-    않는다. 왕복이 한 번 줄어 침묵이 절반이 된다."""
-    context = ContextStub(_state(stage=1))
-    result = _follow_up(context, priority=4)  # 문턱 3
-    assert result["ask"] == "맡으신 역할을 설명해 주세요."
-    assert set(result) == {"ask", "instruction"}
-    assert context.state[STATE_FREE_QUESTIONS] == 0
-
-
-def test_한_번_더_물을수록_문턱이_엄해진다() -> None:
-    context = ContextStub(_state(stage=1))
-    assert _approved(_follow_up(context, priority=3))  # 문턱 3
-    assert not _approved(_follow_up(context, priority=3))  # 문턱 2 — 반려
-
-
-def test_중요한_꼬리질문은_한_번_더_버틴다() -> None:
-    context = ContextStub(_state(stage=1, **{STATE_FREE_QUESTIONS: 2}))
-    assert _approved(_follow_up(context, priority=1))  # 문턱 1
-
-
-def test_남은_질문이_곁가지뿐이면_문턱이_낮아진다() -> None:
-    """중요한 질문이 이미 나갔으면 파던 자리를 더 파는 편이 낫다.
-    남은 것이 중요도 4뿐이면 문턱은 6이다."""
-    context = ContextStub(_state(stage=1, **{STATE_ASKED: ["b"]}))
-    assert _approved(_follow_up(context, priority=5))
-
-
-def test_꼬리질문은_세_개를_못_넘는다() -> None:
-    """문턱이 아무리 느슨해도 준비된 질문 사이에 자작 질문이 길게 끼면 안 된다."""
-    context = ContextStub(
-        _state(stage=1, **{STATE_ASKED: ["b"], STATE_FREE_QUESTIONS: 3})
-    )
-    assert not _approved(_follow_up(context, priority=1))
-
-
-def test_비교_대상이_없으면_허가한다() -> None:
-    """풀이 비었으면 밀어낼 곳이 없다."""
-    context = ContextStub(_state(stage=1, **{STATE_ASKED: ["a", "b", "c"]}))
-    assert _approved(_follow_up(context, priority=5))
-
-
-def test_비교_대상은_태그를_무시한다() -> None:
-    """기회비용은 모델이 어느 주제를 파든 같다 — 이 단계에서 못 하고 있는 것 중
-    가장 중요한 질문이다. 태그로 뽑으면 모델이 문턱을 스스로 정하게 된다."""
-    context = ContextStub(_state(stage=1))
-    # b(중요도 1)가 남아 있으므로 문턱은 3. c(중요도 4)와 비교했다면 6이 된다.
-    assert not _approved(_follow_up(context, priority=4, tag="문제해결"))
 
 
 # ── 시간 예산 ────────────────────────────────────────────────────────────
 
 
-def test_시간이_지나면_단계를_건너뛴다() -> None:
+def test_시간이_지나면_단계를_건너뛴다(probes) -> None:
     """1단계에 질문이 남아 있어도 예산을 넘겼으면 2단계로 간다."""
     context = ContextStub(_state(100.0, stage=0))
-    assert _new_topic(context)["ask"] == "맡으신 역할을 설명해 주세요."
+    assert _call(context)["ask"] == "맡으신 역할을 설명해 주세요."
     assert context.state[STATE_STAGE] == 1
 
 
-def test_예산보다_앞서_가는_것은_막지_않는다() -> None:
-    """질문을 빨리 소진해 앞서 간 단계를 시간이 되돌리지는 않는다."""
+def test_단계가_넘어가면_열린_파볼_곳을_버린다(probes) -> None:
+    """지난 단계를 계속 파면 뒤 단계가 통째로 잘린다."""
+    context = ContextStub(_state(0.0, stage=0))
+    _call(context, tag="자기소개")  # a 배달
+    context.hear("답변")
+    assert _call(context)["probe"] == "분류 기준"
+    # 시계를 2단계로 민다
+    context.state[STATE_STARTED_AT] = time.time() - 100.0
+    result = _call(context)
+    assert result["ask"] == "맡으신 역할을 설명해 주세요."
+    assert all(p["status"] == "dropped" for p in context.state[STATE_PROBES])
+
+
+def test_예산보다_앞서_가는_것은_막지_않는다(probes) -> None:
     context = ContextStub(_state(0.0, stage=1))
-    _new_topic(context)
+    _call(context)
     assert context.state[STATE_STAGE] == 1
 
 
-def test_시간이_다_지나도_면접을_끝내지_않는다() -> None:
+def test_시간이_다_지나도_면접을_끝내지_않는다(probes) -> None:
     """끝내는 것은 지원자의 종료 버튼이다. 시간 예산은 단계를 옮기는 데만 쓴다 —
-    하드캡이 지나도 질문은 계속 나간다."""
-    result = _follow_up(ContextStub(_state(600.0)), priority=1)
+    마지막 단계 예산을 넘겨도 마무리 지시가 아니라 이어가라는 지시가 온다."""
+    result = _call(ContextStub(_state(600.0)))
     assert "done" not in result
-    assert "ask" in result
+    assert "이어가세요" in result["instruction"]
 
 
-def test_질문을_다_쓰면_꼬리질문으로_이어가라고_한다() -> None:
-    """준비된 것이 바닥나도 면접은 안 끝난다 — 모델이 제 문장으로 이어간다."""
+def test_질문을_다_쓰면_꼬리질문으로_이어가라고_한다(probes) -> None:
     context = ContextStub(_state(stage=1, **{STATE_ASKED: ["a", "b", "c"]}))
-    result = _new_topic(context)
-    assert "done" not in result and "ask" not in result
+    result = _call(context)
+    assert "ask" not in result and "probe" not in result
     assert "꼬리질문" in result["instruction"]
 
 
-def test_지시는_모델에게_시간을_알리지_않는다() -> None:
-    """시계는 서버만 본다 — 남은 시간을 알려 봐야 늘어질 때는 툴을 안 부르고,
-    꼬리질문의 필요는 시간이 아니라 답변 내용이 정한다."""
-    result = _new_topic(ContextStub(_state(60.0, stage=1)))
-    assert "남았습니다" not in result["instruction"] and "분" not in result["instruction"]
-
-
-def test_시작_시각_없는_세션은_크게_실패한다() -> None:
-    """시간 예산 없이 도는 면접은 단계가 영영 안 넘어간다 — 조용히 두지 않는다."""
+def test_시작_시각_없는_세션은_크게_실패한다(probes) -> None:
     with pytest.raises(ValueError, match="시딩"):
-        _new_topic(ContextStub({STATE_QUESTION_POOL: POOL_RAW}))
+        _call(ContextStub({STATE_QUESTION_POOL: POOL_RAW}))
