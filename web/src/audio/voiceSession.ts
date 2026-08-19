@@ -24,7 +24,7 @@ export interface VoiceSessionHandlers {
   onConnection?: (c: Connection) => void
   onSession?: (info: SessionInfo) => void
   onPhase?: (p: Phase) => void
-  onQuestion?: (index: number, stage: number) => void
+  onQuestion?: (index: number) => void
   onCaption?: (text: string, final: boolean) => void
   onResumeToken?: (token: string) => void
   onEnded?: () => void
@@ -187,7 +187,7 @@ export class VoiceSession {
           this.opts.handlers.onPhase?.(msg.value as Phase)
           break
         case 'question':
-          this.opts.handlers.onQuestion?.(msg.index as number, msg.stage as number)
+          this.opts.handlers.onQuestion?.(msg.index as number)
           break
         case 'caption':
           this.opts.handlers.onCaption?.(msg.text as string, msg.final as boolean)

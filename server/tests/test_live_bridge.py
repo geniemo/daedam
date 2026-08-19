@@ -19,7 +19,6 @@ from google.adk.events.event_actions import EventActions
 from google.adk.sessions.in_memory_session_service import InMemorySessionService
 from google.genai import types
 
-from daedam.interview.stages import PROFILES, Profile
 from daedam.server import live_bridge
 from daedam.server.live_bridge import _client_messages_from, create_live_router
 from daedam.server.store import FileInterviewStore
@@ -63,14 +62,14 @@ def test_전사의_끝은_final로_알린다() -> None:
     assert ("json", {"type": "caption", "text": "", "final": True}) in _client_messages_from(event)
 
 
-def test_질문_배달은_번호와_단계가_된다() -> None:
-    """asked가 늘어난 state 델타 = 뼈대질문 하나가 나간 순간이다. 같은 델타의
-    stage가 화면 상단의 단계 표시를 움직인다."""
+def test_질문_배달은_번호가_된다() -> None:
+    """asked가 늘어난 state 델타 = 뼈대질문 하나가 나간 순간이다. 단계는 화면에
+    보내지 않는다 — 서버가 질문을 고르는 내부 사정이다."""
     event = Event(
         author="interviewer",
         actions=EventActions(state_delta={"asked": ["q1", "q0"], "stage": 2}),
     )
-    assert ("json", {"type": "question", "index": 1, "stage": 2}) in _client_messages_from(event)
+    assert ("json", {"type": "question", "index": 1}) in _client_messages_from(event)
 
 
 def test_끼어들기와_goAway가_전달된다() -> None:
@@ -160,15 +159,13 @@ def _handshake(websocket) -> dict:
 
 
 def test_접속하면_화면이_맞출_진행_상태를_먼저_받는다(tmp_path) -> None:
-    """남은 시간·단계·질문 번호의 출처는 서버 하나다."""
+    """경과 시간·질문 번호의 출처는 서버 하나다. 남은 시간과 단계는 없다 —
+    면접을 끝내는 것은 지원자의 버튼이다."""
     client = _client(_FakeRunner(), _seeded_store(tmp_path, "hs"))
     with client.websocket_connect("/ws/interview?card=hs") as websocket:
         message = _handshake(websocket)
 
-    assert message["totalSeconds"] == 540  # demo 하드캡
-    assert message["stageBudgets"] == [90, 180, 150, 60]
-    assert message["elapsedSeconds"] == 0
-    assert message["stage"] == 0 and message["asked"] == 0
+    assert message == {"type": "session", "elapsedSeconds": 0, "asked": 0}
 
 
 def test_왕복_오디오와_이벤트가_흐른다(tmp_path) -> None:
@@ -253,98 +250,24 @@ def test_같은_카드의_새_접속이_이전_커넥션을_닫는다(tmp_path) 
             assert second.receive_bytes() == b"\x01\x02"
 
 
-class _ClosingRunner(_FakeRunner):
-    """하드캡 지시가 들어올 때까지 큐를 계속 소비하는 대역."""
+class _EndlessRunner(_FakeRunner):
+    """이벤트 하나를 내고 그대로 살아 있는 대역. 실제 ADK도 큐를 닫으면 재연결로
+    받아 끝나지 않는다 — 종료는 지원자의 end 컨트롤을 받은 브리지가 매듭지어야
+    한다."""
 
     async def run_live(self, *, session, live_request_queue, run_config):
-        while True:
-            request = await live_request_queue.get()
-            self.heard.append(request)
-            content = request.content
-            if content is not None and "마무리" in (content.parts[0].text or ""):
-                break
         yield _audio_event(b"\x01\x02")
-
-
-def test_하드캡에_닿으면_서버가_마무리를_지시한다(tmp_path, monkeypatch) -> None:
-    """모델이 툴을 한 번도 안 불러도 면접은 끝난다 — 종료는 서버가 쥔다."""
-    monkeypatch.setitem(
-        PROFILES, "instant", Profile("instant", (0.0, 0.0, 0.0, 0.0), hard_cap_s=0.0)
-    )
-    runner = _ClosingRunner()
-    client = _client(runner, _seeded_store(tmp_path, "cap"), profile="instant")
-    with client.websocket_connect("/ws/interview?card=cap") as websocket:
-        _handshake(websocket)
-        assert websocket.receive_bytes() == b"\x01\x02"
-
-    spoken = [r.content.parts[0].text for r in runner.heard if r.content is not None]
-    assert any("마무리" in text for text in spoken)
-
-
-class _ClosingSignalRunner(_FakeRunner):
-    """마무리 표시를 한 번 내보내고 그대로 살아 있는 대역.
-
-    끝나지 않는 것이 핵심이다 — 실제 ADK도 큐를 닫으면 재연결로 받아 끝나지
-    않는다. 종료는 브리지가 스스로 매듭지어야 한다.
-    """
-
-    async def run_live(self, *, session, live_request_queue, run_config):
-        yield Event(
-            author="interviewer", actions=EventActions(state_delta={"closing": True})
-        )
         while True:
             self.heard.append(await live_request_queue.get())
-
-
-def test_마무리_표시가_뜨면_서버가_커넥션을_끝낸다(tmp_path, monkeypatch) -> None:
-    """질문이 다 나갔는데 하드캡까지 침묵을 끌고 가지 않는다. run_live가 계속
-    돌더라도 ended를 보내고 소켓을 닫는 것은 브리지 몫이다."""
-    monkeypatch.setattr(live_bridge, "_CLOSING_GRACE_S", 0.0)
-    monkeypatch.setattr(live_bridge, "_PLAYBACK_TAIL_S", 0.0)
-    client = _client(_ClosingSignalRunner(), _seeded_store(tmp_path, "fin"))
-    with client.websocket_connect("/ws/interview?card=fin") as websocket:
-        _handshake(websocket)
-        assert websocket.receive_json() == {"type": "ended"}
-        with pytest.raises(WebSocketDisconnect):
-            websocket.receive_json()
-
-
-class _ClosingWithTurnRunner(_FakeRunner):
-    """마무리 표시와 인사 턴 완료를 붙여 내보내고 그대로 살아 있는 대역.
-
-    종료 태스크가 표시를 읽고 깨어나기 전에 인사 턴이 이미 끝난 순서다. 종료
-    툴 경로에서는 툴 응답과 인사가 붙어 오므로 실제로 이렇게 된다.
-    """
-
-    async def run_live(self, *, session, live_request_queue, run_config):
-        yield Event(
-            author="interviewer", actions=EventActions(state_delta={"closing": True})
-        )
-        yield Event(author="interviewer", turn_complete=True)
-        while True:
-            self.heard.append(await live_request_queue.get())
-
-
-def test_인사_턴이_먼저_끝나도_그레이스를_다_기다리지_않는다(
-    tmp_path, monkeypatch
-) -> None:
-    """이미 끝난 인사를 못 본 척하고 다음 턴을 기다리면 그만큼 침묵이 길어진다.
-    대기 기준은 신호를 지우고 새로 받는 것이 아니라 완료된 턴 수다."""
-    monkeypatch.setattr(live_bridge, "_CLOSING_GRACE_S", 5.0)
-    monkeypatch.setattr(live_bridge, "_PLAYBACK_TAIL_S", 0.0)
-    client = _client(_ClosingWithTurnRunner(), _seeded_store(tmp_path, "quick"))
-    with client.websocket_connect("/ws/interview?card=quick") as websocket:
-        _handshake(websocket)
-        started = time.monotonic()
-        assert websocket.receive_json() == {"type": "ended"}
-        assert time.monotonic() - started < 2.0
 
 
 def test_지원자가_끝내면_종료를_알리고_정리한다(tmp_path) -> None:
-    """end 컨트롤도 같은 계약을 탄다 — 끝을 알리는 것은 언제나 서버다."""
-    client = _client(_ClosingSignalRunner(), _seeded_store(tmp_path, "bye"))
+    """면접을 끝내는 유일한 경로다. run_live가 계속 돌더라도 ended를 보내고
+    정리하는 것은 브리지 몫이다."""
+    client = _client(_EndlessRunner(), _seeded_store(tmp_path, "bye"))
     with client.websocket_connect("/ws/interview?card=bye") as websocket:
         _handshake(websocket)
+        assert websocket.receive_bytes() == b"\x01\x02"
         websocket.send_text('{"type": "end"}')
         assert websocket.receive_json() == {"type": "ended"}
 

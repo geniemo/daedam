@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router'
 import { useActiveCard } from '@/store/app'
-import { formatClock, remainingSeconds, stageAt, useInterviewStore } from '@/store/interview'
+import { formatClock, useInterviewStore } from '@/store/interview'
 import { useVoiceSession, type Levels } from '@/audio/useVoiceSession'
-import { STAGE_NAMES, fill } from '@/data/mock'
+import { fill } from '@/data/mock'
 
 /** README §8. 면접 진행 — 화면이 시선을 뺏지 않는 것이 목표입니다. */
 export function Interview({ showCaption = true }: { showCaption?: boolean }) {
@@ -13,26 +13,21 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
   // 진행 상태는 전부 서버가 내려준 것입니다 (§/ws/interview의 session·question
   // 메시지). 화면이 자체 대본을 그리면 실제 면접과 어긋납니다 — 면접관은
   // 뼈대질문을 그대로 읽지 않고, 꼬리질문에는 대본 자체가 없습니다.
+  //
+  // 단계와 남은 시간은 보여주지 않습니다. 면접을 끝내는 것은 지원자의 버튼이라
+  // "남은 시간"이 없고, 단계는 서버가 질문을 고르는 내부 사정이지 지원자가
+  // 의식할 것이 아닙니다 — 실제 면접에서도 "지금은 인성 단계입니다"라고 알려
+  // 주지 않습니다.
   const phase = useInterviewStore((s) => s.phase)
-  const deliveredStage = useInterviewStore((s) => s.stage)
   const caption = useInterviewStore((s) => s.caption)
+  // 화면에 번호로 띄우지는 않는다. 새 뼈대질문마다 자막 fade를 다시 돌리는
+  // key로만 쓴다.
   const askedCount = useInterviewStore((s) => s.askedCount)
   const elapsed = useInterviewStore((s) => s.elapsed)
-  const totalSeconds = useInterviewStore((s) => s.totalSeconds)
-  const stageBudgets = useInterviewStore((s) => s.stageBudgets)
   const connection = useInterviewStore((s) => s.connection)
 
   const onFinished = useCallback(() => nav('/analyzing'), [nav])
   const { levels, end } = useVoiceSession(card.id, onFinished)
-
-  // 진행 바는 단계별 시간 예산이 칸 너비이고 경과 시간이 채움입니다 — 단계를
-  // 넘기는 것이 질문 수가 아니라 시간이라서 그렇습니다. 예산을 모르면(백엔드
-  // 없이 도는 프로토타입) 균등 분할합니다.
-  const budgets = stageBudgets ?? STAGE_NAMES.map(() => totalSeconds / STAGE_NAMES.length)
-
-  // 단계도 같은 시계에서 뽑습니다. 다만 서버가 더 앞선 단계를 알려줬다면
-  // (질문을 일찍 소진해 먼저 넘어간 경우) 그쪽이 맞습니다.
-  const stage = Math.max(deliveredStage, stageAt(elapsed, budgets))
 
   return (
     <div className="fixed inset-0 z-60 flex flex-col bg-stage">
@@ -55,15 +50,7 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
           )}
         </div>
         <div className="flex-1" />
-        <div className="flex items-center gap-[10px]">
-          <span className="text-[13px] text-stage-muted">
-            {stage + 1}단계 · {STAGE_NAMES[stage]}
-          </span>
-          <span className="bg-body" style={{ width: 1, height: 12 }} />
-          <span className="num text-[13px] text-stage-ink">
-            {formatClock(remainingSeconds(elapsed, totalSeconds))}
-          </span>
-        </div>
+        <span className="num text-[13px] text-stage-ink">{formatClock(elapsed)}</span>
       </div>
 
       {/* 아바타 영역 */}
@@ -90,33 +77,10 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
         )}
       </div>
 
-      {/* 하단 컨트롤 */}
-      <div className="flex flex-col gap-[14px] px-[30px] pb-[26px]">
-        <div className="flex gap-[6px]">
-          {STAGE_NAMES.map((name, i) => {
-            const before = budgets.slice(0, i).reduce((sum, seconds) => sum + seconds, 0)
-            const prog = Math.max(0, Math.min(1, (elapsed - before) / budgets[i]))
-            return (
-              <div
-                key={name}
-                className="bg-stage-line-2"
-                style={{ height: 2.5, flexGrow: budgets[i], flexBasis: 0 }}
-              >
-                <div
-                  className="h-full bg-accent"
-                  style={{ width: `${Math.round(prog * 100)}%`, transition: 'width .5s ease' }}
-                />
-              </div>
-            )
-          })}
-        </div>
-        <div className="flex items-center">
-          {/* 분모를 두지 않습니다 — 풀은 여유 있게 만들고 다 묻지 않습니다.
-              아직 한 문항도 안 나갔으면 번호를 지어내지 않고 비워 둡니다. */}
-          <span className="num text-[12.5px] text-stage-muted-3">
-            {askedCount > 0 ? `질문 ${askedCount}` : ''}
-          </span>
-          <div className="flex-1" />
+      {/* 하단 컨트롤 — 종료 버튼 하나. 질문 번호·단계·남은 시간 같은 진행
+          표시는 두지 않는다. 실제 면접에서 지원자가 보는 것은 면접관뿐이다. */}
+      <div className="px-[30px] pb-[26px]">
+        <div className="flex items-center justify-end">
           {/* 멈췄다 이어가는 길은 두지 않는다 — 면접은 한 번에 끝까지 간다.
               중간에 그만두면 그때까지의 답변으로 리포트를 받는다. */}
           <button

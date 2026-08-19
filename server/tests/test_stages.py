@@ -40,7 +40,8 @@ def test_경계에서_단계가_넘어간다(demo: SessionFlow, elapsed: float, 
 
 
 def test_마지막_단계_예산을_넘어도_마지막_단계를_유지한다(demo: SessionFlow) -> None:
-    """예산 총합(480초)을 넘겨도 5번째 단계는 없다 — 종료는 hard_cap이 판정한다."""
+    """예산 총합(480초)을 넘겨도 5번째 단계는 없다 — 면접을 끝내는 것은 지원자의
+    종료 버튼이고, 그때까지 마지막 단계에 머문다."""
     assert demo.stage_index_at(480.0) == 3
     assert demo.stage_index_at(10_000.0) == 3
 
@@ -66,18 +67,6 @@ def test_마지막_단계_예산_초과시_잔여는_0(demo: SessionFlow) -> Non
     assert demo.stage_remaining_s(600.0) == 0.0
 
 
-# ── 종료 강제 ────────────────────────────────────────────────────────────
-
-
-def test_하드캡_전에는_종료하지_않는다(demo: SessionFlow) -> None:
-    assert demo.should_end(539.9) is False
-
-
-def test_하드캡에_도달하면_종료한다(demo: SessionFlow) -> None:
-    assert demo.should_end(540.0) is True
-    assert demo.should_end(600.0) is True
-
-
 # ── 프로필 ───────────────────────────────────────────────────────────────
 
 
@@ -87,21 +76,16 @@ def test_두_프로필_모두_4단계여야_한다() -> None:
         assert len(profile.budgets) == len(STAGE_NAMES) == 4
 
 
-def test_예산_총합은_하드캡을_넘지_않는다() -> None:
-    """총합이 하드캡보다 크면 마지막 단계가 시작도 못 하고 잘린다."""
-    for name, profile in PROFILES.items():
-        assert sum(profile.budgets) <= profile.hard_cap_s, name
-
-
 def test_demo는_Live_커넥션_수명_안쪽이어야_한다() -> None:
-    """Live API 커넥션 수명이 ~10분. 시연 중 재연결 경로를 타지 않게 한다."""
-    assert PROFILES["demo"].hard_cap_s <= 600.0
+    """Live API 커넥션 수명이 ~10분. 예산 총합이 그 안이면 시연 중 단계 전환이
+    재연결 경로를 타지 않는다."""
+    assert sum(PROFILES["demo"].budgets) <= 600.0
 
 
 def test_단계_수가_안_맞으면_생성이_실패한다() -> None:
     with pytest.raises(ValueError, match="단계 수 불일치"):
-        Profile("broken", (60.0, 60.0), hard_cap_s=120.0)
+        Profile("broken", (60.0, 60.0))
 
 
 def test_문자열과_객체_둘_다로_생성할_수_있다() -> None:
-    assert SessionFlow("full").hard_cap_s == SessionFlow(PROFILES["full"]).hard_cap_s
+    assert SessionFlow("full").profile == SessionFlow(PROFILES["full"]).profile

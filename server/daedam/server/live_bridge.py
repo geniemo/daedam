@@ -7,8 +7,8 @@
                JSON 텍스트 = {"type": "session"|"caption"|"question"|
                               "interrupted"|"resumeToken"|"goAway"|"ended"}
 
-화면에 필요한 진행 상태(남은 시간·단계·질문 번호)는 전부 서버가 내려준다.
-프론트가 자기 시계로 세면 재접속·단계 건너뜀에서 서버와 어긋난다.
+화면에 필요한 진행 상태(경과 시간·질문 번호)는 서버가 내려준다. 프론트가
+자기 시계로 세면 재접속에서 서버와 어긋난다.
 
 골격은 ADK api_server의 /run_live와 같다 — 받은 오디오를 LiveRequestQueue에
 넣고, run_live 이벤트 스트림을 프론트 어휘로 번역해 내보낸다. 차이는 두 가지:
@@ -41,18 +41,16 @@ from google.adk.runners import Runner
 from google.adk.utils.context_utils import Aclosing
 from google.genai import types
 
-from daedam.interview.stages import DEFAULT_PROFILE, SessionFlow
+from daedam.interview.stages import DEFAULT_PROFILE
 from daedam.interview.vocabulary import interview_vocabulary
 from daedam.research.report import search_sections_from_report
 from interviewer.instruction import STATE_CANDIDATE, STATE_COMPANY, STATE_ROLE
 from interviewer.tools import (
     STATE_APPLICATION,
     STATE_ASKED,
-    STATE_CLOSING,
     STATE_PROFILE,
     STATE_QUESTION_POOL,
     STATE_RESEARCH_REPORT,
-    STATE_STAGE,
     STATE_STARTED_AT,
 )
 
@@ -75,14 +73,6 @@ _SILENCE_MS = 1200
 
 #: Live API 입력 규격. 프론트 pcm-recorder가 이 형식 그대로 보낸다.
 _INPUT_MIME = "audio/pcm;rate=16000"
-
-#: 마무리에 들어간 뒤 인사 한 턴을 기다리는 상한(초). 모델이 인사를 안 하고
-#: 뭉개도 여기서 끊는다.
-_CLOSING_GRACE_S = 30.0
-
-#: 모델이 말을 마친 뒤 큐를 닫기까지의 여유(초). 프론트 재생 큐에 아직 남아
-#: 있는 오디오가 있어서, 바로 닫으면 마지막 인사가 잘려 들린다.
-_PLAYBACK_TAIL_S = 3.0
 
 #: TRACE_EVENTS=1이면 run_live 이벤트를 순서대로 남긴다 (`_event_trace`).
 _TRACE_EVENTS = os.environ.get("TRACE_EVENTS") == "1"
@@ -126,20 +116,10 @@ def _client_messages_from(event: Event) -> list[tuple[str, Any]]:
 
     # ask_question이 뼈대질문을 배달하면 그 이벤트의 state 델타에 늘어난 asked가
     # 실려 온다 — 뼈대질문이 하나 나간 순간이고, 낸 질문 수가 곧 번호다.
-    # 같은 델타의 stage로 화면 상단의 단계 표시가 함께 움직인다.
     delta = (event.actions.state_delta or {}) if event.actions else {}
     asked = delta.get(STATE_ASKED)
     if asked:
-        messages.append(
-            (
-                "json",
-                {
-                    "type": "question",
-                    "index": len(asked) - 1,
-                    "stage": int(delta.get(STATE_STAGE, 0)),
-                },
-            )
-        )
+        messages.append(("json", {"type": "question", "index": len(asked) - 1}))
 
     # 사용자가 말을 끊었다(barge-in). 프론트는 이걸 받는 즉시 재생 버퍼를
     # 비운다 — 안 비우면 에이전트가 사용자 말 위로 계속 떠든다.
@@ -196,14 +176,20 @@ def _elapsed_s(state: Mapping[str, Any]) -> float:
     return 0.0 if started_at is None else max(0.0, time.time() - float(started_at))
 
 
-def _marks_closing(event: Event) -> bool:
-    """면접이 마무리에 들어갔다는 표시인가.
-
-    툴이 done을 돌려줄 때(질문 소진·하드캡) state에 남긴 자국이다. 모델은
-    커넥션을 끊을 수 없으므로 실제 종료는 이걸 보고 서버가 한다.
-    """
-    delta = (event.actions.state_delta or {}) if event.actions else {}
-    return bool(delta.get(STATE_CLOSING))
+def _vocabulary_for(data: InterviewData | None) -> list[str]:
+    """이 면접의 전사 어휘 힌트. 준비 단계에서 뽑아 둔 것이 우선이다."""
+    if data is None:
+        return []
+    if data.vocabulary:
+        return data.vocabulary
+    logger.info("준비된 전사 어휘가 없어 규칙 폴백을 씁니다 (%s)", data.company)
+    return interview_vocabulary(
+        name=data.name,
+        company=data.company,
+        role=data.role,
+        application=data.application,
+        questions=data.questions,
+    )
 
 
 def _session_state_from(data: InterviewData, profile: str) -> dict[str, Any]:
@@ -246,7 +232,6 @@ def create_live_router(
             세션 state에도 실려 툴이 같은 예산으로 단계를 판정한다.
     """
     router = APIRouter()
-    flow = SessionFlow(profile)
 
     #: 카드당 활성 커넥션 하나. 새 접속이 오면 이전 것을 서버가 닫는다 —
     #: 개발 모드 이중 마운트나 중복 탭이 만드는 "두 목소리"의 방어선이다.
@@ -323,12 +308,7 @@ def create_live_router(
         # 큐를 소비한다. close()가 들어가면 대화가 정상 종료된다.
         queue = LiveRequestQueue()
 
-        # 이벤트 펌프가 세우고 종료 태스크가 기다리는 두 신호.
-        closing = asyncio.Event()  # 툴이 마무리를 알렸다
-        turn_done = asyncio.Event()  # 모델이 한 턴을 말끝까지 마쳤다
-        turn_count = 0  # 이 커넥션에서 완료된 턴 수 — 인사 대기의 기준선
-        turns_at_closing = 0  # 마무리 표시를 읽은 순간의 턴 수
-
+        turn_count = 0  # 이 커넥션에서 완료된 턴 수 — 로그용
         ended_notified = False
 
         async def notify_ended() -> None:
@@ -345,32 +325,13 @@ def create_live_router(
                 # 서버가 안 보냈는지 브라우저가 안 받았는지 가릴 수 없다.
                 logger.warning("종료 통지 전송 실패 — 소켓이 이미 닫혔다 (card=%s)", card)
 
-        async def wait_next_turn(baseline: int, timeout_s: float) -> bool:
-            """모델이 턴을 하나 더 마칠 때까지 기다린다. 시간 안에 오면 True.
-
-            turn_done을 clear하고 기다리는 대신 완료된 턴 수를 기준선으로 쓴다 —
-            마무리 표시와 인사가 붙어 오면(종료 툴 경로) 표시를 읽고 깨어나는
-            사이에 인사 턴이 이미 끝나 있을 수 있는데, clear()는 그 사실을 지운다.
-            """
-            if turn_count > baseline:
-                return True
-            turn_done.clear()
-            try:
-                await asyncio.wait_for(turn_done.wait(), timeout=timeout_s)
-            except TimeoutError:
-                return False
-            return True
-
         # 화면이 자기 시계를 서버에 맞추게 하는 첫 메시지. 재접속이면 이미
-        # 흐른 시간과 진행 상황이 실려 화면이 이어서 그려진다 — 프론트가
-        # 0부터 다시 세면 남은 시간이 늘어나 보인다.
+        # 흐른 시간과 질문 번호가 실려 화면이 이어서 그려진다 — 프론트가
+        # 0부터 다시 세면 경과 시간이 줄어 보인다.
         await websocket.send_json(
             {
                 "type": "session",
-                "totalSeconds": int(flow.hard_cap_s),
                 "elapsedSeconds": int(_elapsed_s(session.state)),
-                "stageBudgets": [int(seconds) for seconds in flow.profile.budgets],
-                "stage": int(session.state.get(STATE_STAGE, 0)),
                 "asked": len(session.state.get(STATE_ASKED, [])),
             }
         )
@@ -399,20 +360,13 @@ def create_live_router(
                     ],
                 )
             )
-        # 이 면접에서 나올 말들. 세션 state가 아니라 준비 데이터에서 뽑는다 —
+        # 이 면접에서 나올 말들. 세션 state가 아니라 준비 데이터에서 읽는다 —
         # 재접속이면 state는 이미 진행 중이지만 어휘는 그대로다.
+        #
+        # 준비 단계에서 뽑아 둔 것을 쓴다. 없으면(추출 실패·그 단계가 없던 옛
+        # 면접) 규칙 폴백으로 만든다 — 면접 시작 경로에 LLM 호출을 두지 않는다.
         prepared = store.load(card)
-        vocabulary = (
-            interview_vocabulary(
-                name=prepared.name,
-                company=prepared.company,
-                role=prepared.role,
-                application=prepared.application,
-                questions=prepared.questions,
-            )
-            if prepared is not None
-            else []
-        )
+        vocabulary = _vocabulary_for(prepared)
         run_config = RunConfig(
             response_modalities=["AUDIO"],
             # Live 커넥션 재개 핸들을 받기 위해 켠다. 자막용 양방향 전사는
@@ -465,9 +419,10 @@ def create_live_router(
                         recording.mark_question_end()
                         continue
                     if control == "end":
-                        # 지원자가 끝냈다. 큐를 닫아 봐야 ADK가 재연결로 받으므로
-                        # (end_interview 주석 참고) 이 펌프를 끝내 커넥션째 정리한다.
-                        # 어느 쪽이 끝냈든 종료는 서버가 알린다 — 계약이 하나다.
+                        # 지원자가 끝냈다 — 면접이 끝나는 유일한 경로다. 큐를 닫아
+                        # 봐야 ADK는 Gemini 소켓이 끊어진 것으로 보고 재개 핸들로
+                        # 다시 붙으므로(base_llm_flow.run_live의 ConnectionClosed
+                        # 분기), 이 펌프를 끝내 커넥션째 정리한다.
                         logger.info("지원자 종료 요청 (card=%s)", card)
                         await notify_ended()
                         return
@@ -489,7 +444,7 @@ def create_live_router(
                     run_config=run_config,
                 )
             ) as agen:
-                nonlocal turn_count, turns_at_closing
+                nonlocal turn_count
                 audio_run = 0  # 연속된 오디오 프레임 — 묶어서 한 줄로 낸다
                 async for event in agen:
                     if _TRACE_EVENTS:
@@ -503,15 +458,8 @@ def create_live_router(
                             logger.info("추적: %s", line)
                     collect("interviewer", event.output_transcription)
                     collect("applicant", event.input_transcription)
-                    if _marks_closing(event) and not closing.is_set():
-                        # 인사 대기의 기준선은 여기서 잡는다. 종료 태스크가
-                        # 깨어난 시점에 잡으면 그 사이에 끝난 인사 턴을 놓치고
-                        # 다음 턴을 30초 기다리게 된다.
-                        turns_at_closing = turn_count
-                        closing.set()
                     if event.turn_complete:
                         turn_count += 1
-                        turn_done.set()
                         logger.info(
                             "턴 완료 %d회째 (경과 %.0f초)",
                             turn_count,
@@ -535,77 +483,16 @@ def create_live_router(
                         await websocket.send_json(payload)
             await notify_ended()
 
-        async def end_interview() -> None:
-            """면접을 끝낸다 — 마무리에 들어갔거나, 하드캡에 닿거나.
-
-            모델은 툴을 호출할 때만 시간을 알고, 커넥션을 끊을 수도 없다.
-            꼬리질문만 이어가면 툴을 안 부르므로 툴 쪽 판정만으로는 면접이
-            안 끝난다. 그래서 종료는 서버가 시계를 들고 쥔다
-            (daedam/interview/stages.py 첫 줄의 원칙).
-            """
-            started_at = session.state.get(STATE_STARTED_AT)
-            if started_at is None:
-                logger.warning("시작 시각 없는 세션 — 시간 예산 미적용 (card=%s)", card)
-                return
-            remaining_s = flow.hard_cap_s - (time.time() - float(started_at))
-            try:
-                await asyncio.wait_for(closing.wait(), timeout=max(0.0, remaining_s))
-                baseline = turns_at_closing
-                logger.info("마무리 진입 — 인사를 기다린다 (card=%s)", card)
-            except TimeoutError:
-                # 하드캡. 지시는 지원자 발화로 넣는다 — 개시 신호와 같은 통로다.
-                baseline = turn_count
-                logger.info("하드캡 도달 — 마무리 지시 주입 (card=%s)", card)
-                queue.send_content(
-                    types.Content(
-                        role="user",
-                        parts=[
-                            types.Part(
-                                text="(면접 시간이 다 됐습니다."
-                                " 짧게 마무리 인사를 하고 면접을 끝내 주세요.)"
-                            )
-                        ],
-                    )
-                )
-
-            # 인사 한 턴이 끝나기를 기다린다.
-            if not await wait_next_turn(baseline, _CLOSING_GRACE_S):
-                logger.info(
-                    "마무리 인사가 오지 않아 그대로 종료 (턴 완료 %d회, card=%s)",
-                    turn_count,
-                    card,
-                )
-            await asyncio.sleep(_PLAYBACK_TAIL_S)
-
-            # 종료를 알리고 소켓을 우리가 닫는다. run_live가 끝나기를 기다리지
-            # 않는 이유: 큐를 닫으면 ADK는 Gemini 소켓이 끊어진 것으로 보고
-            # 재개 핸들로 다시 붙는다(base_llm_flow.run_live의 ConnectionClosed
-            # 분기) — 의도한 종료와 사고를 구분하지 못한다. 소켓을 닫으면 수신
-            # 펌프가 정리되면서 run_live 제너레이터도 함께 닫힌다.
-            await notify_ended()
-            try:
-                await websocket.close(code=1000, reason="면접 종료")
-            except Exception:  # noqa: BLE001 — 이미 닫혔으면 그만
-                pass
-            logger.info(
-                "면접 종료 — 소켓을 닫았다 (경과 %.0f초, card=%s)",
-                _elapsed_s(session.state),
-                card,
-            )
-
         # 두 펌프를 나란히 돌리고, 어느 한쪽이 먼저 끝나면 전체를 정리한다.
-        # 자연스러운 종료는 두 갈래다:
-        #   클라가 끊음 → 위 펌프 리턴 → 아래 펌프 취소 + 큐 close
-        #   대화 종료(end/모델/하드캡) → 아래 펌프 리턴 → 위 펌프 취소
-        # 종료 태스크는 이 wait에 넣지 않는다 — 스스로 끝을 알리는 대신 큐를
-        # 닫아 위 두 갈래 중 하나로 흘려보내는 역할이다.
-        ending = asyncio.create_task(end_interview())
+        # 종료는 두 갈래다:
+        #   지원자가 끝냄(end 컨트롤) 또는 클라가 끊음 → 위 펌프 리턴 → 아래 펌프 취소
+        #   모델이 끊음(run_live 종료) → 아래 펌프 리턴 → 위 펌프 취소
+        # 서버가 시계로 끝내는 경로는 없다 — 면접을 끝내는 것은 지원자다.
         tasks = [
             asyncio.create_task(pump_client_to_agent()),
             asyncio.create_task(pump_agent_to_client()),
         ]
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-        ending.cancel()
         for task in pending:
             task.cancel()
         queue.close()
@@ -619,7 +506,7 @@ def create_live_router(
         finally:
             # 커넥션이 끝날 때마다 저장한다. 재접속이면 다음 커넥션이 이어
             # 받으므로 중간 저장이고, 마지막 커넥션의 것이 최종본이 된다 —
-            # 면접이 어떻게 끝나든(정상 종료·하드캡·창 닫기) 기록이 남는다.
+            # 면접이 어떻게 끝나든(종료 버튼·창 닫기) 기록이 남는다.
             recording.finish()
             if ended_notified:
                 # 면접이 끝났다. 세션을 지워야 다음 접속이 새 면접으로 시작한다 —
