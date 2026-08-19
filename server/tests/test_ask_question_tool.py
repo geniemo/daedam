@@ -19,7 +19,6 @@ from google.genai import types
 
 from interviewer.tools import (
     STATE_ASKED,
-    STATE_CLOSING,
     STATE_FREE_QUESTIONS,
     STATE_PROFILE,
     STATE_QUESTION_POOL,
@@ -40,7 +39,7 @@ POOL_RAW = [
 
 DRAFT = "그 18%는 어떤 기준으로 재셨나요?"
 
-#: demo 프로필 단계 경계: 90 / 270 / 420 / 480초, 하드캡 540초.
+#: demo 프로필 단계 경계: 90 / 270 / 420 / 480초.
 PROFILE = "demo"
 
 
@@ -63,6 +62,11 @@ def _follow_up(context: ContextStub, priority: int, tag: str = "경험상세") -
     return ask_question(
         tool_context=context, tag=tag, priority=priority, draft_question=DRAFT
     )
+
+
+def _approved(result: dict) -> bool:
+    """허가면 초안이 그대로 ask에 실려 온다. 반려면 준비된 다른 문장이 온다."""
+    return result.get("ask") == DRAFT
 
 
 def _inject(state: dict[str, Any] | None = None) -> LlmRequest:
@@ -137,21 +141,25 @@ def test_배달하면_꼬리질문_카운터가_풀린다() -> None:
     assert context.state[STATE_FREE_QUESTIONS] == 0
 
 
-def test_지시에_단계_태그가_실린다() -> None:
-    """모델이 다음 호출에서 고를 태그를 instruction으로 안내받는다."""
+def test_응답은_문장과_다음_행동뿐이다() -> None:
+    """단계 이름·태그 목록·횟수는 모델의 다음 행동을 못 바꾼다 — 입으로 새는
+    통로일 뿐이다. 태그는 이미 선언 enum에 있다."""
     result = _new_topic(ContextStub(_state(stage=1)))
-    assert "경험상세" in result["instruction"] and "문제해결" in result["instruction"]
+    assert set(result) == {"ask", "instruction"}
+    assert "물어보세요" in result["instruction"]
+    assert "경험상세" not in result["instruction"]
+    assert "단계" not in result["instruction"]
 
 
 # ── 꼬리질문 게이트 ──────────────────────────────────────────────────────
 
 
-def test_허가는_문장을_돌려주지_않는다() -> None:
-    """모델이 이미 손에 쥔 초안을 되돌려주면 얻는 정보가 없고, 말하고 나서
-    부르는 회차에서는 같은 질문이 두 번 나간다."""
+def test_허가는_초안을_그대로_돌려준다() -> None:
+    """어느 경로든 응답은 "이 문장을 물어보라" 하나다. 모델이 툴 뒤에 말하는
+    지금 순서에서는 되돌려줘도 두 번 말할 것이 없다."""
     result = _follow_up(ContextStub(_state(stage=1)), priority=3)
-    assert result["ok"] is True
-    assert "ask" not in result
+    assert result["ask"] == DRAFT
+    assert set(result) == {"ask", "instruction"}
 
 
 def test_문턱을_넘으면_카운터가_오른다() -> None:
@@ -160,32 +168,32 @@ def test_문턱을_넘으면_카운터가_오른다() -> None:
     assert context.state[STATE_FREE_QUESTIONS] == 1
 
 
-def test_반려는_준비된_질문을_같이_준다() -> None:
-    """모델이 아직 말하기 전에 부르므로 두 번째 발화가 되지 않는다. 대신 왕복이
-    한 번 줄어 침묵이 절반이 된다."""
+def test_반려는_준비된_질문을_같은_모양으로_준다() -> None:
+    """초안 대신 다른 문장이 왔으면 그걸 물으라는 뜻이다 — 전환 멘트는 싣지
+    않는다. 왕복이 한 번 줄어 침묵이 절반이 된다."""
     context = ContextStub(_state(stage=1))
     result = _follow_up(context, priority=4)  # 문턱 3
     assert result["ask"] == "맡으신 역할을 설명해 주세요."
-    assert "여기까지" in result["instruction"]
+    assert set(result) == {"ask", "instruction"}
     assert context.state[STATE_FREE_QUESTIONS] == 0
 
 
 def test_한_번_더_물을수록_문턱이_엄해진다() -> None:
     context = ContextStub(_state(stage=1))
-    assert _follow_up(context, priority=3).get("ok") is True  # 문턱 3
-    assert _follow_up(context, priority=3).get("ok") is None  # 문턱 2 — 반려
+    assert _approved(_follow_up(context, priority=3))  # 문턱 3
+    assert not _approved(_follow_up(context, priority=3))  # 문턱 2 — 반려
 
 
 def test_중요한_꼬리질문은_한_번_더_버틴다() -> None:
     context = ContextStub(_state(stage=1, **{STATE_FREE_QUESTIONS: 2}))
-    assert _follow_up(context, priority=1)["ok"] is True  # 문턱 1
+    assert _approved(_follow_up(context, priority=1))  # 문턱 1
 
 
 def test_남은_질문이_곁가지뿐이면_문턱이_낮아진다() -> None:
     """중요한 질문이 이미 나갔으면 파던 자리를 더 파는 편이 낫다.
     남은 것이 중요도 4뿐이면 문턱은 6이다."""
     context = ContextStub(_state(stage=1, **{STATE_ASKED: ["b"]}))
-    assert _follow_up(context, priority=5)["ok"] is True
+    assert _approved(_follow_up(context, priority=5))
 
 
 def test_꼬리질문은_세_개를_못_넘는다() -> None:
@@ -193,13 +201,13 @@ def test_꼬리질문은_세_개를_못_넘는다() -> None:
     context = ContextStub(
         _state(stage=1, **{STATE_ASKED: ["b"], STATE_FREE_QUESTIONS: 3})
     )
-    assert _follow_up(context, priority=1).get("ok") is None
+    assert not _approved(_follow_up(context, priority=1))
 
 
 def test_비교_대상이_없으면_허가한다() -> None:
     """풀이 비었으면 밀어낼 곳이 없다."""
     context = ContextStub(_state(stage=1, **{STATE_ASKED: ["a", "b", "c"]}))
-    assert _follow_up(context, priority=5)["ok"] is True
+    assert _approved(_follow_up(context, priority=5))
 
 
 def test_비교_대상은_태그를_무시한다() -> None:
@@ -207,7 +215,7 @@ def test_비교_대상은_태그를_무시한다() -> None:
     가장 중요한 질문이다. 태그로 뽑으면 모델이 문턱을 스스로 정하게 된다."""
     context = ContextStub(_state(stage=1))
     # b(중요도 1)가 남아 있으므로 문턱은 3. c(중요도 4)와 비교했다면 6이 된다.
-    assert _follow_up(context, priority=4, tag="문제해결").get("ok") is None
+    assert not _approved(_follow_up(context, priority=4, tag="문제해결"))
 
 
 # ── 시간 예산 ────────────────────────────────────────────────────────────
@@ -216,25 +224,31 @@ def test_비교_대상은_태그를_무시한다() -> None:
 def test_시간이_지나면_단계를_건너뛴다() -> None:
     """1단계에 질문이 남아 있어도 예산을 넘겼으면 2단계로 간다."""
     context = ContextStub(_state(100.0, stage=0))
-    assert _new_topic(context)["stage"] == "직무역량"
+    assert _new_topic(context)["ask"] == "맡으신 역할을 설명해 주세요."
     assert context.state[STATE_STAGE] == 1
 
 
 def test_예산보다_앞서_가는_것은_막지_않는다() -> None:
     """질문을 빨리 소진해 앞서 간 단계를 시간이 되돌리지는 않는다."""
-    assert _new_topic(ContextStub(_state(0.0, stage=1)))["stage"] == "직무역량"
+    context = ContextStub(_state(0.0, stage=1))
+    _new_topic(context)
+    assert context.state[STATE_STAGE] == 1
 
 
-def test_하드캡을_넘으면_마무리를_지시한다() -> None:
-    """종료 판정은 남은 질문 수가 아니라 시간이 한다."""
+def test_시간이_다_지나도_면접을_끝내지_않는다() -> None:
+    """끝내는 것은 지원자의 종료 버튼이다. 시간 예산은 단계를 옮기는 데만 쓴다 —
+    하드캡이 지나도 질문은 계속 나간다."""
     result = _follow_up(ContextStub(_state(600.0)), priority=1)
-    assert result["done"] is True and "마무리" in result["instruction"]
+    assert "done" not in result
+    assert "ask" in result
 
 
-def test_질문을_다_쓰면_마무리를_지시한다() -> None:
+def test_질문을_다_쓰면_꼬리질문으로_이어가라고_한다() -> None:
+    """준비된 것이 바닥나도 면접은 안 끝난다 — 모델이 제 문장으로 이어간다."""
     context = ContextStub(_state(stage=1, **{STATE_ASKED: ["a", "b", "c"]}))
-    assert _new_topic(context)["done"] is True
-    assert context.state[STATE_CLOSING] is True
+    result = _new_topic(context)
+    assert "done" not in result and "ask" not in result
+    assert "꼬리질문" in result["instruction"]
 
 
 def test_지시는_모델에게_시간을_알리지_않는다() -> None:

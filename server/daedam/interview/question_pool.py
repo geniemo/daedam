@@ -116,23 +116,6 @@ class QuestionPool:
         )
         return list(dict.fromkeys(tag for question in ordered for tag in question.tags))
 
-    def tags_for(self, stage: int) -> list[str]:
-        """해당 단계 질문들에 붙은 태그를 우선순위 순으로 돌려준다.
-
-        질문을 배달할 때 진행 안내(note)에 실어 다음 선택지를 좁혀 준다.
-
-        Args:
-            stage: 단계 인덱스(0~3). 범위를 벗어나면 빈 목록.
-
-        Returns:
-            중복을 제거한 태그 목록.
-        """
-        ordered = sorted(
-            (question for question in self._questions if question.stage == stage),
-            key=lambda question: question.priority,
-        )
-        return list(dict.fromkeys(tag for question in ordered for tag in question.tags))
-
     def next(
         self,
         stage: int,
