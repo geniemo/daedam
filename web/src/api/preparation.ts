@@ -34,11 +34,19 @@ export async function startPreparation(
   parts: ApplicationPart[],
   /** 채용공고 링크 또는 본문. 서버가 파싱 없이 리서치 프롬프트에 그대로 싣는다. */
   posting = '',
+  /** 지원자 이름. 면접관이 부르고 전사 어휘 힌트로도 나간다. */
+  name = '',
 ): Promise<string> {
   const res = await fetch('/api/preparation', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ company, role, application: toServerParts(parts), posting }),
+    body: JSON.stringify({
+      company,
+      role,
+      application: toServerParts(parts),
+      posting,
+      name,
+    }),
   })
   if (!res.ok) throw new Error(`리서치 시작 실패: ${res.status}`)
   const data = (await res.json()) as { task_id: string }
@@ -52,6 +60,65 @@ export async function getPreparationStatus(taskId: string): Promise<PreparationS
   return (await res.json()) as PreparationStatus
 }
 
+/** 면접이 끝난 뒤 만들어진 피드백. 계약: server/daedam/server/evaluation.py */
+export interface Feedback {
+  durationS: number
+  utterances: { speaker: 'interviewer' | 'applicant'; text: string; at: number }[]
+  /** 녹음이 없으면 통째로 빠진다 — 지표는 소리가 있어야 낼 수 있다. */
+  voice?: {
+    syllablesPerMinute: number
+    meanAnswerS: number
+    /** 멈춘 시간을 뺀 실제 발화 시간(초). 분당 지표의 분모. */
+    spokenS: number
+    pauseRatio: number
+    loudness: number
+    loudnessVariation: number
+    /** 질문이 끝나고 답을 시작하기까지의 평균 초. 잴 수 없으면 null. */
+    meanStartDelayS: number | null
+    answers: {
+      startS: number
+      endS: number
+      text: string
+      pauses: number
+      startDelayS: number | null
+    }[]
+  }
+  coaching: {
+    /** 답변 점수의 평균. 평가할 답변이 없으면 null — 0점과 다르다. */
+    score: number | null
+    /** 말버릇으로 쓴 낱말의 총 개수. 목록이 아니라 문맥으로 센다. */
+    fillers: number
+    summary: string
+    strengths: string[]
+    improvements: string[]
+    answers: {
+      question: string
+      score: number
+      strength: string
+      gap: string
+      suggestion: string
+      /** 이 답변에서 말버릇으로 쓴 낱말. 나온 순서대로. */
+      fillers: string[]
+    }[]
+  }
+}
+
+export interface FeedbackStatus {
+  /** running 만드는 중 · done 완료 · failed 실패 · absent 아직 면접 안 함 */
+  status: 'running' | 'done' | 'failed' | 'absent'
+  feedback?: Feedback
+}
+
+/** §서버 연동 6 — 면접 뒤 피드백. 분석 화면이 기다리며 부르고 리포트가 읽는다. */
+export async function getFeedback(interviewId: string): Promise<FeedbackStatus> {
+  const res = await fetch(`/api/interviews/${interviewId}/feedback`)
+  if (!res.ok) throw new Error(`피드백 조회 실패: ${res.status}`)
+  return (await res.json()) as FeedbackStatus
+}
+
+/** 녹음 파일 주소. Range 요청을 받으므로 구간만 가져간다. */
+export const audioUrl = (interviewId: string) => `/api/interviews/${interviewId}/audio`
+
 /** 서버가 들고 있는 면접 하나. 계약: server/daedam/server/interview_routes.py */
 export interface StoredInterview {
   id: string
@@ -59,6 +126,8 @@ export interface StoredInterview {
   role: string
   /** 질문 풀까지 준비돼 면접을 시작할 수 있는지. 브리지의 시작 조건과 같다. */
   ready: boolean
+  /** 면접을 마쳐 피드백이 있으면 점수. 없으면 null — 이게 홈에서 리포트로 가는 길이다. */
+  score: number | null
   /** 마지막 저장 시각(epoch 초). 목록 정렬과 화면의 날짜 표시에 쓴다. */
   savedAt: number
 }

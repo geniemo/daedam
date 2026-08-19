@@ -17,22 +17,17 @@ import { create } from 'zustand'
 export type Phase = 'speaking' | 'listening'
 export type Connection = 'idle' | 'connecting' | 'live' | 'reconnecting' | 'ended'
 
-/** 프로토타입 기본 길이. 백엔드가 붙으면 접속 직후 session 메시지가 덮어씁니다. */
-export const TOTAL_SECONDS = 900 // §타이머와 인터벌 — 900초에서 카운트다운
-export const QUESTION_COUNT = 8 // 프로토타입 대본의 질문 수
-
 /**
  * 서버가 접속 직후 내려주는 진행 상태 (/ws/interview의 session 메시지).
  *
- * 남은 시간·단계·질문 번호의 출처는 서버 하나입니다. 프론트가 자기 시계로
- * 세면 재접속하거나 서버가 시간 때문에 단계를 건너뛸 때 화면이 어긋납니다.
+ * 경과 시간·질문 번호의 출처는 서버 하나입니다. 프론트가 자기 시계로 세면
+ * 재접속할 때 화면이 어긋납니다.
+ *
+ * 단계와 전체 길이는 싣지 않습니다 — 면접을 끝내는 것은 지원자의 버튼이라
+ * "남은 시간"이 없고, 단계는 서버가 질문을 고르는 내부 사정입니다.
  */
 export interface SessionInfo {
-  totalSeconds: number
   elapsedSeconds: number
-  /** 단계별 시간 예산(초). 진행 바 칸의 너비이자 채움 기준입니다. */
-  stageBudgets: number[]
-  stage: number
   asked: number
 }
 
@@ -41,20 +36,17 @@ interface InterviewState {
   phase: Phase
   /** 지금까지 나간 뼈대질문 수. 화면의 "질문 N"입니다. */
   askedCount: number
-  stage: number
   /** 면접관이 실제로 하고 있는 말. 조각으로 와서 이어 붙입니다. */
   caption: string
   /** 직전 조각이 턴의 끝이었는지 — 다음 조각에서 자막을 새로 시작합니다. */
   captionDone: boolean
   elapsed: number
-  totalSeconds: number
-  stageBudgets: number[] | null
   /** 서버가 내려주는 세션 재개 토큰 (유효 2시간). 재연결 시 그대로 돌려보냅니다. */
   resumeToken: string | null
 
   setConnection: (c: Connection) => void
   setPhase: (p: Phase) => void
-  setQuestion: (index: number, stage: number) => void
+  setQuestion: (index: number) => void
   appendCaption: (text: string, final: boolean) => void
   applySession: (info: SessionInfo) => void
   setResumeToken: (t: string | null) => void
@@ -66,12 +58,9 @@ const initial = {
   connection: 'idle' as Connection,
   phase: 'speaking' as Phase,
   askedCount: 0,
-  stage: 0,
   caption: '',
   captionDone: true,
   elapsed: 0,
-  totalSeconds: TOTAL_SECONDS,
-  stageBudgets: null,
   resumeToken: null,
 }
 
@@ -80,7 +69,7 @@ export const useInterviewStore = create<InterviewState>((set) => ({
 
   setConnection: (connection) => set({ connection }),
   setPhase: (phase) => set({ phase }),
-  setQuestion: (index, stage) => set({ askedCount: index + 1, stage }),
+  setQuestion: (index) => set({ askedCount: index + 1 }),
 
   // 전사는 조각으로 흘러오고, 턴이 끝나면 누적 전문이 한 번 더 옵니다
   // (ADK gemini_llm_connection.py — 조각은 finished=false, 마지막은 그때까지
@@ -95,38 +84,13 @@ export const useInterviewStore = create<InterviewState>((set) => ({
       captionDone: final,
     })),
 
-  applySession: (info) =>
-    set({
-      totalSeconds: info.totalSeconds,
-      elapsed: info.elapsedSeconds,
-      stageBudgets: info.stageBudgets,
-      stage: info.stage,
-      askedCount: info.asked,
-    }),
+  applySession: (info) => set({ elapsed: info.elapsedSeconds, askedCount: info.asked }),
 
   setResumeToken: (resumeToken) => set({ resumeToken }),
 
   tick: () => set((s) => ({ elapsed: s.elapsed + 1 })),
   reset: () => set(initial),
 }))
-
-export const remainingSeconds = (elapsed: number, total: number) => Math.max(0, total - elapsed)
-
-/**
- * 경과 시간이 속한 단계. 서버 `SessionFlow.stage_index_at`과 같은 계산입니다.
- *
- * 화면의 단계 표시와 진행 바가 같은 근거를 쓰게 하려고 여기서도 셉니다.
- * 질문이 배달될 때만 갱신하면, 면접관이 꼬리질문을 길게 끄는 동안 라벨은
- * 멈춰 있고 바만 움직여 둘이 어긋납니다.
- */
-export function stageAt(elapsed: number, budgets: number[]): number {
-  let bound = 0
-  for (let i = 0; i < budgets.length; i++) {
-    bound += budgets[i]
-    if (elapsed < bound) return i
-  }
-  return budgets.length - 1
-}
 
 export const formatClock = (sec: number) =>
   `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`

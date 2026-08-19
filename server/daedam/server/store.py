@@ -28,10 +28,18 @@ class InterviewData:
 
     company: str
     role: str
+    #: 지원자 이름. 면접관이 부르고 전사 어휘 힌트로도 나간다. 옛 데이터에는
+    #: 없어서 빈 문자열이 될 수 있다.
+    name: str
     application: list[dict[str, Any]]
     report: list[dict[str, Any]]
     uncertain: list[dict[str, Any]]
     questions: list[dict[str, Any]] | None = None
+    #: 전사에 힌트로 줄 낱말. 준비 단계에서 뽑아 둔다. 추출이 실패했거나 그
+    #: 단계가 없던 옛 면접에는 없다 — 그때는 브리지가 규칙 폴백으로 만든다.
+    vocabulary: list[str] | None = None
+    #: 면접이 끝난 뒤 만들어지는 피드백(음성 지표 + 코칭). 면접 전에는 없다.
+    feedback: dict[str, Any] | None = None
 
 
 class FileInterviewStore:
@@ -49,11 +57,15 @@ class FileInterviewStore:
         application: list[dict[str, Any]],
         report: list[dict[str, Any]],
         uncertain: list[dict[str, Any]],
+        name: str = "",
     ) -> None:
         """리서치 완료 시점의 준비 데이터를 저장한다. 질문은 아직 없다."""
         directory = self._directory(interview_id)
         directory.mkdir(parents=True, exist_ok=True)
-        self._write(directory / "meta.json", {"company": company, "role": role})
+        self._write(
+            directory / "meta.json",
+            {"company": company, "role": role, "name": name},
+        )
         self._write(directory / "application.json", application)
         self._write(directory / "report.json", report)
         self._write(directory / "uncertain.json", uncertain)
@@ -64,9 +76,17 @@ class FileInterviewStore:
         """생성된 질문 풀을 저장한다. 검토 후 재생성하면 덮어쓴다."""
         self._write(self._directory(interview_id) / "questions.json", questions)
 
+    def save_vocabulary(self, interview_id: str, vocabulary: list[str]) -> None:
+        """전사 어휘 힌트를 저장한다. 질문을 다시 뽑으면 이것도 다시 뽑는다."""
+        self._write(self._directory(interview_id) / "vocabulary.json", vocabulary)
+
     def save_report(self, interview_id: str, report: list[dict[str, Any]]) -> None:
         """검토·정정이 반영된 리포트로 교체한다."""
         self._write(self._directory(interview_id) / "report.json", report)
+
+    def save_feedback(self, interview_id: str, feedback: dict[str, Any]) -> None:
+        """면접이 끝난 뒤 만든 피드백을 저장한다. 다시 면접하면 덮어쓴다."""
+        self._write(self._directory(interview_id) / "feedback.json", feedback)
 
     def load(self, interview_id: str) -> InterviewData | None:
         """준비 데이터를 읽는다. 저장된 적 없거나 id 형식이 어긋나면 None.
@@ -82,9 +102,13 @@ class FileInterviewStore:
             return None
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
         questions_path = directory / "questions.json"
+        vocabulary_path = directory / "vocabulary.json"
+        feedback_path = directory / "feedback.json"
         return InterviewData(
             company=meta["company"],
             role=meta["role"],
+            # 이름은 나중에 생긴 필드라 옛 면접에는 없다.
+            name=meta.get("name", ""),
             application=json.loads(
                 (directory / "application.json").read_text(encoding="utf-8")
             ),
@@ -95,6 +119,16 @@ class FileInterviewStore:
             questions=(
                 json.loads(questions_path.read_text(encoding="utf-8"))
                 if questions_path.exists()
+                else None
+            ),
+            vocabulary=(
+                json.loads(vocabulary_path.read_text(encoding="utf-8"))
+                if vocabulary_path.exists()
+                else None
+            ),
+            feedback=(
+                json.loads(feedback_path.read_text(encoding="utf-8"))
+                if feedback_path.exists()
                 else None
             ),
         )
@@ -115,6 +149,10 @@ class FileInterviewStore:
         """
         meta_path = self._directory(interview_id) / "meta.json"
         return meta_path.stat().st_mtime if meta_path.exists() else 0.0
+
+    def directory(self, interview_id: str) -> Path:
+        """면접 하나의 디렉터리. 녹음·전사처럼 JSON이 아닌 산출물이 여기 붙는다."""
+        return self._directory(interview_id)
 
     def _directory(self, interview_id: str) -> Path:
         if not _SAFE_ID.match(interview_id):

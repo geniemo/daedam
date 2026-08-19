@@ -205,6 +205,33 @@ await step('검토 — 고치면 저장 버튼이 바뀐다', async () => {
   await page.waitForSelector('text=저장하고 질문 다시 뽑기')
 })
 
+await step('리포트 — 면접을 마친 카드가 실제 피드백을 연다', async () => {
+  await page.goto(BASE, { waitUntil: 'networkidle' })
+  const finished = await page.locator('text=리포트 보기 →').count()
+  if (finished === 0) return '면접을 마친 카드가 없어 건너뜀'
+
+  await page.locator('text=리포트 보기 →').first().click()
+  await page.waitForSelector('text=답변별 피드백')
+  // 점수는 답변 점수의 평균이다 — 화면의 두 숫자가 어긋나면 안 된다.
+  const overall = Number(await page.locator('.num').first().innerText())
+  const each = await page
+    .locator('text=답변별 피드백')
+    .locator('..')
+    .locator('.num.w-\\[28px\\]')
+    .allInnerTexts()
+    .catch(() => [])
+  if (Number.isNaN(overall)) throw new Error('총점이 숫자가 아니다')
+  if (each.length) {
+    const mean = Math.round(each.map(Number).reduce((a, b) => a + b, 0) / each.length)
+    if (mean !== overall) throw new Error(`총점 ${overall}과 답변 평균 ${mean}이 다르다`)
+  }
+
+  // 다시 듣기는 면접 전체 녹음에서 구간만 가져간다.
+  const src = await page.locator('audio').first().getAttribute('src')
+  if (!src?.endsWith('/audio')) throw new Error(`녹음 주소가 이상하다: ${src}`)
+  return `총점 ${overall}`
+})
+
 await browser.close()
 
 if (errors.length) {

@@ -3,6 +3,8 @@
   GET /api/interviews             — 저장소에 있는 면접 목록 (최근 저장 순)
   GET /api/interviews/{id}        — 리포트를 포함한 면접 하나
   PUT /api/interviews/{id}/report — 검토로 고친 리포트 저장 + 질문 재생성
+  GET /api/interviews/{id}/feedback — 면접이 끝난 뒤의 피드백 (없으면 상태만)
+  GET /api/interviews/{id}/audio    — 지원자 음성 (답변마다 다시 듣기)
 
 프론트가 자기 메모리에 카드를 들고 있으면 새로고침에 사라지고, 준비 데이터가
 없는 면접을 시작하려다 브리지에서 거절당한다. 목록의 진실은 파일 저장소다 —
@@ -18,6 +20,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from .preparation import InterviewPreparation
@@ -31,13 +34,17 @@ class ReportUpdate(BaseModel):
 
 
 def create_interviews_router(
-    store: FileInterviewStore, preparation: InterviewPreparation
+    store: FileInterviewStore,
+    preparation: InterviewPreparation,
+    evaluation: Any = None,
 ) -> APIRouter:
     """면접 조회·검토 라우터를 만든다.
 
     Args:
         store: 준비 데이터 파일 저장소.
         preparation: 리포트가 바뀌면 질문을 다시 뽑는 오케스트레이터.
+        evaluation: 면접 뒤 피드백을 만드는 오케스트레이터. None이면 피드백
+            조회가 늘 absent를 돌려준다(테스트).
 
     Returns:
         /api/interviews 라우터.
@@ -60,6 +67,9 @@ def create_interviews_router(
                     # 질문 풀까지 있어야 면접을 시작할 수 있다 — 브리지가 그것으로
                     # 시작 가능 여부를 판정하므로 화면도 같은 기준을 쓴다.
                     "ready": data.questions is not None,
+                    # 면접을 마쳐 피드백이 있으면 점수. 없으면 null.
+                    # 이게 없으면 홈에서 리포트로 돌아갈 길이 없다.
+                    "score": (data.feedback or {}).get("coaching", {}).get("score"),
                     "savedAt": store.saved_at(interview_id),
                 }
             )
@@ -93,5 +103,36 @@ def create_interviews_router(
             raise HTTPException(status_code=404, detail="면접이 없습니다")
         store.save_report(interview_id, update.report)
         return {"regenerating": preparation.regenerate(interview_id)}
+
+    @router.get("/{interview_id}/feedback")
+    def get_feedback(interview_id: str) -> dict[str, Any]:
+        """분석 화면이 기다리며 부르고, 리포트 화면이 결과를 읽는다.
+
+        상태는 넷이다. running은 만드는 중, done이면 feedback이 실려 온다.
+        failed는 만들다 실패한 것이고, absent는 아직 면접을 안 했다는 뜻이다 —
+        실패와 미실행을 같은 값으로 두면 화면이 무엇을 말할지 정할 수 없다.
+        """
+        if store.load(interview_id) is None:
+            raise HTTPException(status_code=404, detail="면접이 없습니다")
+        if evaluation is None:
+            return {"status": "absent"}
+        status = evaluation.status(interview_id)
+        payload: dict[str, Any] = {"status": status.state}
+        if status.feedback is not None:
+            payload["feedback"] = status.feedback
+        return payload
+
+    @router.get("/{interview_id}/audio")
+    def get_audio(interview_id: str) -> FileResponse:
+        """면접에서 녹음된 지원자 음성.
+
+        리포트가 답변마다 구간을 지정해 재생한다. FileResponse가 Range 요청을
+        받아 주므로 20분짜리를 통째로 내려받지 않고 그 구간만 가져간다
+        (starlette/responses.py FileResponse — accept-ranges: bytes).
+        """
+        path = store.directory(interview_id) / "mic.wav"
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="녹음이 없습니다")
+        return FileResponse(path, media_type="audio/wav")
 
     return router

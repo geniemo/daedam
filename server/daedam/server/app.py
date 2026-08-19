@@ -22,6 +22,7 @@ from google.adk.runners import InMemoryRunner
 from daedam.interview.stages import DEFAULT_PROFILE
 from daedam.research.service import FixtureResearch, LiveResearch, ResearchService
 
+from .evaluation import InterviewEvaluation
 from .interview_routes import create_interviews_router
 from .live_bridge import create_live_router
 from .preparation import InterviewPreparation
@@ -119,7 +120,9 @@ def create_app() -> FastAPI:
     app.include_router(create_preparation_router(preparation))
     # 홈 화면이 그릴 카드 목록. 프론트가 자기 메모리로 들고 있으면 새로고침에
     # 사라지고, 준비 안 된 면접을 시작하려다 브리지에서 거절당한다.
-    app.include_router(create_interviews_router(store, preparation))
+    # 면접이 끝나면 브리지가 이걸 깨우고, 분석 화면이 결과를 기다린다.
+    evaluation = InterviewEvaluation(store)
+    app.include_router(create_interviews_router(store, preparation, evaluation))
 
     # 음성 브리지는 자기 러너로 돈다. ADK 앱(dev UI) 쪽 세션 저장소와는
     # 분리돼 있다 — 제품 경로는 /ws/interview 하나다. 준비 데이터 저장소를
@@ -131,6 +134,7 @@ def create_app() -> FastAPI:
             InMemoryRunner(root_agent, app_name="daedam"),
             store,
             profile=_interview_profile(),
+            evaluation=evaluation,
         )
     )
     return app

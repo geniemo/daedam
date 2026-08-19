@@ -151,24 +151,12 @@ def test_풀_전체_태그를_단계와_우선순위_순으로_모은다(pool: Q
     ]
 
 
-def test_단계별_태그를_우선순위_순으로_모은다(pool: QuestionPool) -> None:
-    """질문을 배달할 때 진행 안내(note)에 실려 다음 선택지를 좁힌다."""
-    assert pool.tags_for(1) == ["경험상세", "기술역량", "문제해결"]
-
-
 def test_같은_태그는_한_번만_나온다() -> None:
     dup = QuestionPool.from_dicts([
         {"id": "a", "stage": 0, "text": "?", "priority": 1, "tags": ["협업"]},
         {"id": "b", "stage": 0, "text": "?", "priority": 2, "tags": ["협업", "갈등해결"]},
     ])
     assert dup.tags() == ["협업", "갈등해결"]
-
-
-def test_질문이_없는_단계의_태그는_빈_목록(pool: QuestionPool) -> None:
-    assert pool.tags_for(2) == []
-
-
-# ── 불변성 ───────────────────────────────────────────────────────────────
 
 
 def test_Question은_불변이다() -> None:

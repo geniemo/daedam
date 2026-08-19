@@ -1,14 +1,21 @@
 """면접 툴 — 질문 게이트와 회사 지식 검색.
 
+면접을 끝내는 것은 서버도 모델도 아니라 지원자다 — 화면의 종료 버튼. 그래서
+여기에는 끝내는 툴이 없고, 시간 예산은 단계를 옮기는 데만 쓴다.
+
 질문은 전부 `ask_question`을 지난다. 모델의 자율을 뺏자는 게 아니라, 페이싱
 판단을 프롬프트가 아니라 툴 쪽에 두려는 것이다 — 대화가 길어질수록 시스템
 프롬프트의 영향은 그 뒤에 쌓인 대화에 묻히지만, 툴 선언과 툴 출력은 매
 호출마다 새로 도착한다.
 
-지켜야 할 불변식이 하나 있다: **모델이 이미 손에 쥔 문장을 돌려주지 않는다.**
-네이티브 오디오 모델은 물을 것을 정하는 순간 이미 말하고 있어서, 그 문장을
-툴이 되돌려주면 한 번 더 말한다(실측 9턴 중 8턴). 그래서 꼬리질문을 허가할
-때는 판정만 돌려주고, 문장은 모델에게 말할 것이 없을 때만 준다.
+응답은 어느 경로든 한 모양이다: **물을 문장 하나 + 다음 행동 한 문장.** 준비된
+질문이든 허가된 꼬리질문이든 ask에 실려 오고, 그 밖의 것은 싣지 않는다.
+네이티브 오디오 모델은 텍스트를 읽고 골라내는 것이 아니라 들어온 것에 끌려가서,
+행동을 못 바꾸는 문장은 입으로 새는 통로일 뿐이다(`_ASK_INSTRUCTION` 주석).
+
+이 모양은 instruction의 "툴을 먼저 부르고 그다음에 말하라"와 한 세트다. 모델이
+툴 전에 말하던 때는 초안을 되돌려주면 한 번 더 말했다(실측 9턴 중 8턴). 지금은
+툴 뒤에 말하므로(실측 5/5) 되돌려줘도 두 번 말할 것이 없다.
 
 `ask_question`의 선언은 Live 커넥션을 열 때 한 번 실린다. 그 시점에 세션 풀의 태그 어휘를
 tag 파라미터의 enum으로 주입해, 모델이 이 세션에 실제로 존재하는 태그만
@@ -63,12 +70,6 @@ STATE_STARTED_AT = "started_at"
 #: 시간 예산 프로필 이름 (`daedam.interview.stages.PROFILES`의 키).
 STATE_PROFILE = "profile"
 
-#: 면접이 마무리에 들어갔다는 표시. 툴이 남기고 브리지가 읽는다 — 모델은
-#: 커넥션을 끊을 수 없으므로, 마무리 인사가 끝난 뒤 실제로 닫는 것은 서버다.
-#: `ask_question`(하드캡·질문 소진)과 `finish_interview`(면접관의 판단)가
-#: 세운다. 이 표시가 없으면 서버는 하드캡까지 면접이 끝난 줄 모른다.
-STATE_CLOSING = "closing"
-
 #: 이미 낸 질문 id 목록과 현재 단계 인덱스. 툴이 갱신하고 브리지가 state
 #: 델타에서 읽어 화면의 질문 번호·단계 표시를 움직인다.
 STATE_ASKED = "asked"
@@ -83,11 +84,21 @@ STATE_FREE_QUESTIONS = "free_questions"
 #: 어떤 경우에도 면접이 아니다. 문턱과 무관하게 먼저 걸린다.
 _FREE_QUESTION_CAP = 3
 
-#: 모든 지시 끝에 붙는 다음 행동. 시스템 프롬프트의 같은 규칙은 대화가 길어질수록
-#: 뒤에 쌓인 대화에 묻히지만, 이 문장은 툴을 부를 때마다 새로 도착하고 도착 시점이
-#: 바로 다음 결정 직전이다. 다만 툴을 안 부르는 모델에게는 닿지 않는다 — 습관을
-#: 시작시키는 장치가 아니라 유지시키는 장치다.
-_NEXT_CALL_INSTRUCTION = " 지원자의 답변을 들으면 다음 질문 전에 이 툴을 다시 부르세요."
+#: 질문을 돌려줄 때 붙는 지시 — 셋 중 어느 경로든 이 한 문장뿐이다. 무엇을
+#: 말할지(ask)와 다음에 뭘 할지, 그 둘 밖의 것은 싣지 않는다.
+#:
+#: 앞서는 단계 이름·그 단계의 태그 목록·"N번째 꼬리질문"·"이 주제는 여기까지"를
+#: 함께 실었다. 전부 모델의 다음 행동을 바꾸지 못하는 정보다 — 태그는 이미 선언
+#: enum에 있고, 단계와 횟수는 모델이 쓸 데가 없다. 그런데 네이티브 오디오
+#: 모델은 텍스트를 읽고 골라내지 않고 들어온 것에 끌려간다(실측: "인사와 함께"
+#: 다섯 글자에 끌려 자기소개를 했고, 툴이 준 "자기소개 부탁드립니다" 문맥에
+#: 끌려 지원자 이름을 썼다). 쓸 데 없는 문장은 입으로 새는 통로일 뿐이다 —
+#: 실측에서 "지원해 주신 직무와 관련된 질문입니다" 같은 예고가 붙어 나왔다.
+#:
+#: 뒷문장은 시스템 프롬프트의 같은 규칙과 달리 툴을 부를 때마다 새로 도착하고
+#: 도착 시점이 바로 다음 결정 직전이다. 다만 툴을 안 부르는 모델에게는 닿지
+#: 않는다 — 습관을 시작시키는 장치가 아니라 유지시키는 장치다.
+_ASK_INSTRUCTION = "이 질문을 물어보세요. 답변을 들으면 다음 질문 전에 이 툴을 다시 부르세요."
 
 #: 첫 자유 질문에 주는 여유. 방금 들은 답변을 한 번 되묻는 것은 거의 항상
 #: 값어치를 하므로, 첫 질문은 다음 뼈대질문보다 한 칸 덜 중요해도 통과시킨다.
@@ -153,30 +164,6 @@ def _free_question_threshold(nxt: Question | None, free: int) -> int | None:
     return None if nxt is None else nxt.priority + _FREE_QUESTION_SLACK - free
 
 
-def _stage_instruction(pool: QuestionPool, stage: int) -> str:
-    """준비된 질문을 배달할 때 붙이는 상황 안내."""
-    note = f"지금은 {STAGE_NAMES[stage]} 단계입니다."
-    stage_tags = pool.tags_for(stage)
-    if stage_tags:
-        note += f" 이 단계의 주제 태그: {', '.join(stage_tags)}."
-    return note
-
-
-def _hard_cap_reached(
-    state: Any, flow: SessionFlow, elapsed_s: float
-) -> dict | None:
-    """하드캡을 넘었으면 마무리 지시를, 아니면 None. 두 질문 툴이 공유한다."""
-    if not flow.should_end(elapsed_s):
-        return None
-    state[STATE_STAGE] = len(STAGE_NAMES) - 1
-    state[STATE_CLOSING] = True
-    logger.info("하드캡 도달 — 마무리 지시 (경과 %.0f초)", elapsed_s)
-    return {
-        "done": True,
-        "instruction": "면접 시간이 다 됐습니다. 짧게 마무리 인사를 하고 면접을 끝내세요.",
-    }
-
-
 def _stage_on_schedule(state: Any, flow: SessionFlow, elapsed_s: float) -> int:
     """예산보다 뒤처진 단계를 끌어올린 현재 단계.
 
@@ -204,15 +191,20 @@ def _deliver(
     stage: int,
     asked: list[str],
     elapsed_s: float,
-    lead: str = "",
 ) -> dict:
-    """준비된 질문 하나를 배달하고 state를 갱신한다. 남은 게 없으면 마무리 지시."""
+    """준비된 질문 하나를 배달하고 state를 갱신한다.
+
+    남은 게 없어도 면접을 끝내지 않는다 — 끝내는 것은 지원자의 종료 버튼이다.
+    그때까지는 모델이 제 문장으로 이어간다.
+    """
     found, at = _next_in_pool(pool, stage=stage, tag=tag, exclude=asked)
     if found is None:
         state[STATE_STAGE] = at
-        state[STATE_CLOSING] = True
-        logger.info("질문 소진 — 마무리 (경과 %.0f초, %d개 배달)", elapsed_s, len(asked))
-        return {"done": True, "instruction": "질문이 모두 끝났습니다. 면접을 마무리해 주세요."}
+        logger.info("질문 소진 (경과 %.0f초, %d개 배달)", elapsed_s, len(asked))
+        return {
+            "instruction": "준비된 질문이 다 나갔습니다. 지금까지의 답변에서 더 확인할 것을"
+            " 꼬리질문으로 이어가세요. 답변을 들으면 다음 질문 전에 이 툴을 다시 부르세요."
+        }
 
     asked = [*asked, found.id]
     state[STATE_ASKED] = asked
@@ -225,11 +217,7 @@ def _deliver(
         found.text,
         elapsed_s,
     )
-    return {
-        "ask": found.text,
-        "stage": STAGE_NAMES[at],
-        "instruction": lead + _stage_instruction(pool, at) + _NEXT_CALL_INSTRUCTION,
-    }
+    return {"ask": found.text, "instruction": _ASK_INSTRUCTION}
 
 
 def ask_question(
@@ -238,12 +226,11 @@ def ask_question(
     """질문하기 전에 반드시 호출하세요. 새 주제든 방금 들은 답변을 파고드는 꼬리질문이든 예외가 없습니다.
 
     draft_question을 비우면 지금 주제를 충분히 확인했다는 뜻이고, 준비된 다음
-    질문이 ask에 담겨 옵니다. 채우면 그 꼬리질문을 물어도 되는지 판정합니다.
+    질문이 ask에 담겨 옵니다. 채우면 그 꼬리질문을 물어도 되는지 판정합니다 —
+    통과하면 그 문장이, 아니면 준비된 다음 질문이 ask에 담겨 옵니다.
 
-    돌아오는 것은 셋 중 하나입니다.
-      ask     — 이 문장을 물어보세요. 준비된 질문입니다.
-      ok      — 방금 적으신 꼬리질문을 그대로 물어도 됩니다.
-      done    — 면접을 마무리하세요.
+    돌아오는 것은 ask — 이 문장을 물어보세요. 준비된 질문이 다 나갔으면 ask 없이
+    instruction만 옵니다.
 
     Args:
         tag: 다음으로 확인하고 싶은 주제. 준비된 질문을 고르는 기준입니다.
@@ -254,10 +241,13 @@ def ask_question(
             4 맥락 보완 — 배경·동기·협업 방식.
             5 곁가지 — 흥미롭지만 평가와 연결이 옅음.
         draft_question: 물으려는 꼬리질문 문장. 아직 말하지 않은 후보입니다.
-            더 물을 것이 없으면 비워 두세요 — 그때는 이 툴이 질문을 정합니다.
+            질문 문장만 담으세요 — "네, 그렇군요" 같은 반응은 넣지 마세요.
+            반응은 이 툴을 부르기 전에 이미 하셨고, 여기 담으면 돌아온 문장을
+            읽을 때 한 번 더 들립니다. 더 물을 것이 없으면 비워 두세요 — 그때는
+            이 툴이 질문을 정합니다.
 
     Returns:
-        ask 또는 ok와 instruction을 담은 dict. 면접을 끝낼 때가 되면 done이 True입니다.
+        ask와 instruction을 담은 dict.
     """
     # 빈 draft_question이 "이 주제는 끝났다"는 신호다. 종류를 따로 받지 않는 이유는
     # 신호가 범주적이어야 흔들리지 않아서다 — 문장을 썼거나 안 썼거나 둘뿐이고,
@@ -266,16 +256,11 @@ def ask_question(
     pool = _question_pool_from(state)
     flow = _session_flow_from(state)
     elapsed_s = _elapsed_s_from(state)
-    if (ending := _hard_cap_reached(state, flow, elapsed_s)) is not None:
-        return ending
-
     stage = _stage_on_schedule(state, flow, elapsed_s)
     asked = list(state.get(STATE_ASKED, []))
 
     if not draft_question:
-        return _deliver(
-            state, pool, tag=tag, stage=stage, asked=asked, elapsed_s=elapsed_s
-        )
+        return _deliver(state, pool, tag=tag, stage=stage, asked=asked, elapsed_s=elapsed_s)
 
     free = int(state.get(STATE_FREE_QUESTIONS, 0))
     # 비교 대상은 태그 없이 뽑는다 — 이 주제를 파느라 못 하고 있는 것 중 가장
@@ -298,31 +283,24 @@ def ask_question(
     if passes:
         state[STATE_STAGE] = stage
         state[STATE_FREE_QUESTIONS] = free + 1
-        # 문장을 돌려주지 않는다. 모델이 이미 손에 쥔 초안을 되돌려줘 봐야 얻는
-        # 정보가 없고, 말하고 나서 부르는 회차가 다시 나오면(실측된 적 있다)
-        # 그 즉시 같은 질문이 두 번 나간다.
+        # 허가도 배달과 같은 모양이다 — 초안을 ask에 그대로 실어 돌려준다. 모델이
+        # 받는 것은 어느 경로든 "이 문장을 물어보라" 하나뿐이다.
         #
-        # instruction이라는 이름과 달리, 판정 결과를 명령으로 쓰지 않는다. "물어보세요"라고 쓰면 이미 말해버린
-        # 경우에 한 번 더 말하라는 지시가 된다.
-        return {
-            "ok": True,
-            "instruction": f"괜찮습니다. 준비된 질문 이후 {free + 1}번째 꼬리질문입니다."
-            + _NEXT_CALL_INSTRUCTION,
-        }
+        # 앞서는 판정만 돌려주고 문장을 안 줬다. 모델이 물을 것을 정하는 순간
+        # 이미 말하고 있어서 되돌려주면 한 번 더 말했기 때문이다(실측 9턴 중
+        # 8턴). 그 실측은 모델이 툴 **전에** 말하던 때 것이다. 지금 instruction은
+        # 툴을 먼저 부르고 그다음에 말하게 하고(실측 5/5), 그 순서에서는 아직
+        # 아무 말도 안 했으니 되돌려줘도 두 번 말할 것이 없다. 즉 이 응답은
+        # 그 지시와 한 세트다 — 순서가 다시 뒤집히면 이 경로가 먼저 깨진다.
+        return {"ask": draft_question, "instruction": _ASK_INSTRUCTION}
 
-    # 반려는 문장을 같이 싣는다. 모델이 아직 말하기 전에 부른다는 것이 실측에서
-    # 확인됐으므로(3/3), 여기서 준비된 질문을 줘도 두 번째 발화가 되지 않는다.
-    # 대신 왕복이 한 번 줄어 침묵이 절반이 된다. 어느 주제로 갈지는 모델이 넘긴
-    # 태그를 따른다 — 넘어갈지 말지는 서버가, 어디로 갈지는 모델이 정한다.
-    return _deliver(
-        state,
-        pool,
-        tag=tag,
-        stage=stage,
-        asked=asked,
-        elapsed_s=elapsed_s,
-        lead="이 주제는 여기까지입니다. 준비된 다음 질문으로 넘어가세요. ",
-    )
+    # 반려는 준비된 다음 질문을 같은 모양으로 돌려준다. 초안 대신 다른 문장이
+    # 왔으면 그걸 물으라는 뜻이고, 그건 instruction이 이미 말한다("ask가 돌아오면
+    # 그 질문은 넘기고 돌아온 문장을 물어보세요"). "이 주제는 여기까지" 같은
+    # 전환 멘트는 싣지 않는다 — 모델이 그대로 입 밖에 낼 뿐 행동은 안 바뀐다.
+    # 어느 주제로 갈지는 모델이 넘긴 태그를 따른다 — 넘어갈지 말지는 서버가,
+    # 어디로 갈지는 모델이 정한다.
+    return _deliver(state, pool, tag=tag, stage=stage, asked=asked, elapsed_s=elapsed_s)
 
 
 class AskQuestionTool(FunctionTool):
@@ -388,55 +366,6 @@ class AskQuestionTool(FunctionTool):
         return None
 
 
-# ── 면접 종료 ────────────────────────────────────────────────────────────
-
-
-def finish_interview(tool_context: ToolContext) -> dict:
-    """면접을 끝냅니다. 마무리 단계에서 마지막 질문의 답변까지 듣고 더 물어볼 것이 없을 때 호출하세요.
-
-    호출한 뒤 짧게 마무리 인사를 하고 대화를 마치세요. 커넥션은 서버가 닫습니다.
-
-    Returns:
-        done(종료가 받아들여졌는지)과 instruction(다음에 할 일)를 담은 dict.
-        아직 마무리 단계가 아니면 done이 False입니다.
-    """
-    # 이 툴이 있는 이유: 서버가 면접을 끝내는 근거가 시계밖에 없으면, 대화가
-    # 끝나고도 하드캡까지 화면이 면접에 머문다. 면접관은 마지막 뼈대질문 뒤의
-    # 역질문 응대와 마무리 인사를 툴 없이 하므로, 그 판단을 서버가 볼 통로가
-    # 따로 필요하다. 하드캡은 이 툴을 안 부를 때를 위한 백스톱으로 남는다.
-    state = tool_context.state
-    flow = _session_flow_from(state)
-    elapsed_s = _elapsed_s_from(state)
-    stage = int(state.get(STATE_STAGE, 0))
-    last_stage = len(STAGE_NAMES) - 1
-
-    # 이른 종료를 막는다. 모델이 분위기로 끝내버리면 준비된 단계가 통째로
-    # 날아간다 — 단계 판정은 여기서도 서버가 쥔다. 질문을 일찍 소진하면
-    # ask_question이 이미 단계를 끌어올려 놓으므로, 대화가 실제로 일찍
-    # 끝난 경우까지 막히지는 않는다.
-    #
-    # 다만 하드캡을 넘었으면 단계와 무관하게 받는다. 그 시점엔 브리지가 이미
-    # 마무리를 지시한 뒤라, 여기서 반려하면 "끝내라"와 "계속하라"가 같이 가서
-    # 모델이 어느 쪽도 못 믿게 된다.
-    if stage < last_stage and not flow.should_end(elapsed_s):
-        logger.info(
-            "종료 요청 반려 — 아직 %s 단계 (경과 %.0f초)", STAGE_NAMES[stage], elapsed_s
-        )
-        return {
-            "done": False,
-            "instruction": f"아직 {STAGE_NAMES[last_stage]} 단계가 아닙니다."
-            " ask_question으로 다음 주제를 이어가세요.",
-        }
-
-    state[STATE_CLOSING] = True
-    logger.info(
-        "면접관이 종료를 요청 (경과 %.0f초, %d개 배달)",
-        elapsed_s,
-        len(state.get(STATE_ASKED, [])),
-    )
-    return {"done": True, "instruction": "짧게 마무리 인사를 하고 대화를 마치세요."}
-
-
 # ── 회사 지식 검색 ───────────────────────────────────────────────────────
 
 #: 세션 생성 시 서버가 리서치 리포트(섹션 목록)를 심는 state 키.
@@ -483,6 +412,11 @@ def search_knowledge(
     회사에 대한 사실이 필요할 때 호출하세요 — 꼬리질문을 만들 때, 지원자의
     답변을 회사 맥락과 연결할 때, 지원서에 적힌 내용을 확인할 때.
     검색 결과에 없는 회사 정보를 지어내서 말하지 마세요.
+
+    결과를 말에 옮길 때는 어디서 본 것인지 밝히세요. 지원서에서 온 것이면
+    "지원서에 기재해 주신 ○○ 프로젝트에서"처럼 그 항목의 이름을 붙여서,
+    리서치 리포트에서 온 것이면 "저희가 파악하기로는"처럼. 지원자는 여러
+    경험을 썼고 "그 프로젝트"라고만 하면 어느 것인지 되묻게 됩니다.
 
     Args:
         query: 찾을 내용. 지원자의 답변이나 지금 파고드는 주제에 나온 구체적

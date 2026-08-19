@@ -46,8 +46,9 @@ export function Home() {
         company: item.company,
         role: item.role,
         date: savedLabel(item.savedAt),
-        // 질문 풀까지 있어야 시작할 수 있다 — 아니면 아직 준비 중이다.
-        status: item.ready ? 'ready' : 'researching',
+        // 면접을 마쳤으면 리포트로 간다. 그다음이 준비 완료, 그다음이 준비 중.
+        status: item.score !== null ? 'done' : item.ready ? 'ready' : 'researching',
+        score: item.score ?? undefined,
       })),
     )
   }, [data, isError, setCards])

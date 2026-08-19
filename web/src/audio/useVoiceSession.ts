@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { VoiceSession } from './voiceSession'
-import { useInterviewStore, QUESTION_COUNT } from '@/store/interview'
+import { useInterviewStore } from '@/store/interview'
 import { questions } from '@/data/mock'
 
 /**
@@ -72,7 +72,7 @@ export function useVoiceSession(cardId: string, onFinished: () => void) {
       setConnection('live')
     }
 
-    // 1초 간격 타이머 — 화면의 남은 시간과 진행 바를 움직입니다.
+    // 1초 간격 타이머 — 화면의 경과 시간을 움직입니다.
     const clock = setInterval(() => {
       const before = useInterviewStore.getState()
       tick()
@@ -80,14 +80,14 @@ export function useVoiceSession(cardId: string, onFinished: () => void) {
       if (!USE_BACKEND) {
         const e = before.elapsed + 1
         const q = Math.floor(e / CYCLE)
-        if (q >= QUESTION_COUNT) {
+        if (q >= questions.length) {
           finish()
           return
         }
         // 백엔드가 없을 때의 대역 데이터. 실제 세션에서는 서버가 자막·단계를
         // 내려주므로, 목업을 읽는 곳은 여기 하나로 끝납니다.
         if (q !== before.askedCount - 1) {
-          setQuestion(q, questions[q].s)
+          setQuestion(q)
           appendCaption(questions[q].q, true)
         }
         setPhase(e % CYCLE < SPEAK_SEC ? 'speaking' : 'listening')

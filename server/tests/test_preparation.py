@@ -24,18 +24,29 @@ QUESTIONS = [
 ]
 
 
+VOCABULARY = ["한결물류", "산학협력"]
+
+
 def _stub_generate(**kwargs):
     return QUESTIONS
 
 
+def _stub_vocabulary(**kwargs):
+    return VOCABULARY
+
+
 def _preparation(
-    tmp_path: Path, duration_s: float = 0.01, generate=_stub_generate
+    tmp_path: Path,
+    duration_s: float = 0.01,
+    generate=_stub_generate,
+    extract_vocabulary=_stub_vocabulary,
 ) -> tuple[InterviewPreparation, FileInterviewStore]:
     store = FileInterviewStore(tmp_path / "data")
     preparation = InterviewPreparation(
         research=FixtureResearch(duration_s=duration_s),
         store=store,
         generate=generate,
+        extract_vocabulary=extract_vocabulary,
         poll_interval_s=0.01,
     )
     return preparation, store
@@ -58,6 +69,38 @@ def test_파이프라인이_등록부터_질문까지_완주한다(tmp_path: Pat
     status = preparation.status(task_id)
     assert status.pct == 100 and status.report
     assert store.load(task_id).questions == QUESTIONS
+    # 어휘도 준비 때 뽑아 둔다 — 면접 시작 경로에 LLM 호출을 두지 않기 위해서다.
+    assert store.load(task_id).vocabulary == VOCABULARY
+
+
+def test_어휘_추출이_실패해도_준비는_성공이다(tmp_path: Path) -> None:
+    """질문은 이미 저장됐고 면접은 돌아간다 — 전사 정확도만 낮아진다."""
+
+    def broken(**kwargs):
+        raise RuntimeError("xAI 호출 실패")
+
+    preparation, store = _preparation(tmp_path, extract_vocabulary=broken)
+    task_id = preparation.start("한결물류", "데이터 엔지니어", [])
+
+    _wait_until(lambda: (s := preparation.status(task_id)) and s.state == "done")
+    assert store.load(task_id).questions == QUESTIONS
+    assert store.load(task_id).vocabulary is None
+
+
+def test_어휘_추출은_질문을_받는다(tmp_path: Path) -> None:
+    """면접관이 실제로 읽을 문장이 추출의 입력이라 질문 뒤에 와야 한다."""
+    seen: dict = {}
+
+    def capture(**kwargs):
+        seen.update(kwargs)
+        return VOCABULARY
+
+    preparation, _ = _preparation(tmp_path, extract_vocabulary=capture)
+    task_id = preparation.start("한결물류", "데이터 엔지니어", [], name="박지원")
+
+    _wait_until(lambda: (s := preparation.status(task_id)) and s.state == "done")
+    assert seen["questions"] == QUESTIONS
+    assert seen["name"] == "박지원"
 
 
 def test_리서치_중에는_90_이하의_running(tmp_path: Path) -> None:

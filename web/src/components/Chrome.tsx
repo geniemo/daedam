@@ -1,4 +1,5 @@
 import { Link, Outlet, useLocation } from 'react-router'
+import { APPLICANT_NAME } from '@/store/app'
 
 /**
  * 공통 헤더 (README §공통 헤더).
@@ -31,9 +32,9 @@ export function Chrome() {
             </nav>
             <div className="flex-1" />
             <div className="flex items-center gap-[10px]">
-              <span className="text-[13px] text-muted">김서연</span>
+              <span className="text-[13px] text-muted">{APPLICANT_NAME}</span>
               <span className="flex h-[30px] w-[30px] items-center justify-center rounded-full border border-field bg-surface text-[12px] font-semibold text-muted">
-                서
+                {APPLICANT_NAME.slice(-2, -1)}
               </span>
             </div>
           </div>

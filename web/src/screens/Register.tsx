@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { startPreparation } from '@/api/preparation'
-import { useAppStore } from '@/store/app'
+import { APPLICANT_NAME, useAppStore } from '@/store/app'
 import { Label, TextArea, TextField } from '@/components/ui'
 
 /** README §2·§3. 등록 STEP 1·2 */
@@ -389,6 +389,8 @@ function Step2() {
               role.trim(),
               parts,
               posting,
+              // 로그인한 사용자입니다 — 등록할 때마다 다시 묻지 않습니다.
+              APPLICANT_NAME,
             ).catch(() => undefined)
             submitRegister(taskId)
             nav('/research')
