@@ -39,6 +39,20 @@ class Question:
     tags: tuple[str, ...] = field(default=())
     source_chunk_ids: tuple[str, ...] = field(default=())
 
+    @property
+    def experience(self) -> str | None:
+        """이 질문이 딛고 선 지원서 경험 — 첫 지원서 청크의 항목 id("app-0-1").
+
+        같은 경험에서 나온 질문끼리 묶는 열쇠다. 청크 id 형식은
+        `daedam.knowledge.chunk`가 정한다: 지원서는 "app-{파트}-{항목}"이고
+        쪼개진 조각에는 "#n"이 붙으므로 "#" 앞까지가 항목이다. 지원서 근거가
+        없는 질문(고정 문항·회사 자료만 쓴 질문)은 None.
+        """
+        for chunk_id in self.source_chunk_ids:
+            if chunk_id.startswith("app-"):
+                return chunk_id.split("#", 1)[0]
+        return None
+
 
 class QuestionPool:
     """한 세션의 뼈대질문 모음."""
@@ -90,6 +104,11 @@ class QuestionPool:
     def __len__(self) -> int:
         return len(self._questions)
 
+    @property
+    def questions(self) -> tuple[Question, ...]:
+        """풀의 모든 질문. 순서는 실린 그대로다."""
+        return tuple(self._questions)
+
     def by_id(self, question_id: str) -> Question | None:
         """id로 질문을 찾는다.
 
@@ -121,12 +140,19 @@ class QuestionPool:
         stage: int,
         tag: str | None = None,
         exclude: Collection[str] = (),
+        follow: Question | None = None,
     ) -> Question | None:
         """해당 단계에서 아직 내지 않은 질문 하나를 고른다.
 
-        태그가 주어지면 그 주제의 질문을 우선하고, 없으면 같은 단계의 다음
-        우선순위 질문으로 대체한다. 모델이 잘못된 태그를 넣어도 면접이 멈추지
-        않게 하기 위해서다. 단계 경계는 태그보다 우선한다.
+        **같은 경험을 이어가는 것이 먼저다.** 방금 물은 질문(`follow`)과 같은
+        지원서 경험에서 나온 질문이 남아 있으면 그것을 준다 — 사람 면접관도 한
+        프로젝트를 파고 다음 프로젝트로 넘어가지, 프로젝트 사이를 왔다 갔다 하지
+        않는다. 실측에서 우선순위만 보고 골랐더니 디밀리언 → 딥페이크 → 디밀리언
+        → 졸업작품으로 튀었고 지원자가 "주제가 팍팍 튄다"고 했다.
+
+        그다음이 태그다. 태그가 주어지면 그 주제의 질문을 우선하고, 없으면 같은
+        단계의 다음 우선순위 질문으로 대체한다. 모델이 잘못된 태그를 넣어도
+        면접이 멈추지 않게 하기 위해서다. 단계 경계는 둘 다보다 우선한다.
 
         중요도는 동점일 수 있다. 그때는 `min`이 먼저 만난 것을 돌려주므로
         생성 순서가 순서를 가른다 — 같은 무게면 만들어진 차례대로 나간다.
@@ -135,6 +161,7 @@ class QuestionPool:
             stage: 단계 인덱스(0~3). 범위를 벗어나면 None.
             tag: 원하는 주제 태그. None이면 우선순위만 본다.
             exclude: 이미 낸 질문 id 모음.
+            follow: 방금 물은 질문. 같은 경험의 질문이 남아 있으면 그쪽이 먼저다.
 
         Returns:
             선택된 Question. 남은 질문이 없으면 None.
@@ -146,6 +173,11 @@ class QuestionPool:
         ]
         if not available:
             return None
+
+        if follow is not None and follow.experience is not None:
+            same = [q for q in available if q.experience == follow.experience]
+            if same:
+                return min(same, key=lambda question: question.priority)
 
         if tag:
             tagged = [question for question in available if tag in question.tags]

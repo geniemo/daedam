@@ -54,6 +54,12 @@ class _Probe(BaseModel):
 
 class _Probes(BaseModel):
     probes: list[_Probe]
+    leads_with: str = Field(
+        default="",
+        description="지원자가 이 답변에서 가장 비중 있게 말한 경험. [이어갈 경험 후보]에"
+        " 적힌 문장 중 하나를 **그대로** 옮겨 적으십시오. 어느 것도 아니거나 후보가"
+        " 없으면 빈 문자열",
+    )
 
 
 @dataclass(frozen=True)
@@ -67,26 +73,40 @@ class Probe:
         return {"topic": self.topic, "hint": self.hint}
 
 
+@dataclass(frozen=True)
+class Extraction:
+    """답변 하나에서 뽑은 것 — 파볼 곳들과, 이어갈 경험."""
+
+    probes: list[Probe]
+    #: 지원자가 방금 답변에서 비중 있게 말한 경험. 후보 중 하나를 그대로, 없으면 "".
+    #: 다음 뼈대질문을 고를 때 이 경험부터 간다 — 자기소개에서 딥페이크 얘기를
+    #: 길게 했는데 디밀리언부터 물으면 주제가 튄다(실측).
+    leads_with: str = ""
+
+
 def extract_probes(
     *,
     question: str,
     answer: str,
+    experiences: list[str] | None = None,
     client: Any | None = None,
-) -> list[Probe]:
-    """답변에서 파볼 곳을 뽑는다. 실패하면 빈 목록.
+) -> Extraction:
+    """답변에서 파볼 곳을 뽑는다. 실패하면 빈 결과.
 
     Args:
         question: 면접관이 물은 뼈대질문.
         answer: 지원자의 답변 전문. 여러 조각이면 이어 붙여서.
+        experiences: 이어갈 경험 후보 — 아직 안 물은 뼈대질문이 딛고 선 경험마다
+            대표 문장 하나. 주면 답변이 어느 경험을 비중 있게 말했는지 같이 고른다.
         client: OpenAI 호환 클라이언트. 기본값은 XAI_API_KEY로 만든 실제
             클라이언트고, 테스트는 대역을 주입한다.
 
     Returns:
-        중요한 것 먼저, 최대 PROBE_COUNT개. 실패·타임아웃이면 빈 목록 — 호출자는
-        파볼 곳이 없는 것으로 보고 진행한다.
+        파볼 곳(중요한 것 먼저, 최대 PROBE_COUNT개)과 이어갈 경험. 실패·타임아웃이면
+        빈 결과 — 호출자는 파볼 곳이 없는 것으로 보고 진행한다.
     """
     if not answer.strip():
-        return []
+        return Extraction(probes=[])
     if client is None:
         from openai import OpenAI
 
@@ -97,27 +117,49 @@ def extract_probes(
         completion = client.beta.chat.completions.parse(
             model=_MODEL,
             messages=[
-                {"role": "user", "content": probe_prompt(question=question, answer=answer)}
+                {
+                    "role": "user",
+                    "content": probe_prompt(
+                        question=question, answer=answer, experiences=experiences
+                    ),
+                }
             ],
             response_format=_Probes,
         )
     except Exception:  # noqa: BLE001 — 면접 중 LLM 호출은 면접을 멈출 권리가 없다
         logger.warning("파볼 곳 추출 실패 — 빈 목록으로 진행합니다", exc_info=True)
-        return []
+        return Extraction(probes=[])
     parsed = completion.choices[0].message.parsed
     if parsed is None:
-        return []
+        return Extraction(probes=[])
     # 빈 것을 거른 뒤 자른다. 먼저 자르면 빈 항목이 자리를 잡아먹는다.
     probes = [
         Probe(topic=p.topic.strip(), hint=p.hint.strip())
         for p in parsed.probes
         if p.topic.strip() and p.hint.strip()
     ]
-    return probes[:PROBE_COUNT]
+    # 후보에 없는 것을 적었으면 버린다 — 그대로 옮기라고 했는데 안 맞으면 지어낸
+    # 것이다. 호출자는 빈 값을 "못 골랐다"로 본다.
+    leads_with = parsed.leads_with.strip()
+    if experiences and leads_with not in experiences:
+        leads_with = ""
+    return Extraction(probes=probes[:PROBE_COUNT], leads_with=leads_with)
 
 
-def probe_prompt(*, question: str, answer: str) -> str:
+def probe_prompt(
+    *, question: str, answer: str, experiences: list[str] | None = None
+) -> str:
     """추출 지시문. 정적 규칙을 앞에, 질문·답변을 뒤에 둔다."""
+    candidates = ""
+    if experiences:
+        listed = "\n".join(f"- {e}" for e in experiences)
+        candidates = f"""
+
+[이어갈 경험 후보]
+아래는 아직 안 물은 질문들이 딛고 선 경험입니다. 지원자가 위 답변에서 이 중 어느
+경험을 가장 비중 있게 말했으면 leads_with에 그 문장을 그대로 옮기십시오. 스친
+정도면 비우십시오.
+{listed}"""
     return f"""\
 당신은 신입 채용 면접관입니다. 방금 지원자의 답변을 들었습니다.
 이 답변에서 더 파고들 곳을 정확히 {PROBE_COUNT}곳 고르십시오.
@@ -142,4 +184,4 @@ def probe_prompt(*, question: str, answer: str) -> str:
 {question}
 
 [답변]
-{answer}"""
+{answer}{candidates}"""

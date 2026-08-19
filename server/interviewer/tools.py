@@ -103,6 +103,11 @@ STATE_PROBES_FOR = "probes_for"
 #: 질문에 대한 답변이다.
 STATE_ANSWER_MARKER = "answer_marker"
 
+#: 지원자가 방금 답변에서 비중 있게 말한 경험 — 다음 뼈대질문을 고를 때 이
+#: 경험부터 간다. 추출이 골라 주고(`Extraction.leads_with`), 한 번 쓰면 비운다.
+#: 실측: 자기소개에서 딥페이크 얘기를 길게 했는데 디밀리언부터 물어 주제가 튀었다.
+STATE_LEADS_WITH = "leads_with"
+
 #: 닫힌 파볼 곳의 기록. 답변을 못 받아 닫힌 것(unanswered)은 코칭이 "끝내
 #: 설명하지 못했다"의 근거로 쓴다. 면접 내내 쌓인다.
 STATE_PROBE_LOG = "probe_log"
@@ -169,19 +174,31 @@ def _session_flow_from(state: Mapping[str, Any]) -> SessionFlow:
 
 
 def _next_in_pool(
-    pool: QuestionPool, *, stage: int, tag: str | None, exclude: list[str]
+    pool: QuestionPool,
+    *,
+    stage: int,
+    tag: str | None,
+    exclude: list[str],
+    follow: Question | None = None,
 ) -> tuple[Question | None, int]:
     """다음 뼈대질문과 그 질문이 속한 단계.
 
     현재 단계가 소진되면 다음 단계로 걸어 올라간다 — 단계 전환의 최종 판단은
     서버에 있다. 남은 질문이 하나도 없으면 (None, 마지막 단계).
+
+    같은 경험을 이어가는 것(`follow`)은 `follow`가 속한 단계에서만이다. 방금 물은
+    질문을 잇는 경우는 같은 단계고, 자기소개 답변이 가리킨 경험을 잇는 경우는
+    다음 단계다 — 어느 쪽이든 follow의 단계에서만 경험으로 고른다. 그 밖의 단계
+    에서는 경험이 같아도 새 주제다(인성 단계의 디밀리언은 직무 단계의 디밀리언을
+    잇는 것이 아니라 다른 각도다).
     """
     at = stage
-    found = pool.next(stage=at, tag=tag, exclude=exclude)
-    while found is None and at < len(STAGE_NAMES) - 1:
+    while True:
+        use = follow if (follow is not None and follow.stage == at) else None
+        found = pool.next(stage=at, tag=tag, exclude=exclude, follow=use)
+        if found is not None or at >= len(STAGE_NAMES) - 1:
+            return found, at
         at += 1
-        found = pool.next(stage=at, tag=tag, exclude=exclude)
-    return found, at
 
 
 def _stage_on_schedule(state: Any, flow: SessionFlow, elapsed_s: float) -> bool:
@@ -230,6 +247,28 @@ def _applicant_said_since(tool_context: ToolContext, marker: int) -> tuple[str, 
 
 
 # ── 파볼 곳 ──────────────────────────────────────────────────────────────
+
+
+def _experience_candidates(
+    pool: QuestionPool, *, stage: int, asked: list[str]
+) -> dict[str, Question]:
+    """현재 단계에서 아직 안 물은 질문들이 딛고 선 경험 — 대표 문장 → 대표 질문.
+
+    대표 문장은 그 경험의 첫 질문 텍스트다. 지원서 항목 제목은 자소서 문항처럼
+    한 문장짜리 지시문일 때가 있어 이름으로 못 쓴다("도전적인 목표를 세우고…").
+    질문 텍스트는 생성 규칙상 경험 이름을 담고 있다.
+    """
+    candidates: dict[str, Question] = {}
+    seen: set[str] = set()
+    for question in pool.questions:
+        if question.stage != stage or question.id in asked:
+            continue
+        experience = question.experience
+        if experience is None or experience in seen:
+            continue
+        seen.add(experience)
+        candidates[question.text] = question
+    return candidates
 
 
 def _open_probe(probes: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -313,7 +352,14 @@ def _deliver(
     그때까지는 모델이 제 문장으로 이어간다.
     """
     stage = int(state.get(STATE_STAGE, 0))
-    found, at = _next_in_pool(pool, stage=stage, tag=tag, exclude=asked)
+    # 이어갈 경험이 정해져 있으면(지원자가 방금 비중 있게 말한 것) 그것부터.
+    # 없으면 방금 물은 뼈대질문과 같은 경험이 남아 있는지 본다.
+    lead_id = state.get(STATE_LEADS_WITH)
+    follow = pool.by_id(lead_id) if lead_id else None
+    if follow is None and asked:
+        follow = pool.by_id(asked[-1])
+    state[STATE_LEADS_WITH] = None
+    found, at = _next_in_pool(pool, stage=stage, tag=tag, exclude=asked, follow=follow)
     state[STATE_STAGE] = at
     if found is None:
         logger.info("질문 소진 (경과 %.0f초, %d개 배달)", elapsed_s, len(asked))
@@ -405,11 +451,24 @@ def ask_question(
         question = pool.by_id(state[STATE_PROBES_FOR])
         answer, _ = _applicant_said_since(tool_context, int(state.get(STATE_ANSWER_MARKER, 0)))
         if question is not None and answer:
-            found = _extract_probes(question=question.text, answer=answer)
+            # 이어갈 경험 후보는 다음 단계까지 본다 — 자기소개 답변이 가리키는
+            # 경험은 직무 단계에 있다.
+            stage_now = int(state.get(STATE_STAGE, 0))
+            candidates: dict[str, Question] = {}
+            for at in (stage_now, stage_now + 1):
+                if at < len(STAGE_NAMES):
+                    candidates.update(_experience_candidates(pool, stage=at, asked=asked))
+            extraction = _extract_probes(
+                question=question.text, answer=answer, experiences=list(candidates)
+            )
             probes = [
                 {"topic": p.topic, "hint": p.hint, "status": "open", "attempts": 0}
-                for p in found
+                for p in extraction.probes
             ]
+            if extraction.leads_with and extraction.leads_with in candidates:
+                lead = candidates[extraction.leads_with]
+                state[STATE_LEADS_WITH] = lead.id
+                logger.info("이어갈 경험: %s", lead.text[:40])
             logger.info(
                 "파볼 곳 %d개: %s",
                 len(probes),
