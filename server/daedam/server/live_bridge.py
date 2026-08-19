@@ -44,6 +44,7 @@ from google.genai import types
 from daedam.interview.stages import DEFAULT_PROFILE
 from daedam.interview.vocabulary import interview_vocabulary
 from daedam.research.report import search_sections_from_report
+from interviewer.agent import VOICE
 from interviewer.instruction import STATE_CANDIDATE, STATE_COMPANY, STATE_ROLE
 from interviewer.tools import (
     STATE_APPLICATION,
@@ -369,6 +370,13 @@ def create_live_router(
         vocabulary = _vocabulary_for(prepared)
         run_config = RunConfig(
             response_modalities=["AUDIO"],
+            # 면접관 목소리를 고정한다(`interviewer.agent.VOICE`) — 세션마다
+            # 바뀌지 않게. ADK가 Live 연결로 넘긴다(adk/flows/llm_flows/basic.py:111).
+            speech_config=types.SpeechConfig(
+                voice_config=types.VoiceConfig(
+                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=VOICE)
+                )
+            ),
             # Live 커넥션 재개 핸들을 받기 위해 켠다. 자막용 양방향 전사는
             # RunConfig 기본값이 이미 켜 준다(run_config.py의 default_factory).
             session_resumption=types.SessionResumptionConfig(),
