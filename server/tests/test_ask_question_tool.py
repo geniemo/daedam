@@ -218,8 +218,14 @@ def test_no로_돌아오면_한_번_더_묻고_그다음엔_포기한다(probes)
     context = ContextStub(_state(stage=1))
     _call(context)
     context.hear("답변")
-    assert _call(context)["probe"] == "분류 기준"  # 1회
-    assert _call(context, answered="no")["probe"] == "분류 기준"  # 못 들음 → 2회
+    first = _call(context)
+    assert first["probe"] == "분류 기준"  # 1회
+    retry = _call(context, answered="no")  # 못 들음 → 2회
+    assert retry["probe"] == "분류 기준"
+    # 재시도는 첫 응답과 다른 지시여야 한다 — 같으면 모델이 "또?"로 읽고 다른
+    # 것을 묻는다(실측).
+    assert retry["instruction"] != first["instruction"]
+    assert "다른 질문으로 넘어가지 말고" in retry["instruction"]
     result = _call(context, answered="no")  # 또 못 들음 → 포기, 다음 파볼 곳
     assert result["probe"] == "본인 역할"
     log = context.state[STATE_PROBE_LOG]

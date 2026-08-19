@@ -122,6 +122,16 @@ _PROBE_INSTRUCTION = (
     " answered=no를."
 )
 
+#: 재시도 지시 — 첫 응답과 같은 문장을 다시 주면 모델이 "또?"로 읽고 다른 것을
+#: 묻는다(실측: 같은 probe를 두 번 받자 "그럼 다른 질문을 드릴게요"로 새 주제를
+#: 내고, 그 답을 yes로 신고해 원래 probe가 엉뚱한 근거로 닫혔다). 재시도임을
+#: 말하고, 같은 것을 다른 말로 묻되 이번이 마지막이라고 못 박는다.
+_PROBE_RETRY_INSTRUCTION = (
+    "아직 이 답을 못 들었습니다. 다른 질문으로 넘어가지 말고, 같은 것을 다른 말로"
+    " 한 번만 더 물어보세요. 그래도 안 나오면 다음 호출에 answered=no를 — 그때는"
+    " 넘어갑니다."
+)
+
 #: 테스트가 대역을 끼우는 자리. 모듈 전역인 이유는 `ask_question`이 ADK가 선언을
 #: 읽는 순수 함수라 인자를 늘릴 수 없기 때문이다.
 _extract_probes: Callable[..., list[Probe]] = extract_probes
@@ -271,9 +281,14 @@ def _retry_or_close(state: Any, probe: dict[str, Any]) -> None:
 
 
 def _probe_response(probe: dict[str, Any]) -> dict:
-    """열린 파볼 곳을 모델에게 건넨다."""
+    """열린 파볼 곳을 모델에게 건넨다. 두 번째부터는 재시도 지시가 붙는다."""
     probe["asked"] = True
-    return {"probe": probe["topic"], "hint": probe["hint"], "instruction": _PROBE_INSTRUCTION}
+    retry = int(probe.get("attempts", 0)) > 0
+    return {
+        "probe": probe["topic"],
+        "hint": probe["hint"],
+        "instruction": _PROBE_RETRY_INSTRUCTION if retry else _PROBE_INSTRUCTION,
+    }
 
 
 def _drop_open_probes(state: Any, probes: list[dict[str, Any]]) -> None:
