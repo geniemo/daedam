@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Literal
 
 from daedam.interview.generation import generate_question_pool
+from daedam.interview.vocabulary import generate_vocabulary
 from daedam.knowledge.chunk import chunks_from_application, chunks_from_report
 from daedam.research.report import search_sections_from_report
 from daedam.research.service import ResearchService, ResearchStatus
@@ -62,6 +63,7 @@ class InterviewPreparation:
         research: ResearchService,
         store: FileInterviewStore,
         generate: Callable[..., list[dict[str, Any]]] = generate_question_pool,
+        extract_vocabulary: Callable[..., list[str]] = generate_vocabulary,
         poll_interval_s: float = 1.0,
     ) -> None:
         """
@@ -69,12 +71,14 @@ class InterviewPreparation:
             research: fixture 또는 live 리서치 백엔드.
             store: 준비 데이터 파일 저장소.
             generate: 질문 생성 함수. 테스트가 대역을 주입한다.
+            extract_vocabulary: 전사 어휘 추출 함수. 테스트가 대역을 주입한다.
             poll_interval_s: 워커가 리서치 완료를 확인하는 간격. live에서는
                 30초쯤으로 늘려 폴링 API 낭비를 없앤다.
         """
         self._research = research
         self._store = store
         self._generate = generate
+        self._extract_vocabulary = extract_vocabulary
         self._poll_interval_s = poll_interval_s
         self._states: dict[str, _PipelineState] = {}
         self._recover()
@@ -245,6 +249,26 @@ class InterviewPreparation:
             application_chunks=chunks_from_application(data.application),
         )
         self._store.save_questions(task_id, questions)
+
+        # ④ 전사 어휘 — 질문이 정해진 뒤라야 뽑을 수 있다. 면접관이 실제로 읽을
+        # 문장이 추출의 입력이기 때문이다.
+        #
+        # 실패해도 준비는 성공이다. 질문은 이미 저장됐고 면접은 돌아간다 —
+        # 어휘가 없으면 브리지가 규칙 폴백으로 만들어 전사 정확도만 낮아진다.
+        # 여기서 터뜨리면 멀쩡한 질문 풀을 두고 준비가 실패로 남는다.
+        try:
+            vocabulary = self._extract_vocabulary(
+                company=data.company,
+                role=data.role,
+                name=data.name,
+                application=data.application,
+                questions=questions,
+            )
+            self._store.save_vocabulary(task_id, vocabulary)
+            logger.info("전사 어휘 %d개 (interview=%s)", len(vocabulary), task_id)
+        except Exception:
+            logger.exception("전사 어휘 추출 실패 (interview=%s) — 폴백으로 둡니다", task_id)
+
         del self._states[task_id]  # 완료 — 이제부터 파일이 진실을 말한다
 
     def _recover(self) -> None:

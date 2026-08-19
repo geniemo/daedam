@@ -35,6 +35,9 @@ class InterviewData:
     report: list[dict[str, Any]]
     uncertain: list[dict[str, Any]]
     questions: list[dict[str, Any]] | None = None
+    #: 전사에 힌트로 줄 낱말. 준비 단계에서 뽑아 둔다. 추출이 실패했거나 그
+    #: 단계가 없던 옛 면접에는 없다 — 그때는 브리지가 규칙 폴백으로 만든다.
+    vocabulary: list[str] | None = None
     #: 면접이 끝난 뒤 만들어지는 피드백(음성 지표 + 코칭). 면접 전에는 없다.
     feedback: dict[str, Any] | None = None
 
@@ -73,6 +76,10 @@ class FileInterviewStore:
         """생성된 질문 풀을 저장한다. 검토 후 재생성하면 덮어쓴다."""
         self._write(self._directory(interview_id) / "questions.json", questions)
 
+    def save_vocabulary(self, interview_id: str, vocabulary: list[str]) -> None:
+        """전사 어휘 힌트를 저장한다. 질문을 다시 뽑으면 이것도 다시 뽑는다."""
+        self._write(self._directory(interview_id) / "vocabulary.json", vocabulary)
+
     def save_report(self, interview_id: str, report: list[dict[str, Any]]) -> None:
         """검토·정정이 반영된 리포트로 교체한다."""
         self._write(self._directory(interview_id) / "report.json", report)
@@ -95,6 +102,7 @@ class FileInterviewStore:
             return None
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
         questions_path = directory / "questions.json"
+        vocabulary_path = directory / "vocabulary.json"
         feedback_path = directory / "feedback.json"
         return InterviewData(
             company=meta["company"],
@@ -111,6 +119,11 @@ class FileInterviewStore:
             questions=(
                 json.loads(questions_path.read_text(encoding="utf-8"))
                 if questions_path.exists()
+                else None
+            ),
+            vocabulary=(
+                json.loads(vocabulary_path.read_text(encoding="utf-8"))
+                if vocabulary_path.exists()
                 else None
             ),
             feedback=(
