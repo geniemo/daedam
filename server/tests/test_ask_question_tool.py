@@ -41,8 +41,8 @@ POOL_RAW = [
      "tags": ["문제해결"]},
 ]
 
-#: demo 프로필 단계 경계: 90 / 270 / 420 / 480초.
-PROFILE = "demo"
+#: dev 프로필 단계 경계: 90 / 270 / 420 / 480초. 네 단계를 다 돈다.
+PROFILE = "dev"
 
 PROBES = [Probe("분류 기준", "어떤 기준으로 나눴는지 안 나왔다"),
           Probe("본인 역할", "본인이 한 일이 안 갈렸다")]
@@ -358,8 +358,7 @@ def test_자기소개가_가리킨_경험부터_간다(probes) -> None:
     _call(context)  # 추출 → leads_with 저장, 파볼 곳 1
     # 후보에 1단계 경험 둘이 실렸어야 한다
     assert set(probes.calls[0]["experiences"]) == {"디밀리언에서 결합 기준은?", "딥페이크에서 DCT 계기는?"}
-    # 파볼 곳 둘 닫고 다음 뼈대질문 → 시계는 그대로라 0단계 소진으로 1단계 진입
-    _call(context, answered="yes", evidence="e")
+    # 자기소개는 파볼 곳 하나다 — 닫으면 0단계 소진으로 1단계 진입
     result = _call(context, answered="yes", evidence="e")
     assert result["ask"] == "딥페이크에서 DCT 계기는?"
 
@@ -375,3 +374,13 @@ def test_같은_경험이_남아_있으면_그것부터(probes) -> None:
     assert _call(context)["ask"] == "딥페이크에서 DCT 계기는?"
 
 
+
+
+def test_자기소개_단계는_파볼_곳이_하나다(probes) -> None:
+    """둘을 다 파면 자기소개에만 2분이 간다(실측 126초). 자기소개는 어느 경험부터
+    갈지 잡는 자리지 파는 자리가 아니다."""
+    context = ContextStub(_state(0.0, stage=0))
+    _call(context, tag="자기소개")
+    context.hear("안녕하십니까, 데이터의 본질을 보는 지원자 박지원입니다. 딥페이크 탐지를 했습니다.")
+    _call(context)
+    assert len(context.state[STATE_PROBES]) == 1

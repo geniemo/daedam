@@ -116,6 +116,11 @@ STATE_PROBE_LOG = "probe_log"
 #: 심문이다.
 _PROBE_ATTEMPTS = 2
 
+#: 단계별로 뼈대질문 하나에서 파볼 곳을 몇 개까지 쓰는가. 자기소개는 하나다 —
+#: 둘을 다 파면 자기소개에만 2분이 간다(실측 126초, 예산 60초). 자기소개는 어느
+#: 경험부터 갈지 잡는 자리지 파는 자리가 아니다. 직무·인성은 둘.
+_PROBE_LIMIT_BY_STAGE = (1, 2, 2, 0)
+
 #: 질문을 돌려줄 때 붙는 지시. 무엇을 말할지와 다음에 뭘 할지, 그 둘 밖의 것은
 #: 싣지 않는다. 시스템 프롬프트의 같은 규칙과 달리 툴을 부를 때마다 새로
 #: 도착하고 도착 시점이 바로 다음 결정 직전이다. 다만 툴을 안 부르는 모델에게는
@@ -461,9 +466,10 @@ def ask_question(
             extraction = _extract_probes(
                 question=question.text, answer=answer, experiences=list(candidates)
             )
+            limit = _PROBE_LIMIT_BY_STAGE[min(stage_now, len(_PROBE_LIMIT_BY_STAGE) - 1)]
             probes = [
                 {"topic": p.topic, "hint": p.hint, "status": "open", "attempts": 0}
-                for p in extraction.probes
+                for p in extraction.probes[:limit]
             ]
             if extraction.leads_with and extraction.leads_with in candidates:
                 lead = candidates[extraction.leads_with]
