@@ -38,7 +38,7 @@ Application               준비 데이터 (지금의 "카드")
 
 InterviewSession          면접 1회
   id, application_id → Application
-  started_at, ended_at, status(running|done)
+  started_at, ended_at             -- ended_at이 null이면 아직 진행 중
   transcript, feedback             -- JSON, null이면 아직 없음
 
 CreditLedger              크레딧 원장 (3단계)

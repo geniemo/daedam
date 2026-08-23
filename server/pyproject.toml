@@ -4,6 +4,9 @@ version = "0.1.0"
 description = "대담 — AI 음성 모의면접 백엔드 (ADK + Gemini Live)"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "aiosqlite>=0.22.1",
+    "alembic>=1.19.1",
+    "asyncpg>=0.31.0",
     "google-adk>=2.6.3",
     # 음성 지표(daedam/eval/voice.py)가 직접 쓴다. 다른 패키지를 통해 이미
     # 들어오지만, 직접 import하는 것은 명시한다.
@@ -12,6 +15,7 @@ dependencies = [
     "rank-bm25>=0.2.2",
     "semantic-text-splitter>=0.32.0",
     "sentence-transformers>=5.7.0",
+    "sqlalchemy>=2",
 ]
 
 [dependency-groups]
