@@ -116,6 +116,11 @@ STATE_PROBE_LOG = "probe_log"
 #: 심문이다.
 _PROBE_ATTEMPTS = 2
 
+#: 단계별로 뼈대질문 하나에서 파볼 곳을 몇 개까지 쓰는가. 자기소개는 하나다 —
+#: 둘을 다 파면 자기소개에만 2분이 간다(실측 126초, 예산 60초). 자기소개는 어느
+#: 경험부터 갈지 잡는 자리지 파는 자리가 아니다. 직무·인성은 둘.
+_PROBE_LIMIT_BY_STAGE = (1, 2, 2, 0)
+
 #: 질문을 돌려줄 때 붙는 지시. 무엇을 말할지와 다음에 뭘 할지, 그 둘 밖의 것은
 #: 싣지 않는다. 시스템 프롬프트의 같은 규칙과 달리 툴을 부를 때마다 새로
 #: 도착하고 도착 시점이 바로 다음 결정 직전이다. 다만 툴을 안 부르는 모델에게는
@@ -247,6 +252,42 @@ def _applicant_said_since(tool_context: ToolContext, marker: int) -> tuple[str, 
 
 
 # ── 파볼 곳 ──────────────────────────────────────────────────────────────
+
+
+def _awaiting_probe_extraction(state: Mapping[str, Any]) -> bool:
+    """다음 `ask_question` 호출이 파볼 곳 추출(Grok, ~2초)을 도는 상태인가.
+
+    뼈대질문이 나갔고(`STATE_PROBES_FOR`) 그 질문의 파볼 곳을 아직 안 뽑았을
+    때다(`STATE_PROBES` 비어 있음). 마무리 단계는 아니다 — "마지막으로 하고
+    싶은 말씀"에 파볼 곳은 없다. 파면 "꼭 입사하고 싶습니다"에서 입사 동기를
+    캐게 된다(실측) — 그건 마무리가 아니라 심문이다.
+
+    필러 재생(`daedam.server.fillers`)이 툴 실행 직전에 같은 판정을 쓴다 —
+    추출이 만드는 침묵이 필러가 메울 자리라서, 판정이 어긋나면 필러가 엉뚱한
+    자리에서 나간다. 추출 조건을 고치면 이 함수를 같이 고칠 것.
+    """
+    in_closing = int(state.get(STATE_STAGE, 0)) == len(STAGE_NAMES) - 1
+    return bool(
+        not state.get(STATE_PROBES)
+        and state.get(STATE_PROBES_FOR)
+        and state.get(STATE_ASKED)
+        and not in_closing
+    )
+
+
+def pending_extraction_answer(tool_context: ToolContext) -> str:
+    """이번 호출이 파볼 곳 추출로 이어질 때, 그 입력이 될 답변. 아니면 빈 문자열.
+
+    필러 재생이 툴 실행 전에 부른다. 답변이 비어 있으면(전사 없음) 추출도
+    돌지 않으므로 빈 문자열이다 — 아무 말도 안 한 지원자에게 "잘 들었습니다"가
+    나가면 안 된다.
+    """
+    if not _awaiting_probe_extraction(tool_context.state):
+        return ""
+    answer, _ = _applicant_said_since(
+        tool_context, int(tool_context.state.get(STATE_ANSWER_MARKER, 0))
+    )
+    return answer
 
 
 def _experience_candidates(
@@ -443,11 +484,10 @@ def ask_question(
             logger.info("answered 누락 — 못 들은 것으로 봅니다: %s", current["topic"])
             _retry_or_close(state, current)
 
-    # 아직 안 뽑았으면 지금 뽑는다 — 뼈대질문 뒤 첫 호출이다. 마무리 단계는
-    # 빼고: "마지막으로 하고 싶은 말씀"에 파볼 곳은 없다. 파면 "꼭 입사하고
-    # 싶습니다"에서 입사 동기를 캐게 된다(실측) — 그건 마무리가 아니라 심문이다.
+    # 아직 안 뽑았으면 지금 뽑는다 — 뼈대질문 뒤 첫 호출이다. 조건의 뜻은
+    # `_awaiting_probe_extraction` 참고.
     in_closing = int(state.get(STATE_STAGE, 0)) == len(STAGE_NAMES) - 1
-    if not probes and state.get(STATE_PROBES_FOR) and asked and not in_closing:
+    if _awaiting_probe_extraction(state):
         question = pool.by_id(state[STATE_PROBES_FOR])
         answer, _ = _applicant_said_since(tool_context, int(state.get(STATE_ANSWER_MARKER, 0)))
         if question is not None and answer:
@@ -461,9 +501,10 @@ def ask_question(
             extraction = _extract_probes(
                 question=question.text, answer=answer, experiences=list(candidates)
             )
+            limit = _PROBE_LIMIT_BY_STAGE[min(stage_now, len(_PROBE_LIMIT_BY_STAGE) - 1)]
             probes = [
                 {"topic": p.topic, "hint": p.hint, "status": "open", "attempts": 0}
-                for p in extraction.probes
+                for p in extraction.probes[:limit]
             ]
             if extraction.leads_with and extraction.leads_with in candidates:
                 lead = candidates[extraction.leads_with]

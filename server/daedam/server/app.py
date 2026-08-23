@@ -129,6 +129,13 @@ def create_app() -> FastAPI:
     # 공유해, 파이프라인이 만든 것을 브리지가 세션에 시딩한다.
     from interviewer.agent import root_agent
 
+    from . import fillers
+
+    # 추출(Grok, ~2초)이 도는 동안 면접관 목소리 클립으로 침묵을 메운다.
+    # 여기(조립)에서 거는 이유: interviewer 패키지는 서버(웹소켓)를 몰라야
+    # 하고, 콜백의 전송 상대는 브리지가 커넥션마다 등록한다.
+    root_agent.before_tool_callback = fillers.play_filler_before_tool
+
     app.include_router(
         create_live_router(
             InMemoryRunner(root_agent, app_name="daedam"),
