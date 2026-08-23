@@ -57,7 +57,7 @@ from interviewer.tools import (
 
 from . import fillers
 from .recording import InterviewRecording
-from .store import FileInterviewStore, InterviewData
+from .store import InterviewData, InterviewStore
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +78,12 @@ _INPUT_MIME = "audio/pcm;rate=16000"
 
 #: TRACE_EVENTS=1이면 run_live 이벤트를 순서대로 남긴다 (`_event_trace`).
 _TRACE_EVENTS = os.environ.get("TRACE_EVENTS") == "1"
+
+#: 끝나지 않은 면접을 언제까지 "진행 중"으로 보는가. 제품 길이가 15~20분이고
+#: 재접속 공백까지 넉넉히 잡아도 한 시간이면 충분하다. 이보다 오래된 미완
+#: 면접은 창을 닫고 돌아오지 않은 것이라, 이어받지 않고 닫는다 — 이어받으면
+#: 며칠 뒤의 새 면접이 옛 대화 위에서 시작한다.
+_STALE_SESSION_S = 3600.0
 
 
 def _client_messages_from(event: Event) -> list[tuple[str, Any]]:
@@ -217,7 +223,7 @@ def _session_state_from(data: InterviewData, profile: str) -> dict[str, Any]:
 
 def create_live_router(
     runner: Runner,
-    store: FileInterviewStore,
+    store: InterviewStore,
     profile: str = DEFAULT_PROFILE,
     evaluation: Any = None,
 ) -> APIRouter:
@@ -263,16 +269,20 @@ def create_live_router(
                 pass
         active[card] = websocket
 
-        session = await runner.session_service.get_session(
-            app_name=runner.app_name, user_id=_USER_ID, session_id=card
-        )
-        is_new_interview = session is None
+        # 이 카드에서 이어받을 면접이 있는가. 커넥션이 끊긴 것과 면접이 끝난
+        # 것은 다르다 — 15~20분 면접은 Live 커넥션 수명(~10분) 때문에 반드시
+        # 재접속하고, 그 사이에도 같은 판이 이어져야 한다.
+        session_id, abandoned = store.resume_or_abandon(card, _STALE_SESSION_S)
+        for stale in abandoned:
+            # 창을 닫고 돌아오지 않은 면접. 답변은 남아 있으므로 피드백은
+            # 만들어 준다 — 여기서 깨우지 않으면 영영 분석되지 않는다.
+            logger.info("오래된 미완 면접을 닫습니다 (session=%s)", stale)
+            if evaluation is not None:
+                evaluation.start(stale)
+
+        is_new_interview = session_id is None
+        data = store.load(card)
         if is_new_interview:
-            # 새 면접이면 앞 판의 흔적을 지운다. 녹음은 이어 쓰기라 남겨 두면
-            # 새 면접이 앞 면접 뒤에 붙고, 피드백은 앞 판의 것이라 새 면접이
-            # 끝나기 전까지 화면이 옛 결과를 보여준다.
-            InterviewRecording.discard(store.directory(card))
-            data = store.load(card)
             if data is None or data.questions is None:
                 # 준비 데이터 없는 면접은 시작하지 않는다. 조용한 폴백으로
                 # 엉뚱한 데이터 면접이 도는 것보다 크게 실패하는 쪽이 낫다.
@@ -280,16 +290,39 @@ def create_live_router(
                 await websocket.send_json({"type": "ended"})
                 await websocket.close(code=4004, reason="준비 데이터 없음")
                 return
+            # 면접 한 판을 연다. 이 id가 녹음 디렉터리이자 대화 세션 id다 —
+            # 앞서는 카드 id를 대화 세션 id로 썼는데, 면접을 여러 번 하게 되면
+            # 두 번째 면접이 첫 면접의 대화 이력을 이어받는다.
+            session_id = store.start_session(card)
+            logger.info("면접 시작 (card=%s, session=%s)", card, session_id)
+
+        session = await runner.session_service.get_session(
+            app_name=runner.app_name, user_id=_USER_ID, session_id=session_id
+        )
+        if session is None:
+            if data is None:
+                logger.warning("준비 데이터 없는 면접 시작 거부 (card=%s)", card)
+                await websocket.send_json({"type": "ended"})
+                await websocket.close(code=4004, reason="준비 데이터 없음")
+                return
+            if not is_new_interview:
+                # 면접은 진행 중인데 대화 세션이 없다. 대화 맥락은 잃지만
+                # 면접을 끊는 것보다 낫다 — 준비 데이터로 다시 시딩한다.
+                logger.warning(
+                    "대화 세션이 없어 새로 시딩합니다 (session=%s)", session_id
+                )
             session = await runner.session_service.create_session(
                 app_name=runner.app_name,
                 user_id=_USER_ID,
-                session_id=card,
+                session_id=session_id,
                 state=_session_state_from(data, profile),
             )
 
         # 면접이 남기는 것. 커넥션이 끊겼다 붙어도 같은 디렉터리에 이어 쓴다 —
         # Live 커넥션 수명이 ~10분이라 15~20분 면접은 반드시 재접속한다.
-        recording = InterviewRecording(directory=store.directory(card))
+        recording = InterviewRecording(
+            directory=store.session_directory(card, session_id)
+        )
         # 전사는 조각으로 흘러오다 finished에 전문이 실린다. 그 전문만 한
         # 토막으로 남긴다. 프론트도 같은 규칙이다 — final이면 자막을 text로
         # 통째로 교체하고(store/interview.ts appendCaption), 그래도 자막이 잘려
@@ -308,7 +341,7 @@ def create_live_router(
 
         # 툴이 도는 침묵을 메울 필러 클립의 전송 상대 — 이 커넥션의 소켓.
         # 콜백(`fillers.play_filler_before_tool`)이 세션 id로 찾아 쓴다.
-        filler_connection = fillers.register(card, websocket.send_bytes)
+        filler_connection = fillers.register(session_id, websocket.send_bytes)
 
         # 에이전트의 귀. 여기 넣는 것이 Gemini로 흘러간다 — run_live가 이
         # 큐를 소비한다. close()가 들어가면 대화가 정상 종료된다.
@@ -523,30 +556,38 @@ def create_live_router(
         except Exception:
             logger.exception("음성 브리지 오류 (card=%s)", card)
         finally:
-            fillers.unregister(card, filler_connection)
+            fillers.unregister(session_id, filler_connection)
             # 커넥션이 끝날 때마다 저장한다. 재접속이면 다음 커넥션이 이어
             # 받으므로 중간 저장이고, 마지막 커넥션의 것이 최종본이 된다 —
             # 면접이 어떻게 끝나든(종료 버튼·창 닫기) 기록이 남는다.
             recording.finish()
+            # 전사 전문을 면접 기록으로 올린다. 커넥션이 끊길 때마다 덮으므로
+            # 마지막 커넥션의 것이 최종본이 된다.
+            store.save_transcript(session_id, recording.transcript_payload())
             if ended_notified:
-                # 면접이 끝났다. 세션을 지워야 다음 접속이 새 면접으로 시작한다 —
-                # 남겨 두면 브리지가 재접속으로 보아 시간 예산과 진행 단계를
-                # 이어받아, 두 번째 면접이 첫 면접의 뒷부분이 된다.
+                # 면접이 끝났다. 이 판을 닫아야 다음 접속이 새 면접으로
+                # 시작한다 — 열어 두면 브리지가 재접속으로 보아 시간 예산과
+                # 진행 단계를 이어받아, 두 번째 면접이 첫 면접의 뒷부분이 된다.
                 #
-                # 커넥션이 그냥 끊긴 경우(창 닫기·네트워크)는 지우지 않는다.
+                # 커넥션이 그냥 끊긴 경우(창 닫기·네트워크)는 닫지 않는다.
                 # 그건 재접속이고, 이어가는 것이 맞다.
+                store.end_session(session_id)
                 try:
                     await runner.session_service.delete_session(
-                        app_name=runner.app_name, user_id=_USER_ID, session_id=card
+                        app_name=runner.app_name,
+                        user_id=_USER_ID,
+                        session_id=session_id,
                     )
-                    logger.info("면접 종료 — 세션을 비웠다 (card=%s)", card)
                 except Exception:  # noqa: BLE001 — 이미 없으면 그만
-                    logger.warning("세션 삭제 실패 (card=%s)", card, exc_info=True)
-            # 기록이 남은 직후에 피드백 생성을 깨운다. 재접속이면 다음
-            # 커넥션이 이어가므로 그때 다시 깨워지고, 이미 돌고 있으면
-            # evaluation이 스스로 무시한다.
-            if evaluation is not None:
-                evaluation.start(card)
+                    logger.warning(
+                        "대화 세션 삭제 실패 (session=%s)", session_id, exc_info=True
+                    )
+                logger.info("면접 종료 (card=%s, session=%s)", card, session_id)
+                # 끝난 뒤에만 피드백을 만든다. 재접속마다 만들면 15~20분
+                # 면접 한 판에 Grok 호출이 여러 번 나간다 — 커넥션 수명이
+                # ~10분이라 재접속은 정상 경로다.
+                if evaluation is not None:
+                    evaluation.start(session_id)
             # 내가 아직 활성 커넥션일 때만 지운다 — 새 커넥션이 이미
             # 자리를 차지했다면 그쪽 것이다.
             if active.get(card) is websocket:

@@ -11,23 +11,25 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from conftest import make_store
+
 from daedam.research.service import FixtureResearch
 from daedam.server.preparation import InterviewPreparation
 from daedam.server.preparation_routes import create_preparation_router
-from daedam.server.store import FileInterviewStore
 
 
 def _client(tmp_path: Path, duration_s: float = 0.01) -> TestClient:
+    store, accounts, _ = make_store(tmp_path / "data")
     preparation = InterviewPreparation(
         research=FixtureResearch(duration_s=duration_s),
-        store=FileInterviewStore(tmp_path / "data"),
+        store=store,
         generate=lambda **kwargs: [
             {"id": "q-0-0", "stage": 0, "text": "질문?", "priority": 1, "tags": ["태그"]}
         ],
         poll_interval_s=0.01,
     )
     app = FastAPI()
-    app.include_router(create_preparation_router(preparation))
+    app.include_router(create_preparation_router(preparation, accounts))
     return TestClient(app)
 
 

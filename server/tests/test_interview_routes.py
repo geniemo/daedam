@@ -1,26 +1,29 @@
-"""면접 목록 라우트 테스트.
+"""면접 목록·조회 라우트 테스트.
 
 홈 화면이 그릴 카드의 출처. 준비 데이터가 저장된 면접만 나와야 한다 —
 프론트가 자기 메모리로 카드를 들고 있으면 새로고침에 사라지고, 준비되지 않은
 면접을 시작하려다 브리지에서 거절당한다.
+
+피드백과 녹음은 면접 한 판에 속한다. 같은 준비 데이터로 여러 번 면접할 수
+있으므로 `?session=`으로 고르고, 생략하면 가장 최근 판이다.
 """
 
-import os
 import time
 
+from conftest import make_store
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from daedam.server.interview_routes import create_interviews_router
 from daedam.server.preparation import InterviewPreparation
-from daedam.server.store import FileInterviewStore
 
 
-def _store(tmp_path, *ids_with_questions: tuple[str, bool]) -> FileInterviewStore:
-    store = FileInterviewStore(tmp_path / "data")
+def _store(tmp_path, *ids_with_questions: tuple[str, bool]):
+    store, accounts, user_id = make_store(tmp_path / "data")
     for interview_id, has_questions in ids_with_questions:
         store.save(
             interview_id,
+            user_id=user_id,
             company=f"{interview_id}물류",
             role="데이터 엔지니어",
             application=[],
@@ -35,7 +38,7 @@ def _store(tmp_path, *ids_with_questions: tuple[str, bool]) -> FileInterviewStor
                 [{"id": "q-0-0", "stage": 0, "text": "질문?", "priority": 1,
                   "tags": ["태그"]}],
             )
-    return store
+    return store, accounts
 
 
 class _StubResearch:
@@ -48,7 +51,23 @@ class _StubResearch:
         return None
 
 
-def _client(store: FileInterviewStore, generated: list | None = None) -> TestClient:
+class _StubEvaluation:
+    """저장된 피드백을 그대로 상태로 옮기는 대역."""
+
+    def __init__(self, store) -> None:
+        self._store = store
+
+    def status(self, session_id: str):
+        from daedam.server.evaluation import FeedbackStatus
+
+        record = self._store.load_session(session_id)
+        if record is None or record.feedback is None:
+            return FeedbackStatus(state="running")
+        return FeedbackStatus(state="done", feedback=record.feedback)
+
+
+def _client(bundle, generated: list | None = None) -> TestClient:
+    store, accounts = bundle
     preparation = InterviewPreparation(
         research=_StubResearch(),
         store=store,
@@ -57,7 +76,9 @@ def _client(store: FileInterviewStore, generated: list | None = None) -> TestCli
              "tags": ["태그"]}],
     )
     app = FastAPI()
-    app.include_router(create_interviews_router(store, preparation))
+    app.include_router(
+        create_interviews_router(store, preparation, accounts, _StubEvaluation(store))
+    )
     return TestClient(app)
 
 
@@ -67,27 +88,29 @@ def test_저장된_면접이_목록에_나온다(tmp_path) -> None:
     (item,) = response.json()
     assert item["id"] == "aaa"
     assert item["company"] == "aaa물류" and item["role"] == "데이터 엔지니어"
+    assert item["interviewCount"] == 0 and item["score"] is None
 
 
 def test_질문까지_있어야_ready다(tmp_path) -> None:
     """브리지가 질문 풀로 시작 가능 여부를 판정한다 — 화면도 같은 기준을 쓴다."""
-    store = _store(tmp_path, ("done", True), ("half", False))
-    ready = {item["id"]: item["ready"] for item in _client(store).get("/api/interviews").json()}
+    bundle = _store(tmp_path, ("done", True), ("half", False))
+    ready = {
+        item["id"]: item["ready"] for item in _client(bundle).get("/api/interviews").json()
+    }
     assert ready == {"done": True, "half": False}
 
 
-def test_최근_저장된_것이_앞에_온다(tmp_path) -> None:
+def test_최근_손댄_것이_앞에_온다(tmp_path) -> None:
     """홈은 방금 등록한 면접부터 보여야 한다."""
-    store = _store(tmp_path, ("older", True), ("newer", True))
-    # 파일 시각으로 정렬하므로 새 쪽을 명시적으로 미래로 민다.
-    meta = tmp_path / "data" / "newer" / "meta.json"
-    os.utime(meta, (meta.stat().st_atime, meta.stat().st_mtime + 60))
-    ids = [item["id"] for item in _client(store).get("/api/interviews").json()]
+    bundle = _store(tmp_path, ("older", True), ("newer", True))
+    store, _ = bundle
+    store.save_report("newer", [{"title": "개요", "blocks": []}])  # updated_at 갱신
+    ids = [item["id"] for item in _client(bundle).get("/api/interviews").json()]
     assert ids == ["newer", "older"]
 
 
 def test_저장된_것이_없으면_빈_목록(tmp_path) -> None:
-    assert _client(FileInterviewStore(tmp_path / "none")).get("/api/interviews").json() == []
+    assert _client(_store(tmp_path)).get("/api/interviews").json() == []
 
 
 def test_면접_하나를_리포트까지_돌려준다(tmp_path) -> None:
@@ -95,19 +118,46 @@ def test_면접_하나를_리포트까지_돌려준다(tmp_path) -> None:
     body = _client(_store(tmp_path, ("aaa", True))).get("/api/interviews/aaa").json()
     assert body["company"] == "aaa물류"
     assert body["report"] == [{"title": "개요", "blocks": []}]
+    assert body["sessions"] == []
 
 
 def test_없는_면접은_404(tmp_path) -> None:
-    client = _client(FileInterviewStore(tmp_path / "none"))
+    client = _client(_store(tmp_path))
     assert client.get("/api/interviews/nope").status_code == 404
     assert client.put("/api/interviews/nope/report", json={"report": []}).status_code == 404
 
 
+def test_남의_면접도_404다(tmp_path) -> None:
+    """존재 여부 자체를 흘리지 않는다 — 403이면 있다는 뜻이 된다."""
+    from daedam.db import User
+
+    bundle = _store(tmp_path, ("aaa", True))
+    store, _ = bundle
+    with store._db.session() as session:
+        stranger = User(provider="kakao", provider_user_id="stranger")
+        session.add(stranger)
+        session.flush()
+        stranger_id = stranger.id
+    store.save(
+        "other-card",
+        user_id=stranger_id,
+        company="비밀",
+        role="비밀",
+        application=[],
+        report=[],
+        uncertain=[],
+    )
+    client = _client(bundle)
+    assert client.get("/api/interviews/other-card").status_code == 404
+    assert [item["id"] for item in client.get("/api/interviews").json()] == ["aaa"]
+
+
 def test_고친_리포트를_저장하고_질문을_다시_뽑는다(tmp_path) -> None:
     """질문은 리포트를 근거로 만들어졌다 — 사실을 고치면 낡은 근거 위에 선다."""
-    store = _store(tmp_path, ("aaa", True))
+    bundle = _store(tmp_path, ("aaa", True))
+    store, _ = bundle
     fixed = [{"title": "개요", "blocks": [{"type": "p", "text": "고친 사실"}]}]
-    response = _client(store).put("/api/interviews/aaa/report", json={"report": fixed})
+    response = _client(bundle).put("/api/interviews/aaa/report", json={"report": fixed})
     assert response.status_code == 202 and response.json()["regenerating"] is True
 
     data = store.load("aaa")
@@ -120,3 +170,51 @@ def test_고친_리포트를_저장하고_질문을_다시_뽑는다(tmp_path) -
         time.sleep(0.05)
     assert data is not None and data.questions is not None
     assert data.questions[0]["text"] == "다시 뽑은 질문?"
+
+
+# ── 면접 이력 ────────────────────────────────────────────────────────────
+
+
+def test_면접을_안_봤으면_피드백은_absent(tmp_path) -> None:
+    """면접은 존재하고 아직 안 봤을 뿐이다 — 404가 아니다."""
+    body = _client(_store(tmp_path, ("aaa", True))).get("/api/interviews/aaa/feedback")
+    assert body.status_code == 200 and body.json() == {"status": "absent"}
+
+
+def test_피드백은_기본으로_가장_최근_판이다(tmp_path) -> None:
+    bundle = _store(tmp_path, ("aaa", True))
+    store, _ = bundle
+    first = store.start_session("aaa")
+    store.save_feedback(first, {"coaching": {"score": 60}})
+    store.end_session(first)
+    second = store.start_session("aaa")
+    store.save_feedback(second, {"coaching": {"score": 82}})
+
+    client = _client(bundle)
+    body = client.get("/api/interviews/aaa/feedback").json()
+    assert body["sessionId"] == second
+    assert body["feedback"]["coaching"]["score"] == 82
+
+    # 지난 판도 골라서 볼 수 있다 — 성장 추이가 이 서비스의 재방문 이유다.
+    body = client.get(f"/api/interviews/aaa/feedback?session={first}").json()
+    assert body["feedback"]["coaching"]["score"] == 60
+
+
+def test_남의_면접_기록은_고를_수_없다(tmp_path) -> None:
+    bundle = _store(tmp_path, ("aaa", True), ("bbb", True))
+    store, _ = bundle
+    store.start_session("aaa")
+    other = store.start_session("bbb")
+    client = _client(bundle)
+    assert client.get(f"/api/interviews/aaa/feedback?session={other}").status_code == 404
+
+
+def test_이력_목록은_최근_판부터(tmp_path) -> None:
+    bundle = _store(tmp_path, ("aaa", True))
+    store, _ = bundle
+    first = store.start_session("aaa")
+    store.end_session(first)
+    second = store.start_session("aaa")
+    body = _client(bundle).get("/api/interviews/aaa/sessions").json()
+    assert [item["id"] for item in body] == [second, first]
+    assert body[0]["hasFeedback"] is False

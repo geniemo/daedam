@@ -160,13 +160,21 @@ class InterviewRecording:
             # wav를 못 만들어도 pcm 원본은 남아 있다 — 나중에 되살릴 수 있다.
             logger.exception("재생용 wav 생성 실패 (%s)", self._wav_path)
 
-    def _write_transcript(self) -> None:
-        payload = {
+    def transcript_payload(self) -> dict[str, Any]:
+        """지금까지의 전사. 브리지가 이걸 받아 면접 기록으로 올린다.
+
+        디스크의 `transcript.json`은 재접속이 이어 쓰기 위한 작업 파일이고,
+        질의 대상이 되는 사본은 데이터베이스에 있다.
+        """
+        return {
             "sampleRate": SAMPLE_RATE,
             "durationS": round(self.elapsed_s, 2),
             "utterances": [utterance.as_dict() for utterance in self.utterances],
             "questionEnds": [round(at, 2) for at in self.question_ends],
         }
+
+    def _write_transcript(self) -> None:
+        payload = self.transcript_payload()
         try:
             self._transcript_path.write_text(
                 json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"

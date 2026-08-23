@@ -10,9 +10,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from .accounts import Accounts
 from .preparation import InterviewPreparation
 
 
@@ -28,11 +29,14 @@ class PreparationRequest(BaseModel):
     name: str = ""
 
 
-def create_preparation_router(preparation: InterviewPreparation) -> APIRouter:
+def create_preparation_router(
+    preparation: InterviewPreparation, accounts: Accounts
+) -> APIRouter:
     """준비 파이프라인을 라우터로 감싼다.
 
     Args:
         preparation: 리서치 → 저장 → 질문 생성을 완주하는 오케스트레이터.
+        accounts: 등록되는 준비 데이터의 주인을 정해 준다.
 
     Returns:
         /api/preparation 라우터.
@@ -40,13 +44,17 @@ def create_preparation_router(preparation: InterviewPreparation) -> APIRouter:
     router = APIRouter(prefix="/api/preparation", tags=["preparation"])
 
     @router.post("", status_code=202)
-    def start_preparation(request: PreparationRequest) -> dict[str, str]:
+    def start_preparation(
+        request: PreparationRequest,
+        user_id: str = Depends(accounts.current_user_id),
+    ) -> dict[str, str]:
         task_id = preparation.start(
             request.company,
             request.role,
             request.application,
             request.posting,
             request.name,
+            user_id=user_id,
         )
         return {"task_id": task_id}
 

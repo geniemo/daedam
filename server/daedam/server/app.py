@@ -17,17 +17,24 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from google.adk.cli.fast_api import get_fast_api_app
-from google.adk.runners import InMemoryRunner
+from google.adk.artifacts import InMemoryArtifactService
+from google.adk.memory import InMemoryMemoryService
+from google.adk.runners import Runner
+from google.adk.sessions import DatabaseSessionService
 
+from daedam.db import Database, async_url, database_url
+from daedam.db.migrate import upgrade_to_head
 from daedam.interview.stages import DEFAULT_PROFILE
 from daedam.research.service import FixtureResearch, LiveResearch, ResearchService
+from daedam.settings import data_root as default_data_root
 
+from .accounts import Accounts
 from .evaluation import InterviewEvaluation
 from .interview_routes import create_interviews_router
 from .live_bridge import create_live_router
 from .preparation import InterviewPreparation
 from .preparation_routes import create_preparation_router
-from .store import FileInterviewStore
+from .store import InterviewStore
 
 #: interviewer 에이전트 패키지가 들어 있는 디렉터리 (= server/).
 _AGENTS_DIR = str(Path(__file__).resolve().parents[2])
@@ -107,8 +114,15 @@ def create_app() -> FastAPI:
     #
     # DAEDAM_DATA_DIR로 옮길 수 있다. 시험용 서버를 따로 띄울 때 쓴다 —
     # 데모용 면접이 든 디렉터리에 시험 등록이 섞이면 지우다 실수한다.
-    data_root = Path(os.environ.get("DAEDAM_DATA_DIR") or Path(_AGENTS_DIR) / "data")
-    store = FileInterviewStore(data_root)
+    data_root = default_data_root()
+
+    # 스키마를 최신으로 올린 뒤 엔진을 잡는다. 단일 인스턴스 배포라 기동 시
+    # 마이그레이션이 안전하다 — 서버를 띄우는 것 말고 할 일이 없어야 한다.
+    upgrade_to_head()
+    db = Database(database_url(data_root))
+    store = InterviewStore(db, data_root)
+    # 인증이 붙기 전까지 모든 데이터의 주인은 기본 사용자 한 명이다.
+    accounts = Accounts(db)
     # live는 20~60분짜리 작업이라 1초 폴링이면 조회 API를 수천 번 두드린다.
     # fixture는 12초 안에 끝나므로 촘촘히 봐야 진행 화면이 자연스럽다.
     live = os.environ.get("RESEARCH_MODE") == "live"
@@ -117,12 +131,14 @@ def create_app() -> FastAPI:
         store=store,
         poll_interval_s=30.0 if live else 1.0,
     )
-    app.include_router(create_preparation_router(preparation))
+    app.include_router(create_preparation_router(preparation, accounts))
     # 홈 화면이 그릴 카드 목록. 프론트가 자기 메모리로 들고 있으면 새로고침에
     # 사라지고, 준비 안 된 면접을 시작하려다 브리지에서 거절당한다.
     # 면접이 끝나면 브리지가 이걸 깨우고, 분석 화면이 결과를 기다린다.
     evaluation = InterviewEvaluation(store)
-    app.include_router(create_interviews_router(store, preparation, evaluation))
+    app.include_router(
+        create_interviews_router(store, preparation, accounts, evaluation)
+    )
 
     # 음성 브리지는 자기 러너로 돈다. ADK 앱(dev UI) 쪽 세션 저장소와는
     # 분리돼 있다 — 제품 경로는 /ws/interview 하나다. 준비 데이터 저장소를
@@ -136,9 +152,19 @@ def create_app() -> FastAPI:
     # 하고, 콜백의 전송 상대는 브리지가 커넥션마다 등록한다.
     root_agent.before_tool_callback = fillers.play_filler_before_tool
 
+    # 대화 세션도 데이터베이스에 둔다. 프로세스 메모리에 있으면 서버가
+    # 재시작될 때 진행 중인 면접이 통째로 끊긴다 — 15~20분짜리라 실제로
+    # 겪는다. ADK가 async 엔진을 만들므로 같은 데이터베이스의 async URL을 준다.
+    runner = Runner(
+        app_name="daedam",
+        agent=root_agent,
+        session_service=DatabaseSessionService(db_url=async_url(db.url)),
+        artifact_service=InMemoryArtifactService(),
+        memory_service=InMemoryMemoryService(),
+    )
     app.include_router(
         create_live_router(
-            InMemoryRunner(root_agent, app_name="daedam"),
+            runner,
             store,
             profile=_interview_profile(),
             evaluation=evaluation,

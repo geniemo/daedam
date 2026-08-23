@@ -28,7 +28,7 @@ from daedam.knowledge.chunk import chunks_from_application, chunks_from_report
 from daedam.research.report import search_sections_from_report
 from daedam.research.service import ResearchService, ResearchStatus
 
-from .store import FileInterviewStore, InterviewData
+from .store import InterviewData, InterviewStore
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class InterviewPreparation:
     def __init__(
         self,
         research: ResearchService,
-        store: FileInterviewStore,
+        store: InterviewStore,
         generate: Callable[..., list[dict[str, Any]]] = generate_question_pool,
         extract_vocabulary: Callable[..., list[str]] = generate_vocabulary,
         poll_interval_s: float = 1.0,
@@ -90,6 +90,8 @@ class InterviewPreparation:
         application: list[dict[str, Any]],
         posting: str = "",
         name: str = "",
+        *,
+        user_id: str,
     ) -> str:
         # posting은 여기서만 쓰인다 — 리서치 프롬프트에 실려 나가고, 이후
         # 재개·재생성 경로는 이미 만들어진 인터랙션을 따라가므로 필요 없다.
@@ -99,6 +101,7 @@ class InterviewPreparation:
         # 아직 비어 있고, 그 비어 있음이 "리서치 진행 중"의 표시다.
         self._store.save(
             task_id,
+            user_id=user_id,
             company=company,
             role=role,
             application=application,
@@ -116,7 +119,7 @@ class InterviewPreparation:
         # 이 면접 전담 워커 — 브라우저가 닫혀도 파이프라인은 여기서 완주한다.
         threading.Thread(
             target=self._run_pipeline,
-            args=(task_id, company, role, application, name),
+            args=(task_id, company, role, application, name, user_id),
             daemon=True,
         ).start()
         return task_id
@@ -175,7 +178,8 @@ class InterviewPreparation:
         company: str,
         role: str,
         application: list[dict[str, Any]],
-        name: str = "",
+        name: str,
+        user_id: str,
     ) -> None:
         state = self._states[task_id]
         try:
@@ -220,6 +224,7 @@ class InterviewPreparation:
             # ② 산출물 저장 — 이 순간부터 서버가 죽어도 리서치를 잃지 않는다.
             self._store.save(
                 task_id,
+                user_id=user_id,
                 company=company,
                 role=role,
                 application=application,
@@ -311,6 +316,9 @@ class InterviewPreparation:
                         data.role,
                         data.application,
                         data.name,
+                        # 복원은 이미 저장된 준비 데이터를 이어받는 것이라
+                        # 주인은 그때 정해져 있다.
+                        self._store.owner_of(interview_id) or "",
                     ),
                     daemon=True,
                 ).start()
