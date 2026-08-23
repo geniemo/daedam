@@ -56,6 +56,7 @@ from interviewer.tools import (
 )
 
 from . import fillers
+from .accounts import Accounts
 from .recording import InterviewRecording
 from .store import InterviewData, InterviewStore
 
@@ -224,6 +225,7 @@ def _session_state_from(data: InterviewData, profile: str) -> dict[str, Any]:
 def create_live_router(
     runner: Runner,
     store: InterviewStore,
+    accounts: Accounts,
     profile: str = DEFAULT_PROFILE,
     evaluation: Any = None,
 ) -> APIRouter:
@@ -236,6 +238,7 @@ def create_live_router(
         evaluation: 면접이 끝나면 피드백을 만드는 오케스트레이터. None이면
             기록만 남기고 만들지 않는다(테스트).
         store: 면접 준비 데이터 저장소. 세션 생성 시 여기서 읽어 시딩한다.
+        accounts: 접속한 사람을 알아낸다 — 남의 면접에 붙는 것을 막는다.
         profile: 시간 예산 프로필 이름 (`daedam.interview.stages.PROFILES`).
             세션 state에도 실려 툴이 같은 예산으로 단계를 판정한다.
     """
@@ -258,6 +261,17 @@ def create_live_router(
         # 복원한다. Live API 수준의 재개 핸들 활용은 후속 과제.
         del resume
         await websocket.accept()
+
+        # 남의 면접에 붙지 못하게 한다. 카드 id만 알면 들어올 수 있었고, 들어온
+        # 쪽이 원래 있던 커넥션을 끊어냈다 — 인증의 구멍이 여기였다.
+        # 소켓도 같은 세션 쿠키를 읽는다(Starlette SessionMiddleware가
+        # http·websocket 스코프를 모두 다룬다).
+        user_id = accounts.session_user_id(websocket)
+        if user_id is None or store.owner_of(card) != user_id:
+            logger.warning("허용되지 않은 면접 접속 (card=%s)", card)
+            await websocket.send_json({"type": "ended"})
+            await websocket.close(code=4003, reason="권한 없음")
+            return
 
         # 같은 카드의 이전 커넥션을 닫는다. 닫히면 그쪽 수신 펌프가
         # disconnect를 받아 자기 정리를 시작한다.

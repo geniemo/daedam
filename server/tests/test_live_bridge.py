@@ -125,8 +125,13 @@ class _FakeRunner:
 
 
 def _seeded_store(tmp_path, *interview_ids: str):
-    """준비 데이터(질문 포함)가 저장된 상태의 저장소를 만든다."""
-    store, _, user_id = make_store(tmp_path / "data")
+    """준비 데이터(질문 포함)가 저장된 상태의 저장소를 만든다.
+
+    계정은 저장소에 매달아 둔다 — 브리지가 소유권을 확인하려면 둘이 같은
+    데이터베이스를 봐야 한다.
+    """
+    store, accounts, user_id = make_store(tmp_path / "data")
+    store.accounts = accounts
     for interview_id in interview_ids:
         store.save(
             interview_id,
@@ -146,7 +151,9 @@ def _seeded_store(tmp_path, *interview_ids: str):
 
 def _client(runner: _FakeRunner, store, profile: str = "demo") -> TestClient:
     app = FastAPI()
-    app.include_router(create_live_router(runner, store, profile=profile))
+    app.include_router(
+        create_live_router(runner, store, store.accounts, profile=profile)
+    )
     return TestClient(app)
 
 
@@ -209,13 +216,54 @@ def test_새_세션은_준비_데이터가_시딩되고_개시_신호로_시작�
     assert session.state["profile"] == "demo"
 
 
-def test_준비_데이터_없는_면접은_거절된다(tmp_path) -> None:
+def test_질문이_없는_면접은_거절된다(tmp_path) -> None:
     """조용한 폴백 대신 명시적 거절 — 시딩 실패가 첫 접속에서 드러난다."""
-    client = _client(_FakeRunner(), make_store(tmp_path / "empty")[0])
-    with client.websocket_connect("/ws/interview?card=nope") as websocket:
+    store = _seeded_store(tmp_path)
+    # 리서치가 아직 안 끝난 카드 — 내 것이지만 질문 풀이 없다.
+    store.save(
+        "half",
+        user_id=store.accounts.default_user_id(),
+        company="한결물류",
+        role="데이터 엔지니어",
+        application=[],
+        report=[],
+        uncertain=[],
+    )
+    client = _client(_FakeRunner(), store)
+    with client.websocket_connect("/ws/interview?card=half") as websocket:
         assert websocket.receive_json() == {"type": "ended"}
         with pytest.raises(WebSocketDisconnect):
             websocket.receive_bytes()
+
+
+def test_남의_면접에는_붙을_수_없다(tmp_path) -> None:
+    """카드 id만 알면 들어와 원래 있던 사람을 끊어낼 수 있었다 — 인증의
+    구멍이 여기였다. 없는 카드도 같은 응답이라 존재 여부가 새지 않는다."""
+    from daedam.db import User
+
+    store = _seeded_store(tmp_path, "mine")
+    with store._db.session() as session:
+        stranger = User(provider="kakao", provider_user_id="stranger")
+        session.add(stranger)
+        session.flush()
+        stranger_id = stranger.id
+    store.save(
+        "theirs",
+        user_id=stranger_id,
+        company="비밀",
+        role="비밀",
+        application=[],
+        report=[],
+        uncertain=[],
+    )
+    store.save_questions("theirs", [{"id": "q", "stage": 0, "text": "?", "priority": 1, "tags": []}])
+
+    client = _client(_FakeRunner(), store)
+    for card in ("theirs", "nope"):
+        with client.websocket_connect(f"/ws/interview?card={card}") as websocket:
+            assert websocket.receive_json() == {"type": "ended"}
+            with pytest.raises(WebSocketDisconnect):
+                websocket.receive_bytes()
 
 
 def test_재접속에는_개시_신호가_없다(tmp_path) -> None:
@@ -408,7 +456,8 @@ def test_새_면접은_앞_판을_지우지_않고_쌓는다(tmp_path) -> None:
 def test_지원자_이름이_세션에_실린다(tmp_path) -> None:
     """instruction이 "지원자 OO님과 면접을 진행합니다"로 쓰고, 전사 어휘
     힌트로도 나간다 — 이름은 ASR이 가장 자주 틀리는 낱말이다."""
-    store, _, user_id = make_store(tmp_path / "data")
+    store = _seeded_store(tmp_path)
+    user_id = store.accounts.default_user_id()
     store.save(
         "named",
         user_id=user_id,

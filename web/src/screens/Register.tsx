@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { startPreparation } from '@/api/preparation'
-import { APPLICANT_NAME, useAppStore } from '@/store/app'
+import { useQuery } from '@tanstack/react-query'
+import { getMe } from '@/api/auth'
+import { useAppStore } from '@/store/app'
 import { Label, TextArea, TextField } from '@/components/ui'
 
 /** README §2·§3. 등록 STEP 1·2 */
@@ -140,6 +142,7 @@ function PencilMark() {
 
 function Step2() {
   const nav = useNavigate()
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe, retry: false })
   const { company, role, posting, parts, setParts, submitRegister } = useAppStore()
   const [openPart, setOpenPart] = useState(0)
   // 어느 파트의 몇 번째 항목이 열렸는지. 인덱스만 들고 있으면 A파트의 첫
@@ -390,7 +393,7 @@ function Step2() {
               parts,
               posting,
               // 로그인한 사용자입니다 — 등록할 때마다 다시 묻지 않습니다.
-              APPLICANT_NAME,
+              me?.name ?? '',
             ).catch(() => undefined)
             submitRegister(taskId)
             nav('/research')

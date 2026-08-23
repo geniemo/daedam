@@ -10,6 +10,7 @@ dependencies = [
     "google-adk>=2.6.3",
     # 음성 지표(daedam/eval/voice.py)가 직접 쓴다. 다른 패키지를 통해 이미
     # 들어오지만, 직접 import하는 것은 명시한다.
+    "itsdangerous>=2.2.0",
     "numpy>=2",
     "openai>=2.53.0",
     "rank-bm25>=0.2.2",

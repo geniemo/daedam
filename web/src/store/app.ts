@@ -7,14 +7,6 @@ import { initialParts } from '@/data/mock'
 // waveform amplitudes and ring scale live in refs, never here. See
 // `src/audio/useAudioLevels.ts` for why.
 
-/**
- * 로그인한 지원자. 인증이 붙기 전까지 이 상수가 그 자리를 대신합니다.
- *
- * 헤더 표시만이 아니라 전사 어휘 힌트로도 나갑니다 — 이름은 ASR이 가장 자주
- * 틀리는 낱말입니다(실측 "박지원" → "박지훈").
- */
-export const APPLICANT_NAME = '박지원'
-
 interface AppState {
   cards: Card[]
   activeCardId: string | null

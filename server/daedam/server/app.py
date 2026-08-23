@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
+import secrets
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -21,6 +22,7 @@ from google.adk.artifacts import InMemoryArtifactService
 from google.adk.memory import InMemoryMemoryService
 from google.adk.runners import Runner
 from google.adk.sessions import DatabaseSessionService
+from starlette.middleware.sessions import SessionMiddleware
 
 from daedam.db import Database, async_url, database_url
 from daedam.db.migrate import upgrade_to_head
@@ -29,6 +31,7 @@ from daedam.research.service import FixtureResearch, LiveResearch, ResearchServi
 from daedam.settings import data_root as default_data_root
 
 from .accounts import Accounts
+from .auth import configured_providers, create_auth_router
 from .evaluation import InterviewEvaluation
 from .interview_routes import create_interviews_router
 from .live_bridge import create_live_router
@@ -73,6 +76,21 @@ def _research_service(data_root: Path) -> ResearchService:
         raw_dir=data_root / "_raw",
         state_path=data_root / "_research_tasks.json",
     )
+
+
+def _session_secret() -> str:
+    """세션 쿠키 서명 키.
+
+    설정하지 않으면 프로세스마다 새로 만든다 — 개발에서는 편하지만 재시작마다
+    모두 로그아웃되므로, 배포에서는 SESSION_SECRET을 반드시 고정한다.
+    """
+    secret = os.environ.get("SESSION_SECRET")
+    if secret:
+        return secret
+    logger.warning(
+        "SESSION_SECRET이 없어 임시 키를 씁니다 — 재시작하면 모두 로그아웃됩니다"
+    )
+    return secrets.token_urlsafe(32)
 
 
 def _interview_profile() -> str:
@@ -121,8 +139,28 @@ def create_app() -> FastAPI:
     upgrade_to_head()
     db = Database(database_url(data_root))
     store = InterviewStore(db, data_root)
-    # 인증이 붙기 전까지 모든 데이터의 주인은 기본 사용자 한 명이다.
-    accounts = Accounts(db)
+
+    # 카카오·구글 설정이 하나라도 있으면 로그인을 요구한다. 없으면 기본 사용자
+    # 한 명으로 도는 개발 모드다 — 앱 등록 없이도 서버를 띄울 수 있어야 한다.
+    providers = configured_providers()
+    if providers:
+        logger.info("로그인: %s", " · ".join(providers))
+    else:
+        logger.warning(
+            "로그인 설정이 없어 인증 없이 돕니다 — 모든 데이터가 한 사용자의 것입니다. "
+            "KAKAO_CLIENT_ID/SECRET 또는 GOOGLE_CLIENT_ID/SECRET을 설정하십시오."
+        )
+    accounts = Accounts(db, login_required=bool(providers))
+
+    # 세션 쿠키. OAuth 흐름의 state와 로그인 상태가 여기 담긴다. 비밀키가 바뀌면
+    # 모두 로그아웃되므로 배포에서는 반드시 고정 값을 준다.
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=_session_secret(),
+        same_site="lax",
+        https_only=os.environ.get("COOKIE_SECURE") == "1",
+    )
+    app.include_router(create_auth_router(accounts))
     # live는 20~60분짜리 작업이라 1초 폴링이면 조회 API를 수천 번 두드린다.
     # fixture는 12초 안에 끝나므로 촘촘히 봐야 진행 화면이 자연스럽다.
     live = os.environ.get("RESEARCH_MODE") == "live"
@@ -166,6 +204,7 @@ def create_app() -> FastAPI:
         create_live_router(
             runner,
             store,
+            accounts,
             profile=_interview_profile(),
             evaluation=evaluation,
         )

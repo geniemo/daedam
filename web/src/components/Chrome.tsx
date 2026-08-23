@@ -1,5 +1,6 @@
 import { Link, Outlet, useLocation } from 'react-router'
-import { APPLICANT_NAME } from '@/store/app'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { getMe, logout } from '@/api/auth'
 
 /**
  * 공통 헤더 (README §공통 헤더).
@@ -10,6 +11,9 @@ const HIDDEN_ON = ['/interview', '/analyzing', '/regen']
 export function Chrome() {
   const { pathname } = useLocation()
   const hidden = HIDDEN_ON.some((p) => pathname.startsWith(p))
+  const queryClient = useQueryClient()
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe, retry: false })
+  const name = me?.name || '지원자'
 
   return (
     <>
@@ -32,10 +36,31 @@ export function Chrome() {
             </nav>
             <div className="flex-1" />
             <div className="flex items-center gap-[10px]">
-              <span className="text-[13px] text-muted">{APPLICANT_NAME}</span>
-              <span className="flex h-[30px] w-[30px] items-center justify-center rounded-full border border-field bg-surface text-[12px] font-semibold text-muted">
-                {APPLICANT_NAME.slice(-2, -1)}
-              </span>
+              <span className="text-[13px] text-muted">{name}</span>
+              {me?.avatarUrl ? (
+                <img
+                  src={me.avatarUrl}
+                  alt=""
+                  className="h-[30px] w-[30px] rounded-full border border-field object-cover"
+                />
+              ) : (
+                <span className="flex h-[30px] w-[30px] items-center justify-center rounded-full border border-field bg-surface text-[12px] font-semibold text-muted">
+                  {name.slice(-2, -1)}
+                </span>
+              )}
+              {/* 로그인 없이 도는 서버(개발)에서는 나갈 곳이 없으므로 숨긴다. */}
+              {me && me.provider !== 'local' && (
+                <button
+                  onClick={async () => {
+                    await logout()
+                    // 캐시를 비워야 랜딩으로 돌아간다 — 새로고침 없이.
+                    await queryClient.invalidateQueries()
+                  }}
+                  className="ml-[2px] text-[12.5px] text-faint"
+                >
+                  로그아웃
+                </button>
+              )}
             </div>
           </div>
         </header>
