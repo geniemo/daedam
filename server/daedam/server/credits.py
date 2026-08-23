@@ -29,12 +29,15 @@ from daedam.db import CreditEntry, Database
 
 logger = logging.getLogger(__name__)
 
-#: 가입 선물. 등록 한 번 + 면접 몇 번을 해 볼 수 있어야 서비스가 무엇인지
-#: 알고 결제를 판단한다.
-SIGNUP_GRANT = int(os.environ.get("CREDITS_SIGNUP_GRANT", "5"))
+#: 가입 선물 = 회사 1곳 등록 + 면접 1회. 서비스를 온전히 한 바퀴 돌아야
+#: 결제를 판단할 수 있다. 이 한 명에게 우리가 무는 원가가 약 3,570원이라,
+#: 무료 지급의 총액 상한을 함께 정해야 한다
+#: (docs/specs/2026-08-23-credit-pricing.md).
+SIGNUP_GRANT = int(os.environ.get("CREDITS_SIGNUP_GRANT", "6"))
 
-#: 회사 등록 한 건. Deep Research가 $1~3이라 면접보다 무겁다.
-COST_RESEARCH = int(os.environ.get("CREDITS_PER_RESEARCH", "3"))
+#: 회사 등록 한 건. 원가가 면접의 약 5배다 — 대부분이 Deep Research($1~3)이고
+#: 면접 한 판은 오디오·툴을 합쳐 약 630원이다. 비율을 그대로 옮겼다.
+COST_RESEARCH = int(os.environ.get("CREDITS_PER_RESEARCH", "5"))
 
 #: 면접 한 판. 크레딧의 단위 그 자체다.
 COST_INTERVIEW = int(os.environ.get("CREDITS_PER_INTERVIEW", "1"))
