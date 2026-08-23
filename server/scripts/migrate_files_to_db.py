@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from daedam.db import Database, database_url  # noqa: E402
 from daedam.db.migrate import upgrade_to_head  # noqa: E402
 from daedam.server.accounts import Accounts  # noqa: E402
+from daedam.server.credits import SIGNUP_GRANT, Credits  # noqa: E402
 from daedam.server.store import InterviewStore  # noqa: E402
 from daedam.settings import data_root  # noqa: E402
 
@@ -120,7 +121,12 @@ def main() -> None:
     upgrade_to_head()
     db = Database(database_url(root))
     store = InterviewStore(db, root)
-    user_id = Accounts(db).default_user_id()
+    credits = Credits(db)
+    user_id = Accounts(db, credits=credits).default_user_id()
+    # 크레딧이 생기기 전에 만들어진 계정은 원장이 비어 있다. 그대로 두면
+    # 잔액 0이라 면접이 시작되지 않는다 — 옮겨 온 사람에게도 선물을 준다.
+    if not args.dry_run and not credits.history(user_id):
+        credits.grant(user_id, SIGNUP_GRANT, "signup_grant")
 
     print(f"{root} — 면접 {len(directories)}건\n")
     for directory in directories:

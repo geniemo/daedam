@@ -21,7 +21,14 @@ from daedam.db.models import Base
 from daedam.settings import data_root
 
 config = context.config
-if config.config_file_name is not None:
+# 로깅 설정은 `alembic` 명령으로 직접 돌릴 때만 한다. 앱이 기동 중에 부를
+# 때는(`daedam.db.migrate`) 건드리면 안 된다 — fileConfig가 기존 로거를
+# 끄고 루트 포매터까지 갈아 치워서, 그 뒤의 면접 로그가 사라지고 남은 것도
+# 시각을 잃는다(실측). 시각이 없으면 재연결 루프와 사용자가 직접 들락거린
+# 것을 구분할 수 없다.
+if config.config_file_name is not None and config.attributes.get(
+    "configure_logger", True
+):
     fileConfig(config.config_file_name)
 
 url = database_url(data_root())

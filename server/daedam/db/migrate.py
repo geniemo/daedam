@@ -27,5 +27,8 @@ def upgrade_to_head() -> None:
     """
     config = Config(str(SERVER_DIR / "alembic.ini"))
     config.set_main_option("script_location", str(SERVER_DIR / "alembic"))
+    # 앱의 로깅 설정을 건드리지 말라는 표시. alembic/env.py가 이걸 본다 —
+    # 그러지 않으면 마이그레이션 한 번에 앱 로거가 전부 죽는다.
+    config.attributes["configure_logger"] = False
     command.upgrade(config, "head")
     logger.info("데이터베이스 스키마를 최신으로 올렸습니다")
