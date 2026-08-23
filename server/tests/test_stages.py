@@ -97,6 +97,6 @@ def test_demo는_인성_단계를_건너뛴다() -> None:
     """시연은 5~6분이라 자기소개 → 직무 → 마무리다. 인성 예산이 0이면 시간 경과로
     즉시 넘어간다 — 단계 구조는 그대로 두고 예산만으로 건너뛴다."""
     demo = SessionFlow("demo")
-    assert demo.stage_index_at(299.9) == 1   # 직무 끝 직전
-    assert demo.stage_index_at(300.0) == 3   # 인성(예산 0)을 지나 바로 마무리
-    assert demo.stage_remaining_s(300.0) == 60.0
+    assert demo.stage_index_at(239.9) == 1   # 직무 끝 직전
+    assert demo.stage_index_at(240.0) == 3   # 인성(예산 0)을 지나 바로 마무리
+    assert demo.stage_remaining_s(240.0) == 60.0
