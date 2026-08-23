@@ -29,18 +29,23 @@ from daedam.db import CreditEntry, Database
 
 logger = logging.getLogger(__name__)
 
-#: 가입 선물 = 회사 1곳 등록 + 면접 1회. 서비스를 온전히 한 바퀴 돌아야
-#: 결제를 판단할 수 있다. 이 한 명에게 우리가 무는 원가가 약 3,570원이라,
-#: 무료 지급의 총액 상한을 함께 정해야 한다
-#: (docs/specs/2026-08-23-credit-pricing.md).
-SIGNUP_GRANT = int(os.environ.get("CREDITS_SIGNUP_GRANT", "6"))
+#: 값의 근거는 docs/specs/2026-08-23-credit-pricing.md에 있다. 1크레딧을 990원
+#: 으로 잡으면 등록 5,940원 · 면접 3,960원이고 마진이 각각 53%다.
 
-#: 회사 등록 한 건. 원가가 면접의 약 5배다 — 대부분이 Deep Research($1~3)이고
-#: 면접 한 판은 오디오·툴을 합쳐 약 630원이다. 비율을 그대로 옮겼다.
-COST_RESEARCH = int(os.environ.get("CREDITS_PER_RESEARCH", "5"))
+#: 가입 선물 = 면접 한 판. 프리셋 기업(리서치가 이미 있는 회사)과 함께 쓰면
+#: 완주 한 바퀴를 체험시키면서 우리 원가는 1,865원으로 막힌다. 등록까지 공짜로
+#: 주면 1인당 4,665원이라 유입을 예측할 수 없는 상황에서는 위험하다.
+SIGNUP_GRANT = int(os.environ.get("CREDITS_SIGNUP_GRANT", "4"))
 
-#: 면접 한 판. 크레딧의 단위 그 자체다.
-COST_INTERVIEW = int(os.environ.get("CREDITS_PER_INTERVIEW", "1"))
+#: 회사 등록 한 건 — 원가 약 2,800원. 95%가 Deep Research이고 변동폭도 거기서
+#: 온다($1~3). 실원가가 오르면 이 숫자만 올리면 되고 결제 상품은 그대로다.
+COST_RESEARCH = int(os.environ.get("CREDITS_PER_RESEARCH", "6"))
+
+#: 면접 한 판 — 평가·리포트까지 포함해 원가 약 1,800원(폭 920~2,940원). 폭이
+#: 넓은 이유는 Live API가 턴마다 누적 맥락을 다시 과금해서다 — 원가가 통화
+#: 길이가 아니라 "길이 × 턴 수"에 비례한다. 코칭은 44~94원이라 따로 물리지
+#: 않고 여기 포함시킨다.
+COST_INTERVIEW = int(os.environ.get("CREDITS_PER_INTERVIEW", "4"))
 
 
 class InsufficientCredits(Exception):

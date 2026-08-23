@@ -20,15 +20,25 @@ from daedam.server.credits import (
 
 @pytest.fixture
 def bundle(tmp_path):
+    """저장소·원장·사용자. 사용자는 conftest가 넉넉히 얹어 둔 상태다."""
     store, accounts, user_id = make_store(tmp_path / "data")
     return store, accounts.credits, user_id
 
 
-def test_가입하면_선물을_받는다(bundle) -> None:
-    """등록 한 번 + 면접 몇 번을 해 봐야 결제를 판단할 수 있다."""
-    _, credits, user_id = bundle
-    assert credits.balance(user_id) == SIGNUP_GRANT
-    assert SIGNUP_GRANT >= COST_RESEARCH + COST_INTERVIEW
+def _drain(credits: Credits, user_id: str) -> None:
+    """잔액을 0으로. 경계를 보는 테스트가 여기서 시작한다."""
+    credits.charge(user_id, credits.balance(user_id), "interview", "비우기")
+
+
+def test_가입_선물은_면접_한_판이다(tmp_path) -> None:
+    """등록까지 덮지는 않는다 — 등록 원가가 면접보다 크고, 무료 체험은 리서치가
+    이미 있는 프리셋 기업으로 받는다는 전제다."""
+    store, accounts, _ = make_store(tmp_path / "data")
+    credits: Credits = accounts.credits
+    new_user = accounts.upsert(provider="kakao", provider_user_id="42")
+    assert credits.balance(new_user) == SIGNUP_GRANT
+    assert SIGNUP_GRANT >= COST_INTERVIEW
+    assert SIGNUP_GRANT < COST_RESEARCH
 
 
 def test_새_사용자에게만_한_번_준다(tmp_path) -> None:
@@ -42,8 +52,9 @@ def test_새_사용자에게만_한_번_준다(tmp_path) -> None:
 
 def test_쓰면_줄고_내역이_남는다(bundle) -> None:
     _, credits, user_id = bundle
+    before = credits.balance(user_id)
     credits.charge(user_id, COST_INTERVIEW, "interview", "s1")
-    assert credits.balance(user_id) == SIGNUP_GRANT - COST_INTERVIEW
+    assert credits.balance(user_id) == before - COST_INTERVIEW
     [latest, *_] = credits.history(user_id)
     assert latest.delta == -COST_INTERVIEW and latest.ref_id == "s1"
 
@@ -52,7 +63,7 @@ def test_잔액이_딱_맞으면_통과하고_하나_모자라면_막는다(tmp_
     _, accounts, user_id = make_store(tmp_path / "data")
     credits: Credits = accounts.credits
     # 잔액을 정확히 2로 만든다.
-    credits.charge(user_id, SIGNUP_GRANT, "interview", "비우기")
+    _drain(credits, user_id)
     credits.grant(user_id, 2, "admin_grant")
 
     credits.charge(user_id, 2, "interview", "s1")
@@ -67,27 +78,30 @@ def test_잔액이_딱_맞으면_통과하고_하나_모자라면_막는다(tmp_
 def test_확인만_하는_ensure는_쓰지_않는다(bundle) -> None:
     """리서치는 시작해야 id가 나오는데 시작하면 취소할 수 없다 — 그 전에 본다."""
     _, credits, user_id = bundle
+    before = credits.balance(user_id)
     credits.ensure(user_id, COST_RESEARCH)
-    assert credits.balance(user_id) == SIGNUP_GRANT
+    assert credits.balance(user_id) == before
     with pytest.raises(InsufficientCredits):
-        credits.ensure(user_id, SIGNUP_GRANT + 1)
+        credits.ensure(user_id, before + 1)
 
 
 def test_실패한_건은_되돌리고_두_번_되돌리지_않는다(bundle) -> None:
     """실패한 작업에 요금을 물리면 다시 시도할 수도 없다."""
     _, credits, user_id = bundle
+    before = credits.balance(user_id)
     credits.charge(user_id, COST_RESEARCH, "research", "task-1")
     credits.refund(user_id, "research", "task-1")
-    assert credits.balance(user_id) == SIGNUP_GRANT
+    assert credits.balance(user_id) == before
 
     credits.refund(user_id, "research", "task-1")  # 두 번째는 아무 일도 없다
-    assert credits.balance(user_id) == SIGNUP_GRANT
+    assert credits.balance(user_id) == before
 
 
 def test_쓴_적_없는_건은_되돌릴_것이_없다(bundle) -> None:
     _, credits, user_id = bundle
+    before = credits.balance(user_id)
     credits.refund(user_id, "research", "없는건")
-    assert credits.balance(user_id) == SIGNUP_GRANT
+    assert credits.balance(user_id) == before
 
 
 # ── 라우트에서 막히는가 ─────────────────────────────────────────────────
@@ -103,7 +117,7 @@ def test_크레딧이_없으면_등록이_402(tmp_path) -> None:
 
     store, accounts, user_id = make_store(tmp_path / "data")
     credits: Credits = accounts.credits
-    credits.charge(user_id, SIGNUP_GRANT, "interview", "비우기")
+    _drain(credits, user_id)
 
     started: list[str] = []
 
@@ -140,7 +154,7 @@ def test_크레딧이_없으면_면접_소켓이_닫힌다(tmp_path) -> None:
     store = _seeded_store(tmp_path, "card")
     credits: Credits = store.accounts.credits
     user_id = store.accounts.default_user_id()
-    credits.charge(user_id, credits.balance(user_id), "interview", "비우기")
+    _drain(credits, user_id)
 
     from fastapi.websockets import WebSocketDisconnect
 
@@ -189,6 +203,7 @@ def test_새_면접마다_물린다(tmp_path) -> None:
     credits: Credits = store.accounts.credits
     user_id = store.accounts.default_user_id()
 
+    before = credits.balance(user_id)
     client = _client(_FakeRunner(), store)
     for _ in range(2):
         # 대역 러너는 이벤트를 다 내고 끝내므로 커넥션마다 면접이 끝난다.
@@ -197,5 +212,5 @@ def test_새_면접마다_물린다(tmp_path) -> None:
             websocket.send_bytes(b"\x00")
             websocket.receive_bytes()
 
-    assert credits.balance(user_id) == SIGNUP_GRANT - 2 * COST_INTERVIEW
+    assert credits.balance(user_id) == before - 2 * COST_INTERVIEW
     assert len(store.list_sessions("card")) == 2

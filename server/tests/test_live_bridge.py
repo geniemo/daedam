@@ -483,3 +483,41 @@ def test_지원자_이름이_세션에_실린다(tmp_path) -> None:
         websocket.receive_bytes()
 
     assert runner.session.state["candidate"] == "박지원"
+
+
+# ── 토큰 사용 집계 (원가 실측) ───────────────────────────────────────────
+
+
+def test_토큰은_턴마다_더해진다() -> None:
+    """Live API는 턴마다 누적 맥락을 다시 과금한다 — 마지막 턴의 숫자만 보면
+    실제 청구를 크게 밑돈다. 그래서 합계를 쓴다."""
+    from daedam.server.live_bridge import _Usage
+
+    def _usage(prompt: int, response: int, audio: int, text: int):
+        return types.GenerateContentResponseUsageMetadata(
+            prompt_token_count=prompt,
+            candidates_token_count=response,
+            prompt_tokens_details=[
+                types.ModalityTokenCount(modality="AUDIO", token_count=audio),
+                types.ModalityTokenCount(modality="TEXT", token_count=text),
+            ],
+        )
+
+    usage = _Usage()
+    usage.add(_usage(1_000, 100, 800, 200))
+    usage.add(_usage(3_000, 120, 2_600, 400))
+
+    assert usage.turns == 2
+    assert usage.prompt == 4_000 and usage.response == 220
+    # 오디오와 텍스트는 요율이 4배 차이라 갈라서 남긴다.
+    assert usage.prompt_by_modality == {"AUDIO": 3_400, "TEXT": 600}
+    assert "2턴" in usage.summary() and "AUDIO=3400" in usage.summary()
+
+
+def test_사용량이_없으면_집계도_비어_있다() -> None:
+    from daedam.server.live_bridge import _Usage
+
+    usage = _Usage()
+    usage.add(types.GenerateContentResponseUsageMetadata())
+    assert usage.turns == 1 and usage.prompt == 0
+    assert usage.prompt_by_modality == {}

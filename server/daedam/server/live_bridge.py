@@ -30,6 +30,7 @@ import json
 import logging
 import os
 import time
+from dataclasses import dataclass, field
 from typing import Any, Mapping
 
 from fastapi import APIRouter, WebSocket
@@ -178,6 +179,54 @@ def _event_trace(event: Event) -> str | None:
     if event.partial:
         bits.append("partial")
     return f"[{event.author}] " + " · ".join(bits) if bits else None
+
+
+@dataclass
+class _Usage:
+    """면접 한 판이 태운 토큰. 원가를 실측하는 유일한 길이다.
+
+    **Live API는 턴마다 누적 맥락 전체를 다시 과금한다** — 마지막 턴의 숫자만
+    보면 실제 청구의 1/8까지 내려간다는 개발자 실측 보고가 있다. 그래서
+    합계를 쓴다. 원가가 통화 길이가 아니라 "길이 × 턴 수"에 비례한다는 뜻이라,
+    크레딧 가격을 정하려면 이 값이 있어야 한다.
+
+    양방향 전사도 텍스트 출력 요율로 따로 붙는다(입력·출력 오디오 요금과 별개).
+    모달리티별 내역을 같이 남기는 이유가 그것이다.
+
+    확인 경로 (설치된 ADK 2.6.3 / google-genai):
+      adk/events/event.py `class Event(LlmResponse)`
+      adk/models/llm_response.py:112 `usage_metadata`
+      genai/types.py `GenerateContentResponseUsageMetadata`
+        — prompt_token_count · candidates_token_count · *_tokens_details
+    """
+
+    turns: int = 0
+    prompt: int = 0
+    response: int = 0
+    #: 모달리티 이름 → 토큰 수. 오디오와 텍스트의 요율이 4배 차이라 갈라 둔다.
+    prompt_by_modality: dict[str, int] = field(default_factory=dict)
+    response_by_modality: dict[str, int] = field(default_factory=dict)
+
+    def add(self, usage: Any) -> None:
+        self.turns += 1
+        self.prompt += usage.prompt_token_count or 0
+        self.response += usage.candidates_token_count or 0
+        for details, bucket in (
+            (usage.prompt_tokens_details, self.prompt_by_modality),
+            (usage.candidates_tokens_details, self.response_by_modality),
+        ):
+            for item in details or []:
+                name = getattr(item.modality, "value", str(item.modality))
+                bucket[name] = bucket.get(name, 0) + (item.token_count or 0)
+
+    def summary(self) -> str:
+        def parts(bucket: dict[str, int]) -> str:
+            return " ".join(f"{k}={v}" for k, v in sorted(bucket.items())) or "-"
+
+        return (
+            f"{self.turns}턴 · 입력 {self.prompt} [{parts(self.prompt_by_modality)}]"
+            f" · 출력 {self.response} [{parts(self.response_by_modality)}]"
+        )
 
 
 def _elapsed_s(state: Mapping[str, Any]) -> float:
@@ -378,6 +427,7 @@ def create_live_router(
         queue = LiveRequestQueue()
 
         turn_count = 0  # 이 커넥션에서 완료된 턴 수 — 로그용
+        usage = _Usage()  # 이 커넥션이 태운 토큰 — 원가 실측용
         ended_notified = False
 
         async def notify_ended() -> None:
@@ -538,6 +588,8 @@ def create_live_router(
                                 logger.info("추적: 오디오 %d프레임", audio_run)
                                 audio_run = 0
                             logger.info("추적: %s", line)
+                    if event.usage_metadata is not None:
+                        usage.add(event.usage_metadata)
                     collect("interviewer", event.output_transcription)
                     collect("applicant", event.input_transcription)
                     if event.turn_complete:
@@ -591,6 +643,10 @@ def create_live_router(
             # 받으므로 중간 저장이고, 마지막 커넥션의 것이 최종본이 된다 —
             # 면접이 어떻게 끝나든(종료 버튼·창 닫기) 기록이 남는다.
             recording.finish()
+            # 이 커넥션이 태운 토큰. 크레딧 가격의 근거가 될 유일한 실측치라
+            # 커넥션마다 남긴다 — 한 면접이 재접속으로 여러 커넥션에 걸친다.
+            if usage.turns:
+                logger.info("토큰 사용 (session=%s): %s", session_id, usage.summary())
             # 전사 전문을 면접 기록으로 올린다. 커넥션이 끊길 때마다 덮으므로
             # 마지막 커넥션의 것이 최종본이 된다.
             store.save_transcript(session_id, recording.transcript_payload())
