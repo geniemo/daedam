@@ -377,14 +377,20 @@ def create_live_router(
                     prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=VOICE)
                 )
             ),
-            # Live 커넥션 재개 핸들을 받기 위해 켠다. 자막용 양방향 전사는
-            # RunConfig 기본값이 이미 켜 준다(run_config.py의 default_factory).
+            # Live 커넥션 재개 핸들을 받기 위해 켠다.
             session_resumption=types.SessionResumptionConfig(),
-            # 전사 힌트. 언어를 못 박고, 그날 나올 낱말을 미리 준다 — 실측에서
-            # 이름과 기술 용어가 계속 깨졌다("박지원"→"박지훈", "Jetson AGX
-            # Orin"→"Jeston Ajax 올인"). ADK가 이 설정을 그대로 Live 연결로
-            # 넘긴다(adk/flows/llm_flows/basic.py:117).
+            # 전사 힌트. 언어를 못 박고, 그날 나올 낱말을 미리 준다. 입력
+            # (지원자) 쪽은 이름·용어가 깨져서고("박지원"→"박지훈", "Jetson AGX
+            # Orin"→"Jeston Ajax 올인"), 출력(면접관) 쪽은 기본값(빈 설정 =
+            # 언어 자동 감지)에서 전사 스트림이 중간에 죽어서다 — 음차
+            # 고유명사 "디밀리언 젯슨"까지 적고 멈춘 채 오디오만 계속 온 실측
+            # 2회(같은 질문에서 재현, 오디오 31프레임에 전사 1조각). ADK가
+            # 둘 다 그대로 Live 연결로 넘긴다(adk/flows/llm_flows/basic.py:114·117).
             input_audio_transcription=types.AudioTranscriptionConfig(
+                language_codes=_LANGUAGE_CODES,
+                custom_vocabulary=vocabulary,
+            ),
+            output_audio_transcription=types.AudioTranscriptionConfig(
                 language_codes=_LANGUAGE_CODES,
                 custom_vocabulary=vocabulary,
             ),
