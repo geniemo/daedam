@@ -1,7 +1,24 @@
 // 리서치 API 클라이언트. 서버 계약: server/daedam/server/preparation_routes.py
 // dev에서는 vite 프록시(/api → :8000), 배포에서는 같은 오리진.
 
+import type { Insufficient } from '@/api/credits'
 import type { ApplicationPart, DocSection, UncertainRef } from '@/data/types'
+
+/**
+ * 크레딧이 모자라 등록이 막혔다.
+ *
+ * 일반 실패와 갈라 두는 이유: 화면이 "다시 시도"가 아니라 "충전"을 안내해야
+ * 하고, 재시도해 봐야 같은 결과다.
+ */
+export class InsufficientCreditsError extends Error {
+  detail: Insufficient
+
+  constructor(detail: Insufficient) {
+    super(detail.message)
+    this.name = 'InsufficientCreditsError'
+    this.detail = detail
+  }
+}
 
 export interface PreparationStatus {
   status: 'running' | 'done' | 'failed'
@@ -48,6 +65,10 @@ export async function startPreparation(
       name,
     }),
   })
+  if (res.status === 402) {
+    const body = (await res.json()) as { detail: Insufficient }
+    throw new InsufficientCreditsError(body.detail)
+  }
   if (!res.ok) throw new Error(`리서치 시작 실패: ${res.status}`)
   const data = (await res.json()) as { task_id: string }
   return data.task_id

@@ -65,21 +65,26 @@ class InterviewPreparation:
         generate: Callable[..., list[dict[str, Any]]] = generate_question_pool,
         extract_vocabulary: Callable[..., list[str]] = generate_vocabulary,
         poll_interval_s: float = 1.0,
+        on_failed: Callable[[str, str], None] | None = None,
     ) -> None:
         """
         Args:
             research: fixture 또는 live 리서치 백엔드.
-            store: 준비 데이터 파일 저장소.
+            store: 준비 데이터 저장소.
             generate: 질문 생성 함수. 테스트가 대역을 주입한다.
             extract_vocabulary: 전사 어휘 추출 함수. 테스트가 대역을 주입한다.
             poll_interval_s: 워커가 리서치 완료를 확인하는 간격. live에서는
                 30초쯤으로 늘려 폴링 API 낭비를 없앤다.
+            on_failed: 준비가 실패했을 때 `(user_id, 준비 id)`로 불린다.
+                크레딧을 되돌리는 자리 — 실패한 작업에 요금을 물리면 다시
+                시도할 수도 없다. 파이프라인이 크레딧을 직접 알지는 않는다.
         """
         self._research = research
         self._store = store
         self._generate = generate
         self._extract_vocabulary = extract_vocabulary
         self._poll_interval_s = poll_interval_s
+        self._on_failed = on_failed
         self._states: dict[str, _PipelineState] = {}
         self._recover()
 
@@ -208,7 +213,7 @@ class InterviewPreparation:
                 strikes = 0
 
                 if research is None or research.state == "failed":
-                    state.phase = "failed"
+                    self._fail(state, task_id, user_id)
                     return
                 if research.state == "done":
                     break
@@ -237,7 +242,16 @@ class InterviewPreparation:
             self._run_generation(task_id, self._store.load(task_id))
         except Exception:
             logger.exception("면접 준비 실패 (interview=%s)", task_id)
-            state.phase = "failed"
+            self._fail(state, task_id, user_id)
+
+    def _fail(self, state: _PipelineState, task_id: str, user_id: str) -> None:
+        """준비가 실패했다. 상태를 남기고 크레딧을 되돌린다."""
+        state.phase = "failed"
+        if self._on_failed is not None and user_id:
+            try:
+                self._on_failed(user_id, task_id)
+            except Exception:
+                logger.exception("준비 실패 뒤처리 중 오류 (interview=%s)", task_id)
 
     def _run_generation(self, task_id: str, data: InterviewData) -> None:
         state = self._states[task_id]

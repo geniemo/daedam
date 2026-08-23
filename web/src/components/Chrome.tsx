@@ -1,6 +1,7 @@
 import { Link, Outlet, useLocation } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getMe, logout } from '@/api/auth'
+import { getCredits } from '@/api/credits'
 
 /**
  * 공통 헤더 (README §공통 헤더).
@@ -13,6 +14,7 @@ export function Chrome() {
   const hidden = HIDDEN_ON.some((p) => pathname.startsWith(p))
   const queryClient = useQueryClient()
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe, retry: false })
+  const { data: credits } = useQuery({ queryKey: ['credits'], queryFn: getCredits })
   const name = me?.name || '지원자'
 
   return (
@@ -36,6 +38,12 @@ export function Chrome() {
             </nav>
             <div className="flex-1" />
             <div className="flex items-center gap-[10px]">
+              {/* 남은 횟수는 다음 행동을 정하는 정보라 늘 보인다. */}
+              {credits && (
+                <span className="mr-[4px] rounded-full border border-accent-line bg-accent-bg px-[10px] py-[4px] text-[12px] text-accent">
+                  크레딧 <span className="num font-semibold">{credits.balance}</span>
+                </span>
+              )}
               <span className="text-[13px] text-muted">{name}</span>
               {me?.avatarUrl ? (
                 <img

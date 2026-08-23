@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { getCredits } from '@/api/credits'
 import { useNavigate } from 'react-router'
 import { useActiveCard } from '@/store/app'
 import { AccentDot, CheckDot, EmptyDot, OutlineButton, SectionLabel } from '@/components/ui'
@@ -124,6 +126,8 @@ function Preflight() {
 export function Ready() {
   const nav = useNavigate()
   const card = useActiveCard()
+  const { data: credits } = useQuery({ queryKey: ['credits'], queryFn: getCredits })
+  const short = credits !== undefined && credits !== null && credits.balance < credits.costs.interview
 
   return (
     <main className="mx-auto max-w-(--container-doc) px-8 pt-[44px] pb-20 animate-dm-fade">
@@ -188,14 +192,28 @@ export function Ready() {
           live 모드에서는 리서치가 한 번 더 도는 것과 같다. */}
       <div className="flex items-center">
         <div className="flex-1" />
-        {/* AudioContext는 이 클릭 핸들러 안에서 생성됩니다 — 밖에서 만들면
-            자동재생 정책에 막혀 무음이 됩니다. useVoiceSession 참조. */}
-        <button
-          onClick={() => nav('/interview')}
-          className="rounded-control bg-ink px-[34px] py-[14px] text-[15px] font-semibold text-white"
-        >
-          면접 시작하기
-        </button>
+        <div className="flex flex-col items-end gap-[9px]">
+          {/* AudioContext는 이 클릭 핸들러 안에서 생성됩니다 — 밖에서 만들면
+              자동재생 정책에 막혀 무음이 됩니다. useVoiceSession 참조. */}
+          <button
+            onClick={() => nav('/interview')}
+            disabled={short}
+            className={`rounded-control px-[34px] py-[14px] text-[15px] font-semibold text-white ${
+              short ? 'bg-faintest' : 'bg-ink'
+            }`}
+          >
+            면접 시작하기
+          </button>
+          {/* 여기서 막는다. 면접 화면까지 들어갔다가 소켓이 닫히면 마이크
+              권한을 물어본 뒤에 못 한다고 말하는 꼴이 된다. */}
+          {credits && (
+            <span className={`text-[12.5px] ${short ? 'text-accent' : 'text-faint'}`}>
+              {short
+                ? `크레딧이 부족합니다 · 면접에 ${credits.costs.interview}개 필요`
+                : `크레딧 ${credits.balance}개 · 면접에 ${credits.costs.interview}개`}
+            </span>
+          )}
+        </div>
       </div>
     </main>
   )

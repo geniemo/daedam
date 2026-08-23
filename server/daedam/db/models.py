@@ -20,7 +20,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -143,3 +143,29 @@ class InterviewSession(Base):
     def score(self) -> int | None:
         """코칭 점수. 피드백이 아직 없으면 None."""
         return ((self.feedback or {}).get("coaching") or {}).get("score")
+
+
+class CreditEntry(Base):
+    """크레딧이 늘고 준 기록 한 줄. 잔액은 이 행들의 합이다.
+
+    잔액을 칼럼 하나로 들고 있지 않은 이유: 언제 왜 늘고 줄었는지가 남아야
+    환불·정산·문의 대응이 된다. "왜 크레딧이 줄었냐"는 물음에 답할 수 없는
+    서비스는 결제를 붙일 수 없다.
+
+    실패한 리서치처럼 되돌려야 하는 일도 지우기가 아니라 반대 부호의 행을
+    더해서 처리한다 — 기록은 고치지 않는다.
+    """
+
+    __tablename__ = "credit_entries"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_new_id)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    #: 양수면 지급, 음수면 차감.
+    delta: Mapped[int] = mapped_column(Integer)
+    #: signup_grant · research · interview · refund · purchase · admin_grant.
+    reason: Mapped[str] = mapped_column(String(32))
+    #: 무엇 때문인가 — 준비 데이터 id 또는 면접 id. 지급에는 없다.
+    ref_id: Mapped[str | None] = mapped_column(String(64), default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

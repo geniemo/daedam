@@ -152,7 +152,9 @@ def _seeded_store(tmp_path, *interview_ids: str):
 def _client(runner: _FakeRunner, store, profile: str = "demo") -> TestClient:
     app = FastAPI()
     app.include_router(
-        create_live_router(runner, store, store.accounts, profile=profile)
+        create_live_router(
+            runner, store, store.accounts, store.accounts.credits, profile=profile
+        )
     )
     return TestClient(app)
 

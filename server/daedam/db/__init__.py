@@ -6,11 +6,12 @@
 """
 
 from .engine import Database, async_url, database_url
-from .models import Application, Base, InterviewSession, User
+from .models import Application, Base, CreditEntry, InterviewSession, User
 
 __all__ = [
     "Application",
     "Base",
+    "CreditEntry",
     "Database",
     "InterviewSession",
     "User",

@@ -3,6 +3,9 @@ import { useNavigate, useParams } from 'react-router'
 import { startPreparation } from '@/api/preparation'
 import { useQuery } from '@tanstack/react-query'
 import { getMe } from '@/api/auth'
+import { getCredits } from '@/api/credits'
+import type { Insufficient } from '@/api/credits'
+import { InsufficientCreditsError } from '@/api/preparation'
 import { useAppStore } from '@/store/app'
 import { Label, TextArea, TextField } from '@/components/ui'
 
@@ -143,6 +146,9 @@ function PencilMark() {
 function Step2() {
   const nav = useNavigate()
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe, retry: false })
+  const { data: credits } = useQuery({ queryKey: ['credits'], queryFn: getCredits })
+  // 크레딧이 모자라 막혔다. 다시 눌러도 같은 결과라 안내를 띄운다.
+  const [blocked, setBlocked] = useState<Insufficient | null>(null)
   const { company, role, posting, parts, setParts, submitRegister } = useAppStore()
   const [openPart, setOpenPart] = useState(0)
   // 어느 파트의 몇 번째 항목이 열렸는지. 인덱스만 들고 있으면 A파트의 첫
@@ -387,14 +393,23 @@ function Step2() {
           onClick={async () => {
             // §서버 연동 1 — 리서치를 시작하고 task_id를 카드 id로 쓴다.
             // 서버가 없으면(프론트 단독 실행) 프로토타입의 로컬 진행으로 돌아간다.
-            const taskId = await startPreparation(
-              company.trim(),
-              role.trim(),
-              parts,
-              posting,
-              // 로그인한 사용자입니다 — 등록할 때마다 다시 묻지 않습니다.
-              me?.name ?? '',
-            ).catch(() => undefined)
+            let taskId: string | undefined
+            try {
+              taskId = await startPreparation(
+                company.trim(),
+                role.trim(),
+                parts,
+                posting,
+                // 로그인한 사용자입니다 — 등록할 때마다 다시 묻지 않습니다.
+                me?.name ?? '',
+              )
+            } catch (error) {
+              if (error instanceof InsufficientCreditsError) {
+                setBlocked(error.detail)
+                return
+              }
+              // 서버가 없으면(프론트 단독 실행) 프로토타입의 로컬 진행으로 돌아간다.
+            }
             submitRegister(taskId)
             nav('/research')
           }}
@@ -403,6 +418,20 @@ function Step2() {
           등록하고 준비 시작
         </button>
       </div>
+
+      {blocked && (
+        /* 다시 시도하면 같은 결과다 — "다시 시도"가 아니라 무엇이 부족한지 적는다. */
+        <p className="mt-[14px] mb-0 text-right text-[13px] text-accent">
+          크레딧이 부족합니다. 등록에 {blocked.needed}개가 필요한데 {blocked.balance}개
+          남았습니다.
+        </p>
+      )}
+      {!blocked && credits && (
+        <p className="mt-[14px] mb-0 text-right text-[12.5px] text-faint">
+          <span className="num">{credits.balance}</span>개 보유 · 등록에{' '}
+          <span className="num">{credits.costs.research}</span>개
+        </p>
+      )}
     </main>
   )
 }

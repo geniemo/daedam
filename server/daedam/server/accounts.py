@@ -21,6 +21,8 @@ from starlette.websockets import WebSocket
 
 from daedam.db import Database, User
 
+from .credits import SIGNUP_GRANT, Credits
+
 logger = logging.getLogger(__name__)
 
 #: 로그인 없이 도는 동안 쓰는 가상 제공자. 실제 OAuth 제공자("kakao"·"google")와
@@ -35,15 +37,24 @@ _SESSION_KEY = "user_id"
 class Accounts:
     """사용자 조회. 앱 조립 시점에 하나 만들어 라우터들이 나눠 쓴다."""
 
-    def __init__(self, db: Database, *, login_required: bool = False) -> None:
+    def __init__(
+        self,
+        db: Database,
+        *,
+        login_required: bool = False,
+        credits: Credits | None = None,
+    ) -> None:
         """
         Args:
             db: 엔진과 세션 팩토리.
             login_required: 로그인을 강제할 것인가. 카카오·구글 설정이 하나도
                 없으면 False로 두어 기본 사용자로 돈다.
+            credits: 있으면 새 계정에 가입 크레딧을 준다. 가입 선물은 계정이
+                생기는 사실에 딸린 것이라 여기서 준다.
         """
         self._db = db
         self._login_required = login_required
+        self._credits = credits
         self._local_id: str | None = None
         self._lock = threading.Lock()
 
@@ -89,6 +100,7 @@ class Accounts:
 
         재로그인마다 프로필을 갱신한다 — 이름이나 사진을 바꿨을 수 있다.
         """
+        created = False
         with self._db.session() as session:
             found = session.scalar(
                 select(User).where(
@@ -99,12 +111,16 @@ class Accounts:
             if found is None:
                 found = User(provider=provider, provider_user_id=provider_user_id)
                 session.add(found)
+                created = True
                 logger.info("새 사용자 (%s)", provider)
             found.email = email
             found.name = name or found.name
             found.avatar_url = avatar_url
             session.flush()
-            return found.id
+            user_id = found.id
+        if created and self._credits is not None:
+            self._credits.grant(user_id, SIGNUP_GRANT, "signup_grant")
+        return user_id
 
     def profile(self, user_id: str | None) -> dict[str, Any] | None:
         """화면이 헤더에 그릴 사용자 정보. 로그인 안 했으면 None."""

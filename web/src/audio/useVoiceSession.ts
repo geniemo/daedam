@@ -22,7 +22,10 @@ export interface Levels {
   output: number
 }
 
-export function useVoiceSession(cardId: string, onFinished: () => void) {
+export function useVoiceSession(
+  cardId: string,
+  onFinished: (reason?: string) => void,
+) {
   const session = useRef<VoiceSession | null>(null)
   /** Audio-rate values live here, never in the store — see store/app.ts. */
   const levels = useRef<Levels>({ input: 0, output: 0 })
@@ -39,11 +42,14 @@ export function useVoiceSession(cardId: string, onFinished: () => void) {
     reset,
   } = useInterviewStore.getState()
 
-  const finish = useCallback(() => {
-    if (finished.current) return
-    finished.current = true
-    onFinished()
-  }, [onFinished])
+  const finish = useCallback(
+    (reason?: string) => {
+      if (finished.current) return
+      finished.current = true
+      onFinished(reason)
+    },
+    [onFinished],
+  )
 
   useEffect(() => {
     finished.current = false

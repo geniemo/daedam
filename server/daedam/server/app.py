@@ -32,6 +32,8 @@ from daedam.settings import data_root as default_data_root
 
 from .accounts import Accounts
 from .auth import configured_providers, create_auth_router
+from .credit_routes import create_credit_router
+from .credits import Credits
 from .evaluation import InterviewEvaluation
 from .interview_routes import create_interviews_router
 from .live_bridge import create_live_router
@@ -150,7 +152,8 @@ def create_app() -> FastAPI:
             "로그인 설정이 없어 인증 없이 돕니다 — 모든 데이터가 한 사용자의 것입니다. "
             "KAKAO_CLIENT_ID/SECRET 또는 GOOGLE_CLIENT_ID/SECRET을 설정하십시오."
         )
-    accounts = Accounts(db, login_required=bool(providers))
+    credits = Credits(db)
+    accounts = Accounts(db, login_required=bool(providers), credits=credits)
 
     # 세션 쿠키. OAuth 흐름의 state와 로그인 상태가 여기 담긴다. 비밀키가 바뀌면
     # 모두 로그아웃되므로 배포에서는 반드시 고정 값을 준다.
@@ -161,6 +164,7 @@ def create_app() -> FastAPI:
         https_only=os.environ.get("COOKIE_SECURE") == "1",
     )
     app.include_router(create_auth_router(accounts))
+    app.include_router(create_credit_router(accounts, credits))
     # live는 20~60분짜리 작업이라 1초 폴링이면 조회 API를 수천 번 두드린다.
     # fixture는 12초 안에 끝나므로 촘촘히 봐야 진행 화면이 자연스럽다.
     live = os.environ.get("RESEARCH_MODE") == "live"
@@ -168,8 +172,13 @@ def create_app() -> FastAPI:
         research=_research_service(data_root),
         store=store,
         poll_interval_s=30.0 if live else 1.0,
+        # 준비가 실패하면 크레딧을 되돌린다. 실패한 작업에 요금을 물리면
+        # 다시 시도할 수도 없다.
+        on_failed=lambda user_id, task_id: credits.refund(
+            user_id, "research", task_id
+        ),
     )
-    app.include_router(create_preparation_router(preparation, accounts))
+    app.include_router(create_preparation_router(preparation, accounts, credits))
     # 홈 화면이 그릴 카드 목록. 프론트가 자기 메모리로 들고 있으면 새로고침에
     # 사라지고, 준비 안 된 면접을 시작하려다 브리지에서 거절당한다.
     # 면접이 끝나면 브리지가 이걸 깨우고, 분석 화면이 결과를 기다린다.
@@ -205,6 +214,7 @@ def create_app() -> FastAPI:
             runner,
             store,
             accounts,
+            credits,
             profile=_interview_profile(),
             evaluation=evaluation,
         )

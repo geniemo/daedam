@@ -13,6 +13,9 @@ os.environ.setdefault("SEARCH_EMBEDDINGS", "off")
 def make_store(root: Path) -> tuple[Any, Any, str]:
     """테스트용 저장소 한 벌 — (저장소, 계정, 기본 사용자 id).
 
+    계정에는 크레딧 원장이 매달려 있다(`accounts.credits`). 기본 사용자는
+    가입 선물을 받은 상태라 등록·면접이 막히지 않는다.
+
     임시 디렉터리의 SQLite 파일을 쓴다. 인메모리로 하면 스레드마다 다른
     데이터베이스를 보게 되는데, 준비·평가 파이프라인이 전담 스레드로 돈다.
 
@@ -21,12 +24,15 @@ def make_store(root: Path) -> tuple[Any, Any, str]:
     """
     from daedam.db import Database
     from daedam.server.accounts import Accounts
+    from daedam.server.credits import Credits
     from daedam.server.store import InterviewStore
 
     root.mkdir(parents=True, exist_ok=True)
     db = Database(f"sqlite:///{root / 'test.db'}")
     db.create_all()
-    accounts = Accounts(db)
+    credits = Credits(db)
+    accounts = Accounts(db, credits=credits)
+    accounts.credits = credits
     return InterviewStore(db, root), accounts, accounts.default_user_id()
 
 

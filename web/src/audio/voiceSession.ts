@@ -27,7 +27,12 @@ export interface VoiceSessionHandlers {
   onQuestion?: (index: number) => void
   onCaption?: (text: string, final: boolean) => void
   onResumeToken?: (token: string) => void
-  onEnded?: () => void
+  /**
+   * 면접이 끝났다. `reason`은 정상 종료가 아닐 때만 실린다 — 지금은
+   * 'credits'(크레딧 부족으로 시작조차 못 함) 하나다. 화면은 이때
+   * 결과가 아니라 홈으로 가야 한다.
+   */
+  onEnded?: (reason?: string) => void
   onError?: (err: Error) => void
 }
 
@@ -209,7 +214,7 @@ export class VoiceSession {
           break
         case 'ended':
           this.closing = true
-          this.opts.handlers.onEnded?.()
+          this.opts.handlers.onEnded?.(msg.reason as string | undefined)
           break
       }
     }

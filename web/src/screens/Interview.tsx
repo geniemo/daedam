@@ -26,7 +26,12 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
   const elapsed = useInterviewStore((s) => s.elapsed)
   const connection = useInterviewStore((s) => s.connection)
 
-  const onFinished = useCallback(() => nav('/analyzing'), [nav])
+  // 크레딧이 없어 면접이 열리지도 않은 경우는 분석할 것이 없다 — 홈으로
+  // 돌려보낸다. 그 밖에는 정상 종료라 결과를 기다린다.
+  const onFinished = useCallback(
+    (reason?: string) => nav(reason === 'credits' ? '/' : '/analyzing'),
+    [nav],
+  )
   const { levels, end } = useVoiceSession(card.id, onFinished)
 
   return (

@@ -57,6 +57,7 @@ from interviewer.tools import (
 
 from . import fillers
 from .accounts import Accounts
+from .credits import COST_INTERVIEW, Credits, InsufficientCredits
 from .recording import InterviewRecording
 from .store import InterviewData, InterviewStore
 
@@ -226,6 +227,7 @@ def create_live_router(
     runner: Runner,
     store: InterviewStore,
     accounts: Accounts,
+    credits: Credits,
     profile: str = DEFAULT_PROFILE,
     evaluation: Any = None,
 ) -> APIRouter:
@@ -239,6 +241,8 @@ def create_live_router(
             기록만 남기고 만들지 않는다(테스트).
         store: 면접 준비 데이터 저장소. 세션 생성 시 여기서 읽어 시딩한다.
         accounts: 접속한 사람을 알아낸다 — 남의 면접에 붙는 것을 막는다.
+        credits: 새 면접 한 판의 크레딧을 차감한다. 재접속에는 물리지 않는다 —
+            커넥션 수명(~10분) 때문에 한 판이 여러 번 접속하기 때문이다.
         profile: 시간 예산 프로필 이름 (`daedam.interview.stages.PROFILES`).
             세션 state에도 실려 툴이 같은 예산으로 단계를 판정한다.
     """
@@ -308,6 +312,18 @@ def create_live_router(
             # 앞서는 카드 id를 대화 세션 id로 썼는데, 면접을 여러 번 하게 되면
             # 두 번째 면접이 첫 면접의 대화 이력을 이어받는다.
             session_id = store.start_session(card)
+            try:
+                # 새 판에만 물린다. 재접속은 같은 판이라 여기를 지나지 않는다 —
+                # 커넥션 수명이 ~10분이라 15~20분 면접은 반드시 재접속한다.
+                credits.charge(user_id, COST_INTERVIEW, "interview", session_id)
+            except InsufficientCredits:
+                # 열어 둔 판을 닫는다. 안 닫으면 다음 접속이 이걸 이어받아
+                # 크레딧 없이 면접이 시작된다.
+                store.end_session(session_id)
+                logger.info("크레딧 부족으로 면접 시작 거부 (card=%s)", card)
+                await websocket.send_json({"type": "ended", "reason": "credits"})
+                await websocket.close(code=4002, reason="크레딧 부족")
+                return
             logger.info("면접 시작 (card=%s, session=%s)", card, session_id)
 
         session = await runner.session_service.get_session(

@@ -29,7 +29,7 @@ def _client(tmp_path: Path, duration_s: float = 0.01) -> TestClient:
         poll_interval_s=0.01,
     )
     app = FastAPI()
-    app.include_router(create_preparation_router(preparation, accounts))
+    app.include_router(create_preparation_router(preparation, accounts, accounts.credits))
     return TestClient(app)
 
 
