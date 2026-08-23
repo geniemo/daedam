@@ -43,8 +43,15 @@ SESSION_USER_KEY = "user_id"
 _KAKAO_METADATA = "https://kauth.kakao.com/.well-known/openid-configuration"
 _GOOGLE_METADATA = "https://accounts.google.com/.well-known/openid-configuration"
 
-#: 로그인 뒤 돌아갈 화면. 프론트가 SPA라 루트로 보내면 상태를 다시 읽는다.
-_AFTER_LOGIN = "/"
+
+def _after_login() -> str:
+    """로그인 뒤 돌아갈 화면. 프론트가 SPA라 루트로 보내면 상태를 다시 읽는다.
+
+    배포에서는 프론트와 서버가 같은 오리진이라 "/"면 된다. 개발에서는 vite가
+    5173에 따로 떠 있어서 서버의 "/"로 보내면 ADK dev UI가 뜬다 —
+    `APP_BASE_URL=http://localhost:5173`으로 넘긴다.
+    """
+    return os.environ.get("APP_BASE_URL") or "/"
 
 
 def _provider_config(provider: str) -> tuple[str, str] | None:
@@ -140,10 +147,10 @@ def create_auth_router(accounts: Accounts) -> APIRouter:
             # 사용자가 동의를 취소한 경우가 대부분이다. 에러 화면 대신 처음으로
             # 돌려보낸다 — 다시 누르면 된다.
             logger.info("%s 로그인이 완료되지 않았습니다", provider, exc_info=True)
-            return RedirectResponse(_AFTER_LOGIN, status_code=302)
+            return RedirectResponse(_after_login(), status_code=302)
         user_id = accounts.upsert(**_profile_from(token, provider))
         request.session[SESSION_USER_KEY] = user_id
-        return RedirectResponse(_AFTER_LOGIN, status_code=302)
+        return RedirectResponse(_after_login(), status_code=302)
 
     @router.post("/logout")
     def logout(request: Request) -> dict[str, bool]:
