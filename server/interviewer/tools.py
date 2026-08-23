@@ -254,6 +254,42 @@ def _applicant_said_since(tool_context: ToolContext, marker: int) -> tuple[str, 
 # ── 파볼 곳 ──────────────────────────────────────────────────────────────
 
 
+def _awaiting_probe_extraction(state: Mapping[str, Any]) -> bool:
+    """다음 `ask_question` 호출이 파볼 곳 추출(Grok, ~2초)을 도는 상태인가.
+
+    뼈대질문이 나갔고(`STATE_PROBES_FOR`) 그 질문의 파볼 곳을 아직 안 뽑았을
+    때다(`STATE_PROBES` 비어 있음). 마무리 단계는 아니다 — "마지막으로 하고
+    싶은 말씀"에 파볼 곳은 없다. 파면 "꼭 입사하고 싶습니다"에서 입사 동기를
+    캐게 된다(실측) — 그건 마무리가 아니라 심문이다.
+
+    필러 재생(`daedam.server.fillers`)이 툴 실행 직전에 같은 판정을 쓴다 —
+    추출이 만드는 침묵이 필러가 메울 자리라서, 판정이 어긋나면 필러가 엉뚱한
+    자리에서 나간다. 추출 조건을 고치면 이 함수를 같이 고칠 것.
+    """
+    in_closing = int(state.get(STATE_STAGE, 0)) == len(STAGE_NAMES) - 1
+    return bool(
+        not state.get(STATE_PROBES)
+        and state.get(STATE_PROBES_FOR)
+        and state.get(STATE_ASKED)
+        and not in_closing
+    )
+
+
+def pending_extraction_answer(tool_context: ToolContext) -> str:
+    """이번 호출이 파볼 곳 추출로 이어질 때, 그 입력이 될 답변. 아니면 빈 문자열.
+
+    필러 재생이 툴 실행 전에 부른다. 답변이 비어 있으면(전사 없음) 추출도
+    돌지 않으므로 빈 문자열이다 — 아무 말도 안 한 지원자에게 "잘 들었습니다"가
+    나가면 안 된다.
+    """
+    if not _awaiting_probe_extraction(tool_context.state):
+        return ""
+    answer, _ = _applicant_said_since(
+        tool_context, int(tool_context.state.get(STATE_ANSWER_MARKER, 0))
+    )
+    return answer
+
+
 def _experience_candidates(
     pool: QuestionPool, *, stage: int, asked: list[str]
 ) -> dict[str, Question]:
@@ -448,11 +484,10 @@ def ask_question(
             logger.info("answered 누락 — 못 들은 것으로 봅니다: %s", current["topic"])
             _retry_or_close(state, current)
 
-    # 아직 안 뽑았으면 지금 뽑는다 — 뼈대질문 뒤 첫 호출이다. 마무리 단계는
-    # 빼고: "마지막으로 하고 싶은 말씀"에 파볼 곳은 없다. 파면 "꼭 입사하고
-    # 싶습니다"에서 입사 동기를 캐게 된다(실측) — 그건 마무리가 아니라 심문이다.
+    # 아직 안 뽑았으면 지금 뽑는다 — 뼈대질문 뒤 첫 호출이다. 조건의 뜻은
+    # `_awaiting_probe_extraction` 참고.
     in_closing = int(state.get(STATE_STAGE, 0)) == len(STAGE_NAMES) - 1
-    if not probes and state.get(STATE_PROBES_FOR) and asked and not in_closing:
+    if _awaiting_probe_extraction(state):
         question = pool.by_id(state[STATE_PROBES_FOR])
         answer, _ = _applicant_said_since(tool_context, int(state.get(STATE_ANSWER_MARKER, 0)))
         if question is not None and answer:

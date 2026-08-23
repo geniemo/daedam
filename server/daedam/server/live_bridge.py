@@ -55,6 +55,7 @@ from interviewer.tools import (
     STATE_STARTED_AT,
 )
 
+from . import fillers
 from .recording import InterviewRecording
 from .store import FileInterviewStore, InterviewData
 
@@ -305,6 +306,10 @@ def create_live_router(
             recording.note(speaker, text or partial[speaker])
             partial[speaker] = ""
 
+        # 툴이 도는 침묵을 메울 필러 클립의 전송 상대 — 이 커넥션의 소켓.
+        # 콜백(`fillers.play_filler_before_tool`)이 세션 id로 찾아 쓴다.
+        filler_connection = fillers.register(card, websocket.send_bytes)
+
         # 에이전트의 귀. 여기 넣는 것이 Gemini로 흘러간다 — run_live가 이
         # 큐를 소비한다. close()가 들어가면 대화가 정상 종료된다.
         queue = LiveRequestQueue()
@@ -518,6 +523,7 @@ def create_live_router(
         except Exception:
             logger.exception("음성 브리지 오류 (card=%s)", card)
         finally:
+            fillers.unregister(card, filler_connection)
             # 커넥션이 끝날 때마다 저장한다. 재접속이면 다음 커넥션이 이어
             # 받으므로 중간 저장이고, 마지막 커넥션의 것이 최종본이 된다 —
             # 면접이 어떻게 끝나든(종료 버튼·창 닫기) 기록이 남는다.
