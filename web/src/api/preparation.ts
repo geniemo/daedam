@@ -106,18 +106,50 @@ export interface Feedback {
 export interface FeedbackStatus {
   /** running 만드는 중 · done 완료 · failed 실패 · absent 아직 면접 안 함 */
   status: 'running' | 'done' | 'failed' | 'absent'
+  /** 어느 판의 피드백인가. absent면 없다. */
+  sessionId?: string
   feedback?: Feedback
 }
 
-/** §서버 연동 6 — 면접 뒤 피드백. 분석 화면이 기다리며 부르고 리포트가 읽는다. */
-export async function getFeedback(interviewId: string): Promise<FeedbackStatus> {
-  const res = await fetch(`/api/interviews/${interviewId}/feedback`)
+/**
+ * §서버 연동 6 — 면접 한 판의 피드백. 분석 화면이 기다리며 부르고 리포트가 읽는다.
+ *
+ * 같은 면접을 여러 번 볼 수 있으므로 어느 판인지 고른다. 생략하면 가장 최근
+ * 판이다 — 면접을 막 마친 화면이 원하는 것이 그것이다.
+ */
+export async function getFeedback(
+  interviewId: string,
+  sessionId?: string,
+): Promise<FeedbackStatus> {
+  const query = sessionId ? `?session=${encodeURIComponent(sessionId)}` : ''
+  const res = await fetch(`/api/interviews/${interviewId}/feedback${query}`)
   if (!res.ok) throw new Error(`피드백 조회 실패: ${res.status}`)
   return (await res.json()) as FeedbackStatus
 }
 
 /** 녹음 파일 주소. Range 요청을 받으므로 구간만 가져간다. */
-export const audioUrl = (interviewId: string) => `/api/interviews/${interviewId}/audio`
+export const audioUrl = (interviewId: string, sessionId?: string) =>
+  `/api/interviews/${interviewId}/audio${
+    sessionId ? `?session=${encodeURIComponent(sessionId)}` : ''
+  }`
+
+/** 면접 한 판. 계약: server/daedam/server/interview_routes.py */
+export interface InterviewSession {
+  id: string
+  /** ISO 8601. 이력 목록의 날짜 표시에 쓴다. */
+  startedAt: string
+  endedAt: string | null
+  score: number | null
+  /** 피드백이 만들어졌는가. 없으면 아직 분석 중이거나 실패한 것이다. */
+  hasFeedback: boolean
+}
+
+/** 면접 이력 — 최근 판이 앞에 온다. */
+export async function listSessions(id: string): Promise<InterviewSession[]> {
+  const res = await fetch(`/api/interviews/${id}/sessions`)
+  if (!res.ok) throw new Error(`면접 이력 조회 실패: ${res.status}`)
+  return (await res.json()) as InterviewSession[]
+}
 
 /** 서버가 들고 있는 면접 하나. 계약: server/daedam/server/interview_routes.py */
 export interface StoredInterview {
@@ -126,8 +158,10 @@ export interface StoredInterview {
   role: string
   /** 질문 풀까지 준비돼 면접을 시작할 수 있는지. 브리지의 시작 조건과 같다. */
   ready: boolean
-  /** 면접을 마쳐 피드백이 있으면 점수. 없으면 null — 이게 홈에서 리포트로 가는 길이다. */
+  /** 가장 최근 면접의 점수. 없으면 null — 이게 홈에서 리포트로 가는 길이다. */
   score: number | null
+  /** 지금까지 마친 면접 수. 0이면 아직 한 번도 안 본 면접이다. */
+  interviewCount: number
   /** 마지막 저장 시각(epoch 초). 목록 정렬과 화면의 날짜 표시에 쓴다. */
   savedAt: number
 }
@@ -142,6 +176,7 @@ export async function listInterviews(): Promise<StoredInterview[]> {
 export interface InterviewDetail extends StoredInterview {
   report: DocSection[]
   uncertain: UncertainRef[]
+  sessions: InterviewSession[]
 }
 
 /** 검토 화면이 읽을 면접 하나 — 리포트 원문까지. */

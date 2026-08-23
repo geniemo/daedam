@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
-import { audioUrl, getFeedback } from '@/api/preparation'
-import type { Feedback } from '@/api/preparation'
+import { audioUrl, getFeedback, listSessions } from '@/api/preparation'
+import type { Feedback, InterviewSession } from '@/api/preparation'
 import { useActiveCard } from '@/store/app'
 import { SectionLabel } from '@/components/ui'
 
@@ -16,9 +16,17 @@ import { SectionLabel } from '@/components/ui'
 export function Report() {
   const nav = useNavigate()
   const card = useActiveCard()
+  // 어느 판을 보고 있는가. 비어 있으면 가장 최근 판 — 면접을 막 마치고
+  // 들어온 화면이 원하는 것이 그것이다.
+  const [sessionId, setSessionId] = useState<string | undefined>(undefined)
   const { data, isError } = useQuery({
-    queryKey: ['feedback', card.id],
-    queryFn: () => getFeedback(card.id),
+    queryKey: ['feedback', card.id, sessionId],
+    queryFn: () => getFeedback(card.id, sessionId),
+    retry: false,
+  })
+  const { data: sessions } = useQuery({
+    queryKey: ['sessions', card.id],
+    queryFn: () => listSessions(card.id),
     retry: false,
   })
 
@@ -40,21 +48,85 @@ export function Report() {
     )
   }
 
-  return <ReportBody feedback={feedback} interviewId={card.id} onLeave={() => nav('/')} onAgain={() => nav('/ready')} company={card.company} role={card.role} />
+  return (
+    <ReportBody
+      feedback={feedback}
+      interviewId={card.id}
+      sessionId={data?.sessionId}
+      sessions={sessions ?? []}
+      onPick={setSessionId}
+      onLeave={() => nav('/')}
+      onAgain={() => nav('/ready')}
+      company={card.company}
+      role={card.role}
+    />
+  )
+}
+
+/**
+ * 지난 면접 고르기. 판이 둘 이상일 때만 나온다.
+ *
+ * 같은 준비 데이터로 몇 번이든 면접할 수 있고, 지난번보다 나아졌는지가 이
+ * 서비스의 재방문 이유다. 분석이 끝나지 않은 판은 고를 수 없다 — 눌러 봐야
+ * 빈 화면이다.
+ */
+function SessionPicker({
+  sessions,
+  current,
+  onPick,
+}: {
+  sessions: InterviewSession[]
+  current: string | undefined
+  onPick: (id: string | undefined) => void
+}) {
+  if (sessions.length < 2) return null
+  return (
+    <div className="mb-[22px] flex flex-wrap items-center gap-2">
+      <span className="text-[12px] text-faint">지난 면접</span>
+      {sessions.map((session, index) => {
+        const active = session.id === current
+        const label = `${sessions.length - index}회차`
+        return (
+          <button
+            key={session.id}
+            disabled={!session.hasFeedback}
+            onClick={() => onPick(index === 0 ? undefined : session.id)}
+            className={`num rounded-full border px-[11px] py-[5px] text-[12px] ${
+              active
+                ? 'border-ink bg-ink text-white'
+                : session.hasFeedback
+                  ? 'border-hair-2 text-muted'
+                  : 'border-hair-2 text-faintest'
+            }`}
+          >
+            {label}
+            {session.score !== null && ` · ${session.score}점`}
+            {!session.hasFeedback && ' · 분석 중'}
+          </button>
+        )
+      })}
+    </div>
+  )
 }
 
 function ReportBody({
   feedback,
   interviewId,
+  sessionId,
+  sessions,
   company,
   role,
+  onPick,
   onLeave,
   onAgain,
 }: {
   feedback: Feedback
   interviewId: string
+  sessionId: string | undefined
+  sessions: InterviewSession[]
   company: string
   role: string
+  onPick: (id: string | undefined) => void
   onLeave: () => void
   onAgain: () => void
 }) {
@@ -70,6 +142,8 @@ function ReportBody({
           ← 내 면접
         </button>
       </div>
+
+      <SessionPicker sessions={sessions} current={sessionId} onPick={onPick} />
 
       {/* 헤더 */}
       <div className="flex items-start gap-[34px] border-b border-line pb-[30px]">
@@ -248,7 +322,7 @@ function ReportBody({
                     {span && (
                       <>
                         <Playback
-                          src={audioUrl(interviewId)}
+                          src={audioUrl(interviewId, sessionId)}
                           startS={span.startS}
                           endS={span.endS}
                         />
