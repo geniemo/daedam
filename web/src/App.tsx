@@ -7,6 +7,8 @@ import { Chrome } from '@/components/Chrome'
 import { useActiveCard } from '@/store/app'
 import { Home } from '@/screens/Home'
 import { Landing } from '@/screens/Landing'
+import { Account } from '@/screens/Account'
+import { Credits } from '@/screens/Credits'
 import { Register } from '@/screens/Register'
 import { Research } from '@/screens/Research'
 import { Ready } from '@/screens/Ready'
@@ -59,6 +61,9 @@ const router = createBrowserRouter([
       { path: '/interview', element: needsCard(<Interview />) },
       { path: '/analyzing', element: <Analyzing /> },
       { path: '/report', element: needsCard(<Report />) },
+      // 카드가 없어도 열려야 한다 — 크레딧이 없어 등록을 못 한 사람이 오는 곳이다.
+      { path: '/account', element: <Account /> },
+      { path: '/credits', element: <Credits /> },
     ],
   },
 ])

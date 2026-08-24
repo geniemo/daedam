@@ -34,3 +34,13 @@ export const loginUrl = (provider: string) => `/api/auth/${provider}/login`
 export async function logout(): Promise<void> {
   await fetch('/api/auth/logout', { method: 'POST' })
 }
+
+/**
+ * 회원 탈퇴. 되돌릴 수 없다.
+ *
+ * 계정과 함께 준비 데이터·면접 기록·크레딧이 지워지고 녹음 파일도 삭제된다.
+ */
+export async function withdraw(): Promise<void> {
+  const res = await fetch('/api/auth/me', { method: 'DELETE' })
+  if (!res.ok) throw new Error(`탈퇴 실패: ${res.status}`)
+}

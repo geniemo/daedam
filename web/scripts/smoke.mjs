@@ -30,6 +30,8 @@ const screens = [
   // 랜딩은 App.tsx의 라우터에 없다 — RequireLogin이 로그인 안 한 사람에게
   // 홈 대신 그린다. 경로는 이 하네스가 붙여 주는 것뿐이다.
   ['/landing', '/landing', '/src/screens/Landing.tsx', 'Landing'],
+  ['/account', '/account', '/src/screens/Account.tsx', 'Account'],
+  ['/credits', '/credits', '/src/screens/Credits.tsx', 'Credits'],
 ]
 
 const { Chrome } = await load('/src/components/Chrome.tsx')
