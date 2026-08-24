@@ -39,8 +39,13 @@
 카카오 계정으로 로그인해야 한다.
 
 ### 2. REST API 키 복사
-만들어진 앱에 들어가면 [앱 키]에 네 종류가 있다. **REST API 키**가 우리가 쓸
-`KAKAO_CLIENT_ID`다. (JavaScript 키·Admin 키가 아니다.)
+앱에 들어가서 **[앱] > [플랫폼 키] > [REST API 키]**. 이 값이
+`KAKAO_CLIENT_ID`다. (JavaScript 키·네이티브 앱 키·어드민 키가 아니다.)
+
+> 콘솔이 개편되면서 예전 **[앱 키]** 메뉴가 **[플랫폼 키]**로 바뀌었다. 웹
+> 도메인·Redirect URI 같은 플랫폼 설정도 각 키 하위로 들어갔다.
+> ([앱과 앱 키 변경 사항](https://developers.kakao.com/docs/ko/getting-started/app-key-migration))
+> 어드민 키만 [플랫폼 키]와 별도로 있다.
 
 ### 3. 카카오 로그인 켜기
 [카카오 로그인] > [활성화 설정]을 **ON**으로. 이걸 안 켜면 로그인 요청이
