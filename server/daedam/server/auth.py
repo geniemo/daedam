@@ -32,6 +32,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
 from .accounts import Accounts
+from .store import InterviewStore
 
 logger = logging.getLogger(__name__)
 
@@ -61,9 +62,33 @@ _DEFAULT_SCOPE = {
 }
 
 
+#: 토큰 교환 때 클라이언트를 증명하는 방식.
+#:
+#: 카카오는 `client_secret_post`만 지원한다 — 디스커버리 문서의
+#: `token_endpoint_auth_methods_supported`가 그것 하나다. 그런데 authlib은
+#: 시크릿이 있으면 `client_secret_basic`을 기본으로 골라(oauth2/client.py:75~77)
+#: 자격증명을 Authorization 헤더에만 싣는다. 그러면 카카오가 본문에서
+#: client_id를 못 찾고 이렇게 거절한다 — 실측:
+#:   OAuthError: invalid_client: Not exist client_id [null]
+#: 인가 코드까지는 정상이라 사용자 눈에는 "동의했는데 로그인 화면으로 돌아옴"으로만
+#: 보인다.
+#:
+#: 구글은 둘 다 받으므로 적지 않는다 — 기본값 그대로 둔다.
+_TOKEN_AUTH_METHOD = {"kakao": "client_secret_post"}
+
+
 def _scope(provider: str) -> str:
     """이 제공자에게 요구할 scope. 환경변수로 덮을 수 있다."""
     return os.environ.get(f"{provider.upper()}_SCOPE") or _DEFAULT_SCOPE[provider]
+
+
+def _client_kwargs(provider: str) -> dict[str, str]:
+    """이 제공자용 OAuth 클라이언트 설정."""
+    kwargs = {"scope": _scope(provider)}
+    method = _TOKEN_AUTH_METHOD.get(provider)
+    if method:
+        kwargs["token_endpoint_auth_method"] = method
+    return kwargs
 
 
 def _callback_uri(request: Request, provider: str) -> str:
@@ -120,9 +145,8 @@ def create_oauth() -> OAuth:
             server_metadata_url=(
                 _KAKAO_METADATA if provider == "kakao" else _GOOGLE_METADATA
             ),
-            # 이름·프로필 사진·이메일만 받는다. 이메일은 선택 동의라 사용자가
-            # 거부할 수 있고, 그때도 로그인은 되어야 한다.
-            client_kwargs={"scope": _scope(provider)},
+            # 요구할 동의항목과 토큰 교환 인증 방식. 둘 다 제공자마다 다르다.
+            client_kwargs=_client_kwargs(provider),
         )
     return oauth
 
@@ -151,14 +175,20 @@ def _profile_from(token: dict[str, Any], provider: str) -> dict[str, Any]:
     }
 
 
-def create_auth_router(accounts: Accounts) -> APIRouter:
+def create_auth_router(accounts: Accounts, store: InterviewStore) -> APIRouter:
     """로그인·로그아웃·내 정보 라우터.
 
-      GET /api/auth/providers          — 화면이 그릴 로그인 버튼 목록
-      GET /api/auth/{provider}/login   — 제공자로 보낸다
-      GET /api/auth/{provider}/callback— 돌아온 것을 받아 세션을 심는다
-      GET /api/auth/me                 — 지금 누구인가 (로그인 안 했으면 null)
-      POST /api/auth/logout            — 세션을 비운다
+      GET    /api/auth/providers          — 화면이 그릴 로그인 버튼 목록
+      GET    /api/auth/{provider}/login   — 제공자로 보낸다
+      GET    /api/auth/{provider}/callback— 돌아온 것을 받아 세션을 심는다
+      GET    /api/auth/me                 — 지금 누구인가 (로그인 안 했으면 null)
+      POST   /api/auth/logout             — 세션을 비운다
+      DELETE /api/auth/me                 — 회원 탈퇴
+
+    Args:
+        accounts: 사용자 조회·저장.
+        store: 탈퇴할 때 녹음 파일을 지우려면 필요하다 — 오디오는 DB 밖이라
+            외래 키가 지워 주지 않는다.
     """
     router = APIRouter(prefix="/api/auth", tags=["auth"])
     oauth = create_oauth()
@@ -199,6 +229,26 @@ def create_auth_router(accounts: Accounts) -> APIRouter:
     @router.post("/logout")
     def logout(request: Request) -> dict[str, bool]:
         request.session.pop(SESSION_USER_KEY, None)
+        return {"ok": True}
+
+    @router.delete("/me")
+    def withdraw(request: Request) -> dict[str, bool]:
+        """회원 탈퇴 — 계정과 그가 남긴 것을 전부 지운다.
+
+        되돌릴 수 없다. 준비 데이터·면접 기록·크레딧은 외래 키가 함께 지우고,
+        녹음 파일은 DB 밖이라 먼저 손으로 지운다 — 순서가 뒤바뀌면 어느 준비
+        데이터가 그 사람 것이었는지 알 수 없게 된다.
+
+        음성은 가장 민감한 개인정보이고, 탈퇴하면 지운다는 것이 개인정보
+        처리방침에 적힐 약속이다.
+        """
+        user_id = accounts.session_user_id(request)
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="로그인이 필요합니다")
+        removed = store.delete_user_files(user_id)
+        accounts.delete(user_id)
+        request.session.pop(SESSION_USER_KEY, None)
+        logger.info("회원 탈퇴 (user=%s, 녹음 %d건 삭제)", user_id, removed)
         return {"ok": True}
 
     return router

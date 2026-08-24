@@ -122,6 +122,25 @@ class Accounts:
             self._credits.grant(user_id, SIGNUP_GRANT, "signup_grant")
         return user_id
 
+    def delete(self, user_id: str) -> bool:
+        """계정을 지운다. 준비 데이터·면접 기록·크레딧 원장이 함께 사라진다.
+
+        외래 키가 `ondelete="CASCADE"`라 DB 쪽은 이 한 줄로 끝난다(SQLite는
+        PRAGMA foreign_keys를 켜야 실제로 동작한다 — `db/engine.py`에서 켠다).
+        **디스크의 녹음은 DB 밖이라 따로 지워야 한다** — 호출하는 쪽이
+        `InterviewStore.delete_user_files`를 먼저 부른다.
+
+        Returns:
+            지웠으면 True. 이미 없으면 False.
+        """
+        with self._db.session() as session:
+            user = session.get(User, user_id)
+            if user is None:
+                return False
+            session.delete(user)
+        logger.info("계정 삭제 (id=%s)", user_id)
+        return True
+
     def profile(self, user_id: str | None) -> dict[str, Any] | None:
         """화면이 헤더에 그릴 사용자 정보. 로그인 안 했으면 None."""
         if user_id is None:

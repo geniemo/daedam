@@ -163,7 +163,7 @@ def create_app() -> FastAPI:
         same_site="lax",
         https_only=os.environ.get("COOKIE_SECURE") == "1",
     )
-    app.include_router(create_auth_router(accounts))
+    app.include_router(create_auth_router(accounts, store))
     app.include_router(create_credit_router(accounts, credits))
     # live는 20~60분짜리 작업이라 1초 폴링이면 조회 API를 수천 번 두드린다.
     # fixture는 12초 안에 끝나므로 촘촘히 봐야 진행 화면이 자연스럽다.

@@ -17,10 +17,10 @@ from daedam.server.accounts import Accounts
 from daedam.server.auth import SESSION_USER_KEY, configured_providers, create_auth_router
 
 
-def _app(accounts: Accounts) -> TestClient:
+def _app(accounts: Accounts, store=None) -> TestClient:
     app = FastAPI()
     app.add_middleware(SessionMiddleware, secret_key="테스트")
-    app.include_router(create_auth_router(accounts))
+    app.include_router(create_auth_router(accounts, store or _NoFiles()))
 
     @app.get("/protected")
     def protected(user_id: str = Depends(accounts.current_user_id)) -> dict[str, str]:
@@ -33,6 +33,13 @@ def _app(accounts: Accounts) -> TestClient:
         return {"ok": True}
 
     return TestClient(app)
+
+
+class _NoFiles:
+    """녹음이 없는 저장소 대역. 탈퇴를 안 보는 테스트가 쓴다."""
+
+    def delete_user_files(self, user_id: str) -> int:
+        return 0
 
 
 def _db(tmp_path) -> Database:
@@ -170,3 +177,56 @@ def test_콜백_주소는_설정으로_못_박을_수_있다(monkeypatch) -> Non
         _callback_uri(_Request(), "google")
         == "https://daedam.example.com/api/auth/google/callback"
     )
+
+
+def test_카카오는_토큰_교환에_client_secret_post를_쓴다(monkeypatch) -> None:
+    """카카오 토큰 엔드포인트는 client_secret_post만 지원하는데 authlib은
+    시크릿이 있으면 client_secret_basic을 기본으로 고른다. 그대로 두면 요청
+    본문에 client_id가 안 실려 "Not exist client_id [null]"로 거절당한다 —
+    인가 코드까지는 정상이라 화면에는 그냥 로그인 화면으로 돌아온 것처럼 보인다.
+    """
+    from daedam.server.auth import _client_kwargs
+
+    monkeypatch.delenv("KAKAO_SCOPE", raising=False)
+    assert _client_kwargs("kakao")["token_endpoint_auth_method"] == "client_secret_post"
+    # 구글은 둘 다 받으므로 지정하지 않는다.
+    assert "token_endpoint_auth_method" not in _client_kwargs("google")
+
+
+# ── 회원 탈퇴 ────────────────────────────────────────────────────────────
+
+
+def test_탈퇴하면_계정과_남긴_것이_전부_사라진다(tmp_path) -> None:
+    """음성은 가장 민감한 개인정보다 — DB 행뿐 아니라 녹음 파일까지 지워야
+    개인정보처리방침에 적을 약속이 참이 된다."""
+    from daedam.db import Application, InterviewSession
+
+    store, accounts, _ = make_store(tmp_path / "data")
+    accounts._login_required = True
+    user_id = accounts.upsert(provider="kakao", provider_user_id="42")
+    store.save(
+        "card", user_id=user_id, company="c", role="r",
+        application=[], report=[], uncertain=[],
+    )
+    session_id = store.start_session("card")
+    directory = store.session_directory("card", session_id)
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "mic.wav").write_bytes(b"\x00\x01")  # 녹음 대역
+
+    client = _app(accounts, store)
+    client.post(f"/pretend-login/{user_id}")
+    assert client.delete("/api/auth/me").json() == {"ok": True}
+
+    # 녹음 파일이 남으면 안 된다.
+    assert not directory.exists()
+    with store._db.session() as db_session:
+        assert db_session.get(Application, "card") is None
+        assert db_session.get(InterviewSession, session_id) is None
+        assert db_session.get(User, user_id) is None
+    # 세션도 비워져 다음 요청은 로그인 안 한 상태다.
+    assert client.get("/protected").status_code == 401
+
+
+def test_로그인하지_않으면_탈퇴할_수_없다(tmp_path) -> None:
+    client = _app(Accounts(_db(tmp_path), login_required=True))
+    assert client.delete("/api/auth/me").status_code == 401

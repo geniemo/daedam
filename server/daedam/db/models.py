@@ -169,3 +169,36 @@ class CreditEntry(Base):
     #: 무엇 때문인가 — 준비 데이터 id 또는 면접 id. 지급에는 없다.
     ref_id: Mapped[str | None] = mapped_column(String(64), default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Coupon(Base):
+    """크레딧을 얹어 주는 코드.
+
+    결제(PG)가 붙기 전까지 사용자가 크레딧을 늘릴 수 있는 유일한 길이다. 국내
+    PG는 사업자등록증이 있어야 계약되므로, 그전까지는 홍보 영상이나 초대 메일로
+    코드를 뿌려 초기 사용자를 받는다.
+
+    누가 언제 썼는지는 여기 세지 않고 원장(`CreditEntry`)이 안다 —
+    `reason="purchase"`, `ref_id=코드`. 그래서 같은 사람이 같은 코드를 두 번
+    쓰는 것도 원장 조회로 막는다. 사용 횟수(`used_count`)만 여기 둔다.
+    """
+
+    __tablename__ = "coupons"
+
+    #: 사람이 입력하는 코드. 대문자로 정규화해 저장한다 — 손으로 치는 값이라
+    #: 대소문자로 갈리면 안 된다.
+    code: Mapped[str] = mapped_column(String(32), primary_key=True)
+    #: 이 코드가 주는 크레딧.
+    credits: Mapped[int] = mapped_column(Integer)
+    #: 몇 명까지 쓸 수 있는가. 1이면 일회용, 100이면 선착순 100명.
+    max_uses: Mapped[int] = mapped_column(Integer, default=1)
+    used_count: Mapped[int] = mapped_column(Integer, default=0)
+    #: 만료 시각. None이면 만료 없음.
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
+    #: 무엇 때문에 발급했는지 — "홍보영상 1차", "베타테스터" 같은 메모.
+    #: 나중에 어느 경로로 들어온 사용자인지 세는 근거가 된다.
+    note: Mapped[str] = mapped_column(String(128), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+

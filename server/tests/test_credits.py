@@ -214,3 +214,81 @@ def test_새_면접마다_물린다(tmp_path) -> None:
 
     assert credits.balance(user_id) == before - 2 * COST_INTERVIEW
     assert len(store.list_sessions("card")) == 2
+
+
+# ── 쿠폰 ─────────────────────────────────────────────────────────────────
+
+
+def _coupon(store, code: str, credits: int = 10, **kwargs):
+    from daedam.db import Coupon
+
+    with store._db.session() as session:
+        session.add(Coupon(code=code, credits=credits, **kwargs))
+
+
+def test_쿠폰을_쓰면_크레딧이_는다(bundle) -> None:
+    store, credits, user_id = bundle
+    _coupon(store, "WELCOME10", 10, max_uses=5)
+    before = credits.balance(user_id)
+
+    assert credits.redeem(user_id, "WELCOME10") == 10
+    assert credits.balance(user_id) == before + 10
+    # 원장에 "충전"으로 남고, 어느 코드였는지도 남는다.
+    [latest, *_] = credits.history(user_id)
+    assert latest.reason == "purchase" and latest.ref_id == "WELCOME10"
+
+
+def test_코드는_대소문자와_공백을_가리지_않는다(bundle) -> None:
+    """영상 자막을 보고 손으로 치는 값이다."""
+    store, credits, user_id = bundle
+    _coupon(store, "WELCOME10", 10)
+    assert credits.redeem(user_id, "  welcome10 ") == 10
+
+
+def test_같은_사람이_두_번_쓸_수_없다(bundle) -> None:
+    from daedam.server.credits import CouponError
+
+    store, credits, user_id = bundle
+    _coupon(store, "WELCOME10", 10, max_uses=100)
+    credits.redeem(user_id, "WELCOME10")
+    before = credits.balance(user_id)
+
+    with pytest.raises(CouponError) as raised:
+        credits.redeem(user_id, "WELCOME10")
+    assert raised.value.reason == "already_used"
+    assert credits.balance(user_id) == before
+
+
+def test_정원이_차면_막힌다(tmp_path) -> None:
+    from daedam.server.credits import CouponError
+
+    store, accounts, first = make_store(tmp_path / "data")
+    credits: Credits = accounts.credits
+    second = accounts.upsert(provider="kakao", provider_user_id="2")
+    _coupon(store, "ONLYONE", 10, max_uses=1)
+
+    credits.redeem(first, "ONLYONE")
+    with pytest.raises(CouponError) as raised:
+        credits.redeem(second, "ONLYONE")
+    assert raised.value.reason == "exhausted"
+
+
+def test_만료된_코드는_막힌다(bundle) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from daedam.server.credits import CouponError
+
+    store, credits, user_id = bundle
+    _coupon(store, "OLD", 10, expires_at=datetime.now(UTC) - timedelta(days=1))
+    with pytest.raises(CouponError) as raised:
+        credits.redeem(user_id, "OLD")
+    assert raised.value.reason == "expired"
+
+
+def test_없는_코드는_없다고_한다(bundle) -> None:
+    from daedam.server.credits import CouponError
+
+    _, credits, user_id = bundle
+    with pytest.raises(CouponError) as raised:
+        credits.redeem(user_id, "NOPE")
+    assert raised.value.reason == "not_found"

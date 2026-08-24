@@ -21,11 +21,11 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 
-from daedam.db import CreditEntry, Database
+from daedam.db import Coupon, CreditEntry, Database
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,29 @@ COST_RESEARCH = int(os.environ.get("CREDITS_PER_RESEARCH", "6"))
 #: 길이가 아니라 "길이 × 턴 수"에 비례한다. 코칭은 44~94원이라 따로 물리지
 #: 않고 여기 포함시킨다.
 COST_INTERVIEW = int(os.environ.get("CREDITS_PER_INTERVIEW", "4"))
+
+
+#: 쿠폰 사용을 원장에 남길 때 쓰는 reason. 결제가 붙어도 같은 값을 쓴다 —
+#: 사용자에게는 둘 다 "충전"이다.
+PURCHASE_REASON = "purchase"
+
+
+def normalize_code(code: str) -> str:
+    """손으로 치는 값이라 대소문자·앞뒤 공백으로 갈리지 않게 한다."""
+    return code.strip().upper()
+
+
+class CouponError(Exception):
+    """쿠폰을 쓸 수 없다. `reason`으로 무엇이 문제인지 가른다.
+
+    이유를 뭉뚱그리지 않는 이유: "코드가 잘못됐습니다" 하나로 처리하면
+    이미 쓴 코드를 다시 넣은 사람이 오타를 의심하며 계속 시도한다.
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        #: not_found · expired · exhausted · already_used
+        self.reason = reason
 
 
 class InsufficientCredits(Exception):
@@ -159,6 +182,57 @@ class Credits:
                 )
             )
         logger.info("크레딧 환불 +%d (%s, user=%s)", amount, reason, user_id)
+
+    def redeem(self, user_id: str, code: str) -> int:
+        """쿠폰 코드를 크레딧으로 바꾼다. 돌려주는 것은 얹힌 크레딧 수.
+
+        확인·사용 수 증가·지급이 한 트랜잭션 안에 있어야 선착순 코드가
+        정원을 넘지 않는다. SQLite는 쓰기를 직렬화하므로 이것으로 충분하고,
+        PostgreSQL로 옮기면 쿠폰 행을 `SELECT ... FOR UPDATE`로 잠가야 한다.
+
+        Raises:
+            CouponError: 없거나(not_found) 만료됐거나(expired) 정원이 찼거나
+                (exhausted) 이 사람이 이미 쓴(already_used) 코드.
+        """
+        code = normalize_code(code)
+        with self._db.session() as session:
+            coupon = session.get(Coupon, code)
+            if coupon is None:
+                raise CouponError("not_found")
+            if coupon.expires_at is not None:
+                expires = coupon.expires_at
+                if expires.tzinfo is None:
+                    expires = expires.replace(tzinfo=UTC)
+                if expires <= datetime.now(UTC):
+                    raise CouponError("expired")
+            if coupon.used_count >= coupon.max_uses:
+                raise CouponError("exhausted")
+            # 같은 사람이 두 번 쓰는 것은 원장으로 막는다 — 사용 이력을 쿠폰
+            # 쪽에 또 두면 진실이 두 곳이 된다.
+            already = session.scalar(
+                select(func.count())
+                .select_from(CreditEntry)
+                .where(
+                    CreditEntry.user_id == user_id,
+                    CreditEntry.reason == PURCHASE_REASON,
+                    CreditEntry.ref_id == code,
+                )
+            )
+            if already:
+                raise CouponError("already_used")
+
+            coupon.used_count += 1
+            session.add(
+                CreditEntry(
+                    user_id=user_id,
+                    delta=coupon.credits,
+                    reason=PURCHASE_REASON,
+                    ref_id=code,
+                )
+            )
+            granted = coupon.credits
+        logger.info("쿠폰 사용 %s (+%d, user=%s)", code, granted, user_id)
+        return granted
 
     def history(self, user_id: str, limit: int = 50) -> list[CreditEvent]:
         """최근 내역 — 최신이 앞에 온다."""

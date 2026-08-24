@@ -17,7 +17,9 @@
 
 from __future__ import annotations
 
+import logging
 import re
+import shutil
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -27,6 +29,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from daedam.db import Application, Database, InterviewSession
+
+logger = logging.getLogger(__name__)
 
 #: 준비·면접 id 허용 형식. URL 경로 조각과 디렉터리 이름으로 쓰이므로
 #: 디렉터리 탈출을 막는다.
@@ -364,6 +368,27 @@ class InterviewStore:
         self._check_id(application_id)
         self._check_id(session_id)
         return self._root / application_id / session_id
+
+    def delete_user_files(self, user_id: str) -> int:
+        """이 사용자의 녹음을 디스크에서 지운다. 돌려주는 것은 지운 디렉터리 수.
+
+        DB 행은 외래 키가 지우지만 오디오는 파일이라 여기서 지워야 한다.
+        **계정을 지우기 전에 부른다** — 지우고 나면 어느 준비 데이터가 그
+        사람 것이었는지 알 수 없다.
+
+        음성은 가장 민감한 개인정보라, 실패해도 조용히 넘어가지 않고 남긴다.
+        """
+        removed = 0
+        for item in self.list_for_user(user_id):
+            directory = self._root / item.id
+            if not directory.exists():
+                continue
+            try:
+                shutil.rmtree(directory)
+                removed += 1
+            except OSError:
+                logger.exception("녹음 삭제 실패 (%s)", directory)
+        return removed
 
     # ── 내부 ─────────────────────────────────────────────────────────────
 
