@@ -143,3 +143,30 @@ def test_제공자마다_scope_어휘가_다르다(monkeypatch) -> None:
     # 콘솔에서 못 켠 동의항목이 있으면 낮춰서 띄울 수 있어야 한다.
     monkeypatch.setenv("KAKAO_SCOPE", "openid profile_nickname")
     assert _scope("kakao") == "openid profile_nickname"
+
+
+def test_콜백_주소는_설정으로_못_박을_수_있다(monkeypatch) -> None:
+    """제공자 콘솔의 등록값은 하나인데, 요청에서 유도하면 접속 경로에 따라
+    localhost와 127.0.0.1이 갈린다(실측). 다르면 카카오는 KOE006이다."""
+    from starlette.datastructures import URL
+
+    from daedam.server.auth import _callback_uri
+
+    class _Request:
+        def url_for(self, name: str, **kwargs: str) -> URL:
+            return URL(f"http://127.0.0.1:8000/api/auth/{kwargs['provider']}/callback")
+
+    monkeypatch.delenv("SERVER_BASE_URL", raising=False)
+    assert _callback_uri(_Request(), "kakao").startswith("http://127.0.0.1:8000/")
+
+    monkeypatch.setenv("SERVER_BASE_URL", "http://localhost:8000")
+    assert (
+        _callback_uri(_Request(), "kakao")
+        == "http://localhost:8000/api/auth/kakao/callback"
+    )
+    # 끝의 슬래시가 있어도 콜백 주소는 같아야 한다.
+    monkeypatch.setenv("SERVER_BASE_URL", "https://daedam.example.com/")
+    assert (
+        _callback_uri(_Request(), "google")
+        == "https://daedam.example.com/api/auth/google/callback"
+    )

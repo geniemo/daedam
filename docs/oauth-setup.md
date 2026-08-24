@@ -136,16 +136,28 @@ http://localhost:8000/api/auth/google/callback
 
 ```bash
 KAKAO_CLIENT_ID=<REST API 키>
-KAKAO_CLIENT_SECRET=<Client Secret>
+KAKAO_CLIENT_SECRET=<클라이언트 시크릿>
 GOOGLE_CLIENT_ID=<클라이언트 ID>
 GOOGLE_CLIENT_SECRET=<클라이언트 보안 비밀번호>
 
 # 세션 쿠키 서명 키. 비우면 기동할 때마다 모두 로그아웃된다.
 SESSION_SECRET=<아래 명령으로 생성>
 
-# 개발에서만. vite가 5173에 따로 떠 있어서 필요하다.
+# 이 서버의 공개 주소. 콘솔에 등록한 콜백에서 /api/auth/... 앞부분이다.
+SERVER_BASE_URL=http://localhost:8000
+
+# 로그인 뒤 돌아갈 곳. 개발에서만 필요하다(vite가 5173에 따로 뜬다).
 APP_BASE_URL=http://localhost:5173
 ```
+
+**한쪽만 채우면 그 제공자는 등록되지 않는다.** `CLIENT_ID`와 `CLIENT_SECRET`이
+둘 다 있어야 한다 — 반쪽 설정으로 뜨면 버튼은 보이는데 눌리지 않는다. 그래서
+카카오만 먼저 붙이고 구글은 비워 둔 채로 테스트할 수 있다.
+
+`SERVER_BASE_URL`을 비우면 콜백 주소를 요청 헤더에서 유도하는데, 그러면 같은
+서버인데도 `localhost`로 들어왔는지 `127.0.0.1`로 들어왔는지에 따라 값이 갈린다
+(실측). 등록값은 하나뿐이므로 못 박아 두는 편이 안전하고, 리버스 프록시 뒤에서는
+필수다.
 
 `SESSION_SECRET` 생성:
 
@@ -188,6 +200,7 @@ curl -s localhost:8000/api/auth/providers
 | 동의 화면에서 거절당함 | 콘솔에서 안 켠 동의항목을 요구했다 — `KAKAO_SCOPE`를 낮춘다 (5번) |
 | "이 앱은 확인되지 않았습니다" | 구글 게시 상태가 테스트인데 테스트 사용자에 없다 (3번) |
 | 로그인 뒤 ADK dev UI가 뜬다 | `APP_BASE_URL`이 비어 있다 |
+| 로그인 버튼이 안 보인다 | `CLIENT_ID`·`CLIENT_SECRET` 중 한쪽만 찼다 |
 | 재시작할 때마다 로그아웃된다 | `SESSION_SECRET`이 비어 있다 |
 
 ---

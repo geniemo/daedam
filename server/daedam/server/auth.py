@@ -66,6 +66,26 @@ def _scope(provider: str) -> str:
     return os.environ.get(f"{provider.upper()}_SCOPE") or _DEFAULT_SCOPE[provider]
 
 
+def _callback_uri(request: Request, provider: str) -> str:
+    """제공자 콘솔에 등록한 콜백 주소.
+
+    **글자 하나까지 등록값과 같아야 한다** — 카카오는 다르면 KOE006이다.
+
+    요청에서 유도하지 않고 `SERVER_BASE_URL`로 고정할 수 있게 둔 이유는, 유도한
+    값이 **어떻게 접속했느냐에 따라 달라지기** 때문이다. 같은 서버인데도
+    localhost로 들어오면 localhost, 127.0.0.1로 들어오면 127.0.0.1이 나오고
+    (실측), 리버스 프록시 뒤에서는 프록시가 넘겨주는 헤더에 좌우된다. 등록값은
+    하나뿐이므로 이 값도 하나로 못 박는 편이 안전하다.
+
+    설정이 없으면 요청에서 유도한다 — 처음 띄워 보는 사람이 환경변수부터
+    만나지 않도록.
+    """
+    base = os.environ.get("SERVER_BASE_URL")
+    if base:
+        return f"{base.rstrip('/')}/api/auth/{provider}/callback"
+    return str(request.url_for("callback", provider=provider))
+
+
 def _after_login() -> str:
     """로그인 뒤 돌아갈 화면. 프론트가 SPA라 루트로 보내면 상태를 다시 읽는다.
 
@@ -158,9 +178,7 @@ def create_auth_router(accounts: Accounts) -> APIRouter:
     async def login(provider: str, request: Request):
         if provider not in providers:
             raise HTTPException(status_code=404, detail="지원하지 않는 로그인입니다")
-        # 콜백 주소는 지금 요청의 오리진에서 만든다. 로컬·배포에서 따로
-        # 설정하지 않아도 맞고, 제공자 콘솔에 등록한 값과 같아야 한다.
-        redirect_uri = request.url_for("callback", provider=provider)
+        redirect_uri = _callback_uri(request, provider)
         return await getattr(oauth, provider).authorize_redirect(request, redirect_uri)
 
     @router.get("/{provider}/callback", name="callback")
