@@ -14,6 +14,9 @@ dist/
 .env
 .env.local
 .env.*.local
+# .env를 손대기 전 떠 두는 사본. 값이 그대로 들어 있으므로 반드시 제외한다.
+.env.bak*
+.env.backup*
 *.key
 
 # ADK 런타임 세션·아티팩트 저장소
