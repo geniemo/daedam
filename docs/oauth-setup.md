@@ -38,29 +38,31 @@
 [내 애플리케이션] > [애플리케이션 추가하기]. 앱 이름 "대담", 회사명은 아무거나.
 카카오 계정으로 로그인해야 한다.
 
-### 2. REST API 키 복사
-앱에 들어가서 **[앱] > [플랫폼 키] > [REST API 키]**. 이 값이
-`KAKAO_CLIENT_ID`다. (JavaScript 키·네이티브 앱 키·어드민 키가 아니다.)
+### 2. [플랫폼 키] > [REST API 키] — 여기서 세 가지를 한 번에
 
-> 콘솔이 개편되면서 예전 **[앱 키]** 메뉴가 **[플랫폼 키]**로 바뀌었다. 웹
-> 도메인·Redirect URI 같은 플랫폼 설정도 각 키 하위로 들어갔다.
-> ([앱과 앱 키 변경 사항](https://developers.kakao.com/docs/ko/getting-started/app-key-migration))
-> 어드민 키만 [플랫폼 키]와 별도로 있다.
+콘솔이 개편되면서 예전 **[앱 키]** 메뉴가 **[플랫폼 키]**로 바뀌었고, 예전
+**[카카오 로그인] > [보안]**에 있던 클라이언트 시크릿도 이 아래로 들어왔다.
+([앱과 앱 키 변경 사항](https://developers.kakao.com/docs/ko/getting-started/app-key-migration))
+그래서 이 화면 하나에서 다음 셋을 끝낸다.
 
-### 3. 카카오 로그인 켜기
-[카카오 로그인] > [활성화 설정]을 **ON**으로. 이걸 안 켜면 로그인 요청이
-`KOE004` 오류로 떨어진다.
+**(a) REST API 키** — 이 값이 `KAKAO_CLIENT_ID`다.
+(JavaScript 키·네이티브 앱 키·어드민 키가 아니다.)
 
-### 4. Redirect URI 등록
-[앱] > [플랫폼 키] > [REST API 키] > [Redirect URI]에 위에서 정한 주소를 넣는다.
+**(b) Redirect URI** — 위에서 정한 주소를 넣는다. 틀리면 `KOE006`이다.
 
 ```
 http://localhost:8000/api/auth/kakao/callback
 ```
 
-틀리면 `KOE006`이다.
+**(c) 클라이언트 시크릿** — 이 값이 `KAKAO_CLIENT_SECRET`이다. REST API 키는
+시크릿 기능이 **켜진 상태로 생성**되므로 대개 값을 복사하기만 하면 된다.
+활성화 여부가 따로 보이면 "사용함"인지 확인한다.
 
-### 5. OpenID Connect 켜기 ★
+### 3. 카카오 로그인 켜기
+[카카오 로그인] > [일반]에서 활성화 설정을 **ON**으로. 이걸 안 켜면 로그인
+요청이 `KOE004` 오류로 떨어진다.
+
+### 4. OpenID Connect 켜기 ★
 [카카오 로그인] > [OpenID Connect]를 **ON**으로.
 
 **이걸 빠뜨리면 로그인이 됐다가 마지막에 실패한다.** 우리 코드는 ID 토큰에서
@@ -68,7 +70,7 @@ http://localhost:8000/api/auth/kakao/callback
 502와 함께 "제공자가 사용자 정보를 주지 않았습니다"를 낸다 — 이 메시지가 보이면
 십중팔구 여기다.
 
-### 6. 동의항목 설정
+### 5. 동의항목 설정
 [카카오 로그인] > [동의항목]에서 우리가 요구하는 것을 켠다.
 
 | 동의항목 | scope id | 쓰는 곳 |
@@ -87,10 +89,6 @@ KAKAO_SCOPE=openid profile_nickname profile_image
 이메일은 선택 정보라 없어도 로그인은 성립한다(`users.email`이 nullable).
 **콘솔에서 안 켠 항목을 요구하면 제공자가 로그인을 통째로 거절한다** — 켠 것만
 적어야 한다.
-
-### 7. Client Secret
-[카카오 로그인] > [보안]에서 Client Secret을 발급하고 **활성화 상태를 ON**으로.
-이 값이 `KAKAO_CLIENT_SECRET`이다.
 
 ---
 
@@ -185,9 +183,9 @@ curl -s localhost:8000/api/auth/providers
 | 증상 | 원인 |
 |---|---|
 | `KOE004` | 카카오 로그인 활성화가 꺼져 있다 (3번) |
-| `KOE006` | Redirect URI가 콘솔 등록값과 다르다 (4번) |
-| "제공자가 사용자 정보를 주지 않았습니다" (502) | 카카오 OpenID Connect가 꺼져 있다 (5번) |
-| 동의 화면에서 거절당함 | 콘솔에서 안 켠 동의항목을 요구했다 — `KAKAO_SCOPE`를 낮춘다 (6번) |
+| `KOE006` | Redirect URI가 콘솔 등록값과 다르다 (2-b) |
+| "제공자가 사용자 정보를 주지 않았습니다" (502) | 카카오 OpenID Connect가 꺼져 있다 (4번) |
+| 동의 화면에서 거절당함 | 콘솔에서 안 켠 동의항목을 요구했다 — `KAKAO_SCOPE`를 낮춘다 (5번) |
 | "이 앱은 확인되지 않았습니다" | 구글 게시 상태가 테스트인데 테스트 사용자에 없다 (3번) |
 | 로그인 뒤 ADK dev UI가 뜬다 | `APP_BASE_URL`이 비어 있다 |
 | 재시작할 때마다 로그아웃된다 | `SESSION_SECRET`이 비어 있다 |
