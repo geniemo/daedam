@@ -123,3 +123,23 @@ def test_설정된_제공자만_노출된다(tmp_path, monkeypatch) -> None:
 def test_없는_제공자로_로그인하면_404(tmp_path) -> None:
     client = _app(Accounts(_db(tmp_path), login_required=True))
     assert client.get("/api/auth/naver/login").status_code == 404
+
+
+def test_제공자마다_scope_어휘가_다르다(monkeypatch) -> None:
+    """카카오는 표준 OIDC 이름(profile·email)을 받지 않고 자기 동의항목 ID를
+    쓴다. 같은 문자열을 둘 다에 보내면 카카오 로그인이 통째로 실패한다."""
+    from daedam.server.auth import _scope
+
+    monkeypatch.delenv("KAKAO_SCOPE", raising=False)
+    monkeypatch.delenv("GOOGLE_SCOPE", raising=False)
+
+    kakao = _scope("kakao")
+    assert kakao.startswith("openid ")  # 없으면 ID 토큰이 안 온다
+    assert "profile_nickname" in kakao
+    assert " profile " not in f" {kakao} " and " email " not in f" {kakao} "
+
+    assert _scope("google") == "openid profile email"
+
+    # 콘솔에서 못 켠 동의항목이 있으면 낮춰서 띄울 수 있어야 한다.
+    monkeypatch.setenv("KAKAO_SCOPE", "openid profile_nickname")
+    assert _scope("kakao") == "openid profile_nickname"

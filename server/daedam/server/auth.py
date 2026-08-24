@@ -43,6 +43,28 @@ SESSION_USER_KEY = "user_id"
 _KAKAO_METADATA = "https://kauth.kakao.com/.well-known/openid-configuration"
 _GOOGLE_METADATA = "https://accounts.google.com/.well-known/openid-configuration"
 
+#: 제공자마다 요구하는 scope 어휘가 다르다.
+#:
+#: 구글은 표준 OIDC 이름(profile·email)을 쓰지만 **카카오는 자기 동의항목 ID를
+#: 쓴다**(공식 문서: "scope 파라미터 값에 openid를 반드시 포함", 나머지는
+#: profile_nickname·profile_image·account_email 같은 동의항목 id).
+#: 카카오에 profile·email을 보내면 로그인이 통째로 실패한다.
+#:
+#: 여기 적은 동의항목이 **카카오 콘솔에서 켜져 있어야 한다**
+#: ([카카오 로그인] > [동의항목]). 켜지지 않은 항목을 요구하면 제공자가 거절한다 —
+#: 특히 이메일은 앱 상태에 따라 못 켤 수 있으므로, 그때는
+#: `KAKAO_SCOPE="openid profile_nickname"`으로 낮춰서 띄운다. 이메일은
+#: 선택 정보라 없어도 로그인은 성립한다(users.email이 nullable).
+_DEFAULT_SCOPE = {
+    "kakao": "openid profile_nickname profile_image account_email",
+    "google": "openid profile email",
+}
+
+
+def _scope(provider: str) -> str:
+    """이 제공자에게 요구할 scope. 환경변수로 덮을 수 있다."""
+    return os.environ.get(f"{provider.upper()}_SCOPE") or _DEFAULT_SCOPE[provider]
+
 
 def _after_login() -> str:
     """로그인 뒤 돌아갈 화면. 프론트가 SPA라 루트로 보내면 상태를 다시 읽는다.
@@ -78,9 +100,9 @@ def create_oauth() -> OAuth:
             server_metadata_url=(
                 _KAKAO_METADATA if provider == "kakao" else _GOOGLE_METADATA
             ),
-            # 이름과 이메일만 받는다. 카카오는 이메일이 선택 동의라 사용자가
+            # 이름·프로필 사진·이메일만 받는다. 이메일은 선택 동의라 사용자가
             # 거부할 수 있고, 그때도 로그인은 되어야 한다.
-            client_kwargs={"scope": "openid profile email"},
+            client_kwargs={"scope": _scope(provider)},
         )
     return oauth
 
@@ -93,7 +115,11 @@ def _profile_from(token: dict[str, Any], provider: str) -> dict[str, Any]:
     """
     info = token.get("userinfo") or {}
     if not info.get("sub"):
-        raise HTTPException(status_code=502, detail="제공자가 사용자 정보를 주지 않았습니다")
+        # id_token이 안 왔다는 뜻이다. 카카오라면 콘솔에서 OpenID Connect가
+        # 꺼져 있을 가능성이 가장 높다([카카오 로그인] > [OpenID Connect]).
+        raise HTTPException(
+            status_code=502, detail="제공자가 사용자 정보를 주지 않았습니다"
+        )
     # 카카오는 nickname으로, 구글은 name으로 준다.
     name = info.get("name") or info.get("nickname") or ""
     return {
