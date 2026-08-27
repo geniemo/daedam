@@ -123,6 +123,71 @@ function Preflight() {
 }
 
 /** README §5. 준비 완료 */
+/**
+ * 면접 시작 — 누르면 크레딧이 빠지므로 확인을 한 단계 둔다.
+ *
+ * 리포트의 "이 회사로 다시 면접 보기"에서 두 번만 누르면 여기까지 오는데,
+ * 시작하는 순간 되돌릴 수 없는 차감이 일어난다. 잔액을 작은 글씨로 적어 두는
+ * 것은 안내지 확인이 아니다 — 얼마가 빠지는지 말하고 한 번 더 받는다.
+ *
+ * 모달이 아니라 자리에서 펼치는 이유: 이 화면의 다른 확인(회원 탈퇴)과 같은
+ * 방식이고, 모달은 마이크 점검 화면 위를 덮어 버린다.
+ */
+function StartInterview({
+  cost,
+  balance,
+  onStart,
+}: {
+  cost?: number
+  balance?: number
+  onStart: () => void
+}) {
+  const [confirming, setConfirming] = useState(false)
+
+  if (!confirming) {
+    return (
+      <>
+        <button
+          onClick={() => setConfirming(true)}
+          className="rounded-control bg-ink px-[34px] py-[14px] text-[15px] font-semibold text-white"
+        >
+          면접 시작하기
+        </button>
+        {cost !== undefined && (
+          <span className="text-[12.5px] text-faint">
+            크레딧 {balance}개 보유 · 면접에 {cost}개
+          </span>
+        )}
+      </>
+    )
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-[10px] rounded-card border border-accent-line bg-accent-bg px-[18px] py-[14px]">
+      <span className="text-[13.5px] text-body-2">
+        면접을 시작하면 크레딧 <span className="num font-semibold">{cost}</span>개가
+        사용됩니다.
+      </span>
+      <div className="flex items-center gap-[8px]">
+        <OutlineButton
+          onClick={() => setConfirming(false)}
+          className="px-[16px] py-[10px] text-[13.5px]"
+        >
+          취소
+        </OutlineButton>
+        {/* AudioContext는 이 클릭 핸들러 안에서 생성됩니다 — 밖에서 만들면
+            자동재생 정책에 막혀 무음이 됩니다. useVoiceSession 참조. */}
+        <button
+          onClick={onStart}
+          className="rounded-control bg-ink px-[24px] py-[10px] text-[13.5px] font-semibold text-white"
+        >
+          시작하기
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function Ready() {
   const nav = useNavigate()
   const card = useActiveCard()
@@ -193,25 +258,26 @@ export function Ready() {
       <div className="flex items-center">
         <div className="flex-1" />
         <div className="flex flex-col items-end gap-[9px]">
-          {/* AudioContext는 이 클릭 핸들러 안에서 생성됩니다 — 밖에서 만들면
-              자동재생 정책에 막혀 무음이 됩니다. useVoiceSession 참조. */}
-          <button
-            onClick={() => nav('/interview')}
-            disabled={short}
-            className={`rounded-control px-[34px] py-[14px] text-[15px] font-semibold text-white ${
-              short ? 'bg-faintest' : 'bg-ink'
-            }`}
-          >
-            면접 시작하기
-          </button>
           {/* 여기서 막는다. 면접 화면까지 들어갔다가 소켓이 닫히면 마이크
               권한을 물어본 뒤에 못 한다고 말하는 꼴이 된다. */}
-          {credits && (
-            <span className={`text-[12.5px] ${short ? 'text-accent' : 'text-faint'}`}>
-              {short
-                ? `크레딧이 부족합니다 · 면접에 ${credits.costs.interview}개 필요`
-                : `크레딧 ${credits.balance}개 · 면접에 ${credits.costs.interview}개`}
-            </span>
+          {short ? (
+            <>
+              <button
+                disabled
+                className="rounded-control bg-faintest px-[34px] py-[14px] text-[15px] font-semibold text-white"
+              >
+                면접 시작하기
+              </button>
+              <span className="text-[12.5px] text-accent">
+                크레딧이 부족합니다 · 면접에 {credits?.costs.interview}개 필요
+              </span>
+            </>
+          ) : (
+            <StartInterview
+              cost={credits?.costs.interview}
+              balance={credits?.balance}
+              onStart={() => nav('/interview')}
+            />
           )}
         </div>
       </div>
