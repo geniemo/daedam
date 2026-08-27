@@ -1,11 +1,15 @@
 """FastAPI 앱 조립.
 
-ADK의 get_fast_api_app이 에이전트 API와 dev UI를 제공하고, 그 위에 리서치
-라우트를 얹는다. 실행: `cd server && uv run uvicorn daedam.server.app:app`
+실행: `cd server && uv run uvicorn daedam.server.app:app`
 
-확인 경로 (설치된 ADK 2.6.3 소스):
-  google/adk/cli/fast_api.py  `get_fast_api_app(*, agents_dir, web, ...)`
-    — FastAPI 인스턴스를 돌려주므로 include_router로 확장할 수 있다
+**ADK의 `get_fast_api_app`을 쓰지 않는다.** 그것은 에이전트 API와 dev UI를
+통째로 얹어 주는데, 우리는 그중 아무것도 쓰지 않으면서 위험만 물었다 —
+인증 없는 `/run`·`/run_sse`·`/run_live`와 세션 조회·삭제 API가 열려 있어서
+누구나 에이전트를 돌려 우리 돈을 쓰고 남의 면접 대화를 읽을 수 있었다.
+제품 경로는 `/ws/interview` 하나이고, 음성 브리지는 자기 Runner로 돈다.
+
+개발 중 에이전트를 직접 찔러 보려면 `adk web`을 따로 띄우면 된다 — 그건
+로컬에서만 열리고 이 앱과 무관하다.
 """
 
 from __future__ import annotations
@@ -17,7 +21,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
-from google.adk.cli.fast_api import get_fast_api_app
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from google.adk.artifacts import InMemoryArtifactService
 from google.adk.memory import InMemoryMemoryService
 from google.adk.runners import Runner
@@ -28,6 +34,7 @@ from daedam.db import Database, async_url, database_url
 from daedam.db.migrate import upgrade_to_head
 from daedam.interview.stages import DEFAULT_PROFILE
 from daedam.research.service import FixtureResearch, LiveResearch, ResearchService
+from daedam.settings import SERVER_DIR
 from daedam.settings import data_root as default_data_root
 
 from .accounts import Accounts
@@ -41,12 +48,9 @@ from .preparation import InterviewPreparation
 from .preparation_routes import create_preparation_router
 from .store import InterviewStore
 
-#: interviewer 에이전트 패키지가 들어 있는 디렉터리 (= server/).
-_AGENTS_DIR = str(Path(__file__).resolve().parents[2])
-
-# adk web은 실행 디렉터리의 .env를 스스로 읽지만 uvicorn은 아니다 — 명시적으로
-# 읽지 않으면 GOOGLE_API_KEY가 없어 run_live의 Gemini 연결이 실패한다.
-load_dotenv(Path(_AGENTS_DIR) / ".env")
+# uvicorn은 .env를 스스로 읽지 않는다 — 명시적으로 읽지 않으면 GOOGLE_API_KEY가
+# 없어 run_live의 Gemini 연결이 실패한다.
+load_dotenv(SERVER_DIR / ".env")
 
 #: vite 개발 서버 origin. 브라우저는 프록시를 거쳐도 Origin 헤더를 원래
 #: 페이지(5173)로 보내는데, ADK 앱의 origin 검사가 이를 거부하면 모든 브라우저
@@ -104,6 +108,45 @@ def _interview_profile() -> str:
     return os.environ.get("INTERVIEW_PROFILE", DEFAULT_PROFILE)
 
 
+def _mount_frontend(app: FastAPI) -> None:
+    """빌드된 프론트(`web/dist/`)를 같은 오리진에서 서빙한다.
+
+    이렇게 해야 배포가 컨테이너 하나·프로세스 하나로 끝난다 — 프론트를 따로
+    띄우면 CORS·쿠키·OAuth 콜백이 전부 두 오리진 문제가 된다. 개발에서는
+    vite가 5173에 따로 뜨고 `/api`를 프록시하므로 이 마운트가 쓰이지 않는다.
+
+    SPA라 서버에 없는 경로(`/account`, `/report` …)도 index.html을 돌려주고
+    그 뒤는 react-router가 맡아야 한다. `StaticFiles(html=True)`만으로는 안
+    된다 — 그건 디렉터리에 대해서만 index.html을 주고 임의 경로는 404다.
+    그래서 자산은 마운트로, 나머지는 catch-all로 받는다.
+
+    **API 라우터를 다 등록한 뒤에 불러야 한다.** catch-all은 앞선 라우트가
+    아무것도 안 맞을 때만 걸리므로 등록 순서가 곧 우선순위다.
+
+    빌드가 없으면 조용히 건너뛴다 — `npm run build`를 안 한 개발 환경에서
+    서버가 안 뜨면 안 된다.
+    """
+    dist = SERVER_DIR.parent / "web" / "dist"
+    index = dist / "index.html"
+    if not index.exists():
+        logger.info("프론트 빌드가 없어 정적 서빙을 건너뜁니다 (%s)", dist)
+        return
+
+    assets = dist / "assets"
+    if assets.is_dir():
+        app.mount("/assets", StaticFiles(directory=assets), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def spa(full_path: str) -> FileResponse:
+        # 파일이 실제로 있으면 그것을(favicon 등), 없으면 SPA 진입점을.
+        candidate = (dist / full_path).resolve()
+        if full_path and candidate.is_file() and candidate.is_relative_to(dist.resolve()):
+            return FileResponse(candidate)
+        return FileResponse(index)
+
+    logger.info("프론트를 같은 오리진에서 서빙합니다 (%s)", dist)
+
+
 def create_app() -> FastAPI:
     """ADK 앱에 대담 라우트를 얹어 돌려준다."""
     # 면접 진행 로그(단계 이동·뼈대질문 배달)가 보이게 한다. uvicorn은 자기
@@ -126,8 +169,15 @@ def create_app() -> FastAPI:
 
     default_embedder()
 
-    app = get_fast_api_app(
-        agents_dir=_AGENTS_DIR, web=True, allow_origins=_DEV_ORIGINS
+    app = FastAPI(title="대담")
+    # 브라우저는 vite 프록시를 거쳐도 Origin 헤더를 원래 페이지(5173)로 보낸다.
+    # 배포에서는 프론트를 같은 오리진에서 서빙하므로 이 목록이 쓰이지 않는다.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_DEV_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     # 준비 파이프라인: 리서치 → 파일 저장 → 질문 생성. 완료 산출물은
@@ -220,6 +270,7 @@ def create_app() -> FastAPI:
             evaluation=evaluation,
         )
     )
+    _mount_frontend(app)
     return app
 
 
