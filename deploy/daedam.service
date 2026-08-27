@@ -1,0 +1,41 @@
+# 대담 서버 — systemd 유닛
+#
+#   sudo cp deploy/daedam.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now daedam
+#   sudo journalctl -u daedam -f        # 로그
+#
+# User·경로는 실제 배포에 맞게 고칠 것. 아래는 ubuntu 사용자의 홈에
+# 리포지토리를 둔 경우다.
+
+[Unit]
+Description=대담 (Daedam) — AI 음성 모의면접
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/daedam/server
+
+# uv가 .venv를 찾고 .env는 앱이 직접 읽는다(daedam/server/app.py).
+ExecStart=/home/ubuntu/.local/bin/uv run uvicorn daedam.server.app:app \
+    --host 127.0.0.1 --port 8000
+
+# 워커를 늘리지 않는다. 지금 구조는 프로세스 하나를 전제한다 — 필러 커넥션
+# 레지스트리와 준비·평가 진행 상태가 프로세스 메모리에 있어서, 콜백이 A
+# 워커에서 돌고 소켓이 B 워커에 있으면 필러가 안 나간다. 기동 시
+# 마이그레이션도 단일 프로세스라 안전한 것이다.
+
+Restart=always
+RestartSec=5
+# 면접이 15~20분이라 종료 신호 뒤 넉넉히 기다린다.
+TimeoutStopSec=30
+
+# 로그는 journald로. 앱이 시각을 찍으므로 SyslogIdentifier만 준다.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=daedam
+
+[Install]
+WantedBy=multi-user.target

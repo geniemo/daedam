@@ -1,0 +1,20 @@
+# 대담 — 리버스 프록시 + 자동 HTTPS
+#
+#   sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
+#   sudo systemctl reload caddy
+#
+# {도메인}을 실제 도메인으로 바꿀 것. Caddy가 Let's Encrypt 인증서를
+# 자동으로 받고 갱신한다 — certbot 설정이 따로 필요 없다.
+
+{도메인} {
+	encode zstd gzip
+
+	# 면접 음성이 WebSocket으로 흐른다. Caddy는 업그레이드를 기본으로
+	# 넘겨주지만, 면접이 15~20분이라 타임아웃을 넉넉히 둔다.
+	reverse_proxy 127.0.0.1:8000 {
+		transport http {
+			read_timeout 3600s
+			write_timeout 3600s
+		}
+	}
+}
