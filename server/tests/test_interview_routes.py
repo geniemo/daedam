@@ -218,3 +218,28 @@ def test_이력_목록은_최근_판부터(tmp_path) -> None:
     body = _client(bundle).get("/api/interviews/aaa/sessions").json()
     assert [item["id"] for item in body] == [second, first]
     assert body[0]["hasFeedback"] is False
+
+
+def test_분석이_끝났는데_점수가_없는_경우를_가른다(tmp_path) -> None:
+    """한 마디도 안 하고 끝낸 면접은 채점할 답변이 없어 점수가 null이다.
+    그것과 "아직 분석 중"을 화면이 구분하지 못하면, 오지 않을 결과를 계속
+    기다리는 카드가 된다(실측)."""
+    bundle = _store(tmp_path, ("aaa", True))
+    store, _ = bundle
+    client = _client(bundle)
+
+    # ① 면접을 열기만 한 상태 — 아직 분석 전이다.
+    session_id = store.start_session("aaa")
+    [item] = client.get("/api/interviews").json()
+    assert item["analyzed"] is False and item["score"] is None
+
+    # ② 분석은 끝났는데 채점할 답변이 없었다.
+    store.save_feedback(session_id, {"coaching": {"score": None}})
+    [item] = client.get("/api/interviews").json()
+    assert item["analyzed"] is True and item["score"] is None
+
+    # ③ 보통의 경우.
+    later = store.start_session("aaa")
+    store.save_feedback(later, {"coaching": {"score": 71}})
+    [item] = client.get("/api/interviews").json()
+    assert item["analyzed"] is True and item["score"] == 71

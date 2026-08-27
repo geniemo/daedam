@@ -69,8 +69,13 @@ class ApplicationSummary:
     ready: bool
     #: 지금까지 마친 면접 수.
     interview_count: int
-    #: 가장 최근 면접의 점수. 아직 피드백이 없으면 None.
+    #: 가장 최근 면접의 점수. **None인 이유가 둘이다** — 아직 분석 전이거나,
+    #: 분석은 끝났는데 채점할 답변이 없었거나(지원자가 한 마디도 안 한 면접).
+    #: 둘을 가르는 것이 `latest_analyzed`다.
     latest_score: int | None
+    #: 가장 최근 면접의 분석이 끝났는가. 화면이 "분석 중"과 "점수 없음"을
+    #: 구분하려면 필요하다 — 점수만 보면 끝난 분석을 계속 기다리게 된다.
+    latest_analyzed: bool
     created_at: datetime
     updated_at: datetime
 
@@ -402,6 +407,7 @@ class InterviewStore:
             ready=row.questions is not None,
             interview_count=len(done),
             latest_score=None if latest is None else latest.score,
+            latest_analyzed=latest is not None and latest.feedback is not None,
             created_at=_as_utc(row.created_at),
             updated_at=_as_utc(row.updated_at),
         )

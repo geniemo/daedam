@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import { getFeedback, getPreparationStatus } from '@/api/preparation'
 import { useActiveCard } from '@/store/app'
@@ -75,21 +76,29 @@ export function Regen() {
 export function Analyzing() {
   const nav = useNavigate()
   const card = useActiveCard()
+  const queryClient = useQueryClient()
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
     let alive = true
+    // 면접이 끝나면 두 가지가 이미 바뀌어 있다 — 시작할 때 빠진 크레딧과,
+    // 방금 늘어난 면접 횟수. 캐시를 비우지 않으면 헤더의 잔액과 홈 카드가
+    // 새로고침 전까지 옛 값을 보여준다.
+    const refresh = () => queryClient.invalidateQueries()
     const timer = setInterval(async () => {
       try {
         const status = await getFeedback(card.id)
         if (!alive) return
         if (status.status === 'done') {
           clearInterval(timer)
+          await refresh()
           nav('/report')
         } else if (status.status === 'failed' || status.status === 'absent') {
           // absent는 면접이 아무것도 남기지 않았다는 뜻이다. 둘 다 기다려서
-          // 해결되지 않으므로 화면을 붙잡고 있지 않는다.
+          // 해결되지 않으므로 화면을 붙잡고 있지 않는다. 실패해도 크레딧은
+          // 이미 빠졌으므로 잔액은 갱신한다.
           clearInterval(timer)
+          await refresh()
           setFailed(true)
         }
       } catch {
@@ -102,7 +111,7 @@ export function Analyzing() {
       alive = false
       clearInterval(timer)
     }
-  }, [card.id, nav])
+  }, [card.id, nav, queryClient])
 
   if (failed) {
     return (

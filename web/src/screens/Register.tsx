@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { startPreparation } from '@/api/preparation'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getMe } from '@/api/auth'
 import { getCredits } from '@/api/credits'
 import type { Insufficient } from '@/api/credits'
@@ -147,6 +147,7 @@ function Step2() {
   const nav = useNavigate()
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe, retry: false })
   const { data: credits } = useQuery({ queryKey: ['credits'], queryFn: getCredits })
+  const queryClient = useQueryClient()
   // 크레딧이 모자라 막혔다. 다시 눌러도 같은 결과라 안내를 띄운다.
   const [blocked, setBlocked] = useState<Insufficient | null>(null)
   const { company, role, posting, parts, setParts, submitRegister } = useAppStore()
@@ -411,6 +412,9 @@ function Step2() {
               // 서버가 없으면(프론트 단독 실행) 프로토타입의 로컬 진행으로 돌아간다.
             }
             submitRegister(taskId)
+            // 등록하는 순간 크레딧이 빠진다. 리서치 화면에도 헤더가 있으므로
+            // 비우지 않으면 옛 잔액이 남는다.
+            await queryClient.invalidateQueries()
             nav('/research')
           }}
           className="rounded-control bg-ink px-[26px] py-[12px] text-[14px] font-semibold text-white"

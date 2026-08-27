@@ -103,9 +103,10 @@ def create_interviews_router(
                 # 질문 풀까지 있어야 면접을 시작할 수 있다 — 브리지가 그것으로
                 # 시작 가능 여부를 판정하므로 화면도 같은 기준을 쓴다.
                 "ready": item.ready,
-                # 가장 최근 면접의 점수. 없으면 null — 홈에서 리포트로 돌아갈
-                # 길이 이것이다.
+                # 가장 최근 면접의 점수. null인 이유가 둘이라(분석 전 / 채점할
+                # 답변이 없었음) 화면이 가릴 수 있게 analyzed를 같이 보낸다.
                 "score": item.latest_score,
+                "analyzed": item.latest_analyzed,
                 # 몇 번 봤는가. 0이면 아직 한 번도 안 본 면접이다.
                 "interviewCount": item.interview_count,
                 "savedAt": item.updated_at.timestamp(),

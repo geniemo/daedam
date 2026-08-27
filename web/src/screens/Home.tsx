@@ -50,6 +50,7 @@ export function Home() {
         status: item.interviewCount > 0 ? 'done' : item.ready ? 'ready' : 'researching',
         score: item.score ?? undefined,
         interviewCount: item.interviewCount,
+        analyzed: item.analyzed,
       })),
     )
   }, [data, isError, setCards])
@@ -157,8 +158,11 @@ function CompanyCard({ card, onClick }: { card: CardT; onClick: () => void }) {
               </span>
               <span className="text-[12px] text-faint">점</span>
             </div>
+          ) : card.analyzed ? (
+            /* 분석은 끝났는데 채점할 답변이 없었다 — 한 마디도 안 하고 끝낸
+               면접이다. "분석 중"으로 두면 오지 않을 결과를 계속 기다린다. */
+            <span className="text-[12.5px] text-faint">답변 없음</span>
           ) : (
-            /* 방금 마친 면접은 아직 분석 중이라 점수가 없다. */
             <span className="text-[12.5px] text-faint">분석 중</span>
           )}
         </div>

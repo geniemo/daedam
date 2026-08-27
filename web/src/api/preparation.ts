@@ -179,8 +179,13 @@ export interface StoredInterview {
   role: string
   /** 질문 풀까지 준비돼 면접을 시작할 수 있는지. 브리지의 시작 조건과 같다. */
   ready: boolean
-  /** 가장 최근 면접의 점수. 없으면 null — 이게 홈에서 리포트로 가는 길이다. */
+  /**
+   * 가장 최근 면접의 점수. **null인 이유가 둘이다** — 아직 분석 전이거나,
+   * 분석은 끝났는데 채점할 답변이 없었거나. 둘을 가르는 것이 `analyzed`다.
+   */
   score: number | null
+  /** 가장 최근 면접의 분석이 끝났는가. 끝났는데 점수가 없으면 답변이 없던 것이다. */
+  analyzed: boolean
   /** 지금까지 마친 면접 수. 0이면 아직 한 번도 안 본 면접이다. */
   interviewCount: number
   /** 마지막 저장 시각(epoch 초). 목록 정렬과 화면의 날짜 표시에 쓴다. */
