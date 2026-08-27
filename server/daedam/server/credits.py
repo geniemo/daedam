@@ -135,13 +135,14 @@ class Credits:
     def charge(self, user_id: str, amount: int, reason: str, ref_id: str) -> None:
         """크레딧을 쓴다. 모자라면 `InsufficientCredits`.
 
-        확인과 차감이 한 트랜잭션 안에 있어야 두 번 눌러 두 번 쓰는 일이
-        없다. SQLite는 쓰기를 직렬화하므로 이것으로 충분하다. PostgreSQL로
-        옮기면 사용자 행을 `SELECT ... FOR UPDATE`로 잠가야 한다.
+        확인과 차감이 **쓰기 잠금을 쥔 채로** 일어나야 한다. 그러지 않으면 두
+        탭에서 동시에 시작한 요청이 둘 다 같은 옛 잔액을 읽고 둘 다 통과한다 —
+        SQLite의 기본 트랜잭션은 지연이라 SELECT가 잠금을 잡지 않는다.
+        `exclusive=True`가 `BEGIN IMMEDIATE`로 그 창을 없앤다.
         """
         if amount <= 0:
             return
-        with self._db.session() as session:
+        with self._db.session(exclusive=True) as session:
             total = int(
                 session.scalar(
                     select(func.coalesce(func.sum(CreditEntry.delta), 0)).where(
@@ -195,7 +196,9 @@ class Credits:
                 (exhausted) 이 사람이 이미 쓴(already_used) 코드.
         """
         code = normalize_code(code)
-        with self._db.session() as session:
+        # 선착순 코드가 정원을 넘지 않으려면 확인과 사용 수 증가가 잠금 안에
+        # 있어야 한다 — `charge`와 같은 이유다.
+        with self._db.session(exclusive=True) as session:
             coupon = session.get(Coupon, code)
             if coupon is None:
                 raise CouponError("not_found")

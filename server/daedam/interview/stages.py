@@ -37,6 +37,12 @@ class Profile:
 #         타지 않는다. 네 단계를 다 돈다.
 # full   — 제품 정의. 디자인 핸드오프의 "15~20분"에 맞춘다.
 # probe  — 단계 전환 실증용. 실 Gemini 연결로도 2분 안에 네 단계를 다 지난다.
+
+#: 하드캡을 예산의 몇 배로 두는가. 정상적으로 끝나는 면접은 예산 근처에서
+#: 끝나므로 2배는 절대 안 닿는다. 이 값에 닿았다는 것은 누가 창을 닫고
+#: 잊었다는 뜻이다.
+_HARD_CAP_MULTIPLIER = 2.0
+
 PROFILES: dict[str, Profile] = {
     "demo": Profile("demo", (60.0, 180.0, 0.0, 60.0)),
     "dev": Profile("dev", (90.0, 180.0, 150.0, 60.0)),
@@ -58,6 +64,27 @@ class SessionFlow:
             acc += seconds
             bounds.append(acc)
         self._bounds = tuple(bounds)
+
+    @property
+    def total_budget_s(self) -> float:
+        """모든 단계 예산의 합 — 이 면접이 원래 걸려야 하는 길이."""
+        return sum(self.profile.budgets)
+
+    def over_hard_cap(self, elapsed_s: float) -> bool:
+        """예산을 크게 넘겼는가 — 서버가 끊어야 하는 지점.
+
+        면접을 끝내는 것은 지원자의 종료 버튼이고 그 설계는 그대로다. 이건
+        그 아래 깔아 두는 백스톱이다: 창을 닫아 두고 잊었거나 모델이 끝맺지
+        못한 면접이 무한히 도는 것을 막는다.
+
+        필요한 이유가 돈이다. Live API는 **턴마다 누적 맥락 전체를 다시
+        과금하므로**(docs/specs/2026-08-23-credit-pricing.md) 상한이 없으면
+        면접 한 판의 원가에 천장이 없다.
+
+        예산의 2배로 잡은 것은 정상 면접을 절대 건드리지 않기 위해서다 —
+        full 프로필(17분)이면 34분, demo(5분)면 10분이다.
+        """
+        return elapsed_s > self.total_budget_s * _HARD_CAP_MULTIPLIER
 
     def stage_index_at(self, elapsed_s: float) -> int:
         """경과 시간이 속한 단계. 마지막 단계 예산을 넘어도 마지막 단계를 유지한다."""

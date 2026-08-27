@@ -195,25 +195,49 @@ def test_재접속에는_다시_물리지_않는다(tmp_path) -> None:
     assert [s.id for s in store.list_sessions("card")] == [ongoing]
 
 
-def test_새_면접마다_물린다(tmp_path) -> None:
-    """앞 판이 끝난 뒤의 접속은 새 면접이다."""
+def test_답변이_하나도_없으면_되돌린다(tmp_path) -> None:
+    """실수로 시작하고 바로 나온 경우. 실제 원가는 몇 초치라 거의 0인데
+    "잘못 눌렀는데 크레딧이 날아갔다"는 첫인상은 비싸다."""
     from test_live_bridge import _FakeRunner, _client, _seeded_store  # noqa: PLC0415
 
     store = _seeded_store(tmp_path, "card")
     credits: Credits = store.accounts.credits
     user_id = store.accounts.default_user_id()
-
     before = credits.balance(user_id)
-    client = _client(_FakeRunner(), store)
-    for _ in range(2):
-        # 대역 러너는 이벤트를 다 내고 끝내므로 커넥션마다 면접이 끝난다.
-        with client.websocket_connect("/ws/interview?card=card") as websocket:
-            websocket.receive_json()
-            websocket.send_bytes(b"\x00")
-            websocket.receive_bytes()
 
-    assert credits.balance(user_id) == before - 2 * COST_INTERVIEW
-    assert len(store.list_sessions("card")) == 2
+    # 대역 러너는 면접관 쪽만 말하고 끝낸다 — 지원자 발화가 없다.
+    client = _client(_FakeRunner(), store)
+    with client.websocket_connect("/ws/interview?card=card") as websocket:
+        websocket.receive_json()
+        websocket.send_bytes(b"\x00")
+        websocket.receive_bytes()
+
+    assert credits.balance(user_id) == before
+    # 차감과 환불이 둘 다 원장에 남는다 — 기록은 고치지 않는다.
+    reasons = [e.reason for e in credits.history(user_id)[:2]]
+    assert reasons == ["refund", "interview"]
+    # 면접 판 자체는 남는다. 돈만 되돌린 것이다.
+    assert len(store.list_sessions("card")) == 1
+
+
+def test_답변이_있으면_그대로_물린다(tmp_path) -> None:
+    """말을 한 면접은 환불 대상이 아니다."""
+    from test_live_bridge import _TranscribingRunner, _client, _seeded_store  # noqa: PLC0415
+
+    store = _seeded_store(tmp_path, "card")
+    credits: Credits = store.accounts.credits
+    user_id = store.accounts.default_user_id()
+    before = credits.balance(user_id)
+
+    # 이 대역은 지원자 전사까지 흘린다.
+    client = _client(_TranscribingRunner(), store)
+    with client.websocket_connect("/ws/interview?card=card") as websocket:
+        websocket.receive_json()
+        websocket.send_bytes(b"\x00\x01" * 16_000)
+        while websocket.receive_json()["type"] != "ended":
+            pass
+
+    assert credits.balance(user_id) == before - COST_INTERVIEW
 
 
 # ── 쿠폰 ─────────────────────────────────────────────────────────────────
@@ -292,3 +316,35 @@ def test_없는_코드는_없다고_한다(bundle) -> None:
     with pytest.raises(CouponError) as raised:
         credits.redeem(user_id, "NOPE")
     assert raised.value.reason == "not_found"
+
+
+def test_동시에_두_번_차감해도_한_번만_나간다(tmp_path) -> None:
+    """두 탭에서 동시에 면접을 시작하는 경우. SQLite의 기본 트랜잭션은
+    지연이라 SELECT가 잠금을 잡지 않고, 그러면 둘 다 같은 옛 잔액을 읽고 둘 다
+    통과한다 — 돈이 새는 자리다."""
+    import threading
+
+    _, accounts, user_id = make_store(tmp_path / "data")
+    credits: Credits = accounts.credits
+    _drain(credits, user_id)
+    credits.grant(user_id, 4, "admin_grant")  # 면접 딱 한 번치
+
+    results: list[str] = []
+    barrier = threading.Barrier(2)
+
+    def attempt(ref: str) -> None:
+        barrier.wait()  # 둘이 정확히 같이 출발한다
+        try:
+            credits.charge(user_id, 4, "interview", ref)
+            results.append("통과")
+        except InsufficientCredits:
+            results.append("막힘")
+
+    threads = [threading.Thread(target=attempt, args=(f"s{i}",)) for i in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert sorted(results) == ["막힘", "통과"], results
+    assert credits.balance(user_id) == 0

@@ -42,7 +42,7 @@ from google.adk.runners import Runner
 from google.adk.utils.context_utils import Aclosing
 from google.genai import types
 
-from daedam.interview.stages import DEFAULT_PROFILE
+from daedam.interview.stages import DEFAULT_PROFILE, SessionFlow
 from daedam.interview.vocabulary import interview_vocabulary
 from daedam.research.report import search_sections_from_report
 from interviewer.agent import VOICE
@@ -561,6 +561,9 @@ def create_live_router(
                     # start/pause/resume는 서버 조치가 없다 — 마이크 뮤트는
                     # 프론트 워클릿이 하고, 커넥션은 유지한다.
 
+        # 이 면접의 시간 예산 판정기. 하드캡을 재는 데 쓴다.
+        flow = SessionFlow(session.state.get(STATE_PROFILE) or profile)
+
         async def pump_agent_to_client() -> None:
             """에이전트 → 브라우저 방향 펌프.
 
@@ -592,6 +595,18 @@ def create_live_router(
                         usage.add(event.usage_metadata)
                     collect("interviewer", event.output_transcription)
                     collect("applicant", event.input_transcription)
+                    # 하드캡 백스톱. 면접을 끝내는 것은 지원자의 종료 버튼이고
+                    # 그 설계는 그대로다 — 이건 창을 닫고 잊은 면접이 무한히
+                    # 도는 것만 막는다. Live API가 턴마다 누적 맥락을 다시
+                    # 과금하므로 상한이 없으면 원가에 천장이 없다.
+                    if flow.over_hard_cap(_elapsed_s(session.state)):
+                        logger.warning(
+                            "하드캡 도달 — 면접을 끊는다 (session=%s, 경과 %.0f초)",
+                            session_id,
+                            _elapsed_s(session.state),
+                        )
+                        await notify_ended()
+                        return
                     if event.turn_complete:
                         turn_count += 1
                         logger.info(
@@ -668,6 +683,17 @@ def create_live_router(
                     logger.warning(
                         "대화 세션 삭제 실패 (session=%s)", session_id, exc_info=True
                     )
+                # 지원자가 한 마디도 안 한 면접은 되돌린다. 실수로 시작하고
+                # 바로 나온 경우인데, 실제 원가는 몇 초치라 거의 0이면서
+                # "잘못 눌렀는데 크레딧이 날아갔다"는 첫인상은 비싸다.
+                said = [
+                    u
+                    for u in recording.transcript_payload().get("utterances", [])
+                    if u.get("speaker") == "applicant"
+                ]
+                if not said:
+                    logger.info("답변이 없어 크레딧을 되돌린다 (session=%s)", session_id)
+                    credits.refund(user_id, "interview", session_id)
                 logger.info("면접 종료 (card=%s, session=%s)", card, session_id)
                 # 끝난 뒤에만 피드백을 만든다. 재접속마다 만들면 15~20분
                 # 면접 한 판에 Grok 호출이 여러 번 나간다 — 커넥션 수명이

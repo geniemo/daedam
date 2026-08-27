@@ -22,7 +22,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from sqlalchemy import Engine, create_engine, event
+from sqlalchemy import Engine, create_engine, event, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from .models import Base
@@ -111,10 +111,23 @@ class Database:
         Base.metadata.create_all(self.engine)
 
     @contextmanager
-    def session(self) -> Iterator[Session]:
-        """트랜잭션 하나. 빠져나올 때 커밋하고, 예외가 나면 되돌린다."""
+    def session(self, *, exclusive: bool = False) -> Iterator[Session]:
+        """트랜잭션 하나. 빠져나올 때 커밋하고, 예외가 나면 되돌린다.
+
+        Args:
+            exclusive: 읽고 나서 그 값으로 쓰는 트랜잭션이면 True. 쓰기 잠금을
+                **처음부터** 잡아 두 요청이 같은 옛 값을 읽고 둘 다 쓰는 일을
+                막는다. 크레딧 차감과 쿠폰 사용이 그런 경우다 — 돈이다.
+
+                SQLite의 기본은 지연 트랜잭션이라 SELECT가 잠금을 잡지 않는다.
+                그래서 두 탭에서 동시에 면접을 시작하면 둘 다 잔액을 통과할 수
+                있다. `BEGIN IMMEDIATE`가 그 창을 없앤다. PostgreSQL에서는
+                이 플래그가 무시되고, 그때는 `SELECT ... FOR UPDATE`가 필요하다.
+        """
         session = self._session_factory()
         try:
+            if exclusive and self.url.startswith("sqlite"):
+                session.execute(text("BEGIN IMMEDIATE"))
             yield session
             session.commit()
         except Exception:

@@ -100,3 +100,17 @@ def test_demo는_인성_단계를_건너뛴다() -> None:
     assert demo.stage_index_at(239.9) == 1   # 직무 끝 직전
     assert demo.stage_index_at(240.0) == 3   # 인성(예산 0)을 지나 바로 마무리
     assert demo.stage_remaining_s(240.0) == 60.0
+
+
+def test_하드캡은_예산의_두_배다() -> None:
+    """정상 면접은 절대 안 닿아야 한다 — 면접을 끝내는 것은 지원자다.
+    이건 창을 닫고 잊은 면접이 무한히 도는 것만 막는 백스톱이다."""
+    flow = SessionFlow("demo")
+    assert flow.total_budget_s == 300.0          # 60 + 180 + 0 + 60
+    assert not flow.over_hard_cap(299.0)         # 예산 안
+    assert not flow.over_hard_cap(500.0)         # 늘어져도 아직
+    assert flow.over_hard_cap(601.0)             # 두 배를 넘겼다
+
+    full = SessionFlow("full")
+    assert not full.over_hard_cap(full.total_budget_s * 2)
+    assert full.over_hard_cap(full.total_budget_s * 2 + 1)
