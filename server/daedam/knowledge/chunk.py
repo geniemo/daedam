@@ -86,6 +86,18 @@ class Chunk:
         return result
 
 
+#: 이보다 짧은 블록은 색인하지 않는다.
+#:
+#: 내용이 없는 껍데기가 의미 검색의 잡음이 된다. 실측: 모든 리포트에 똑같이
+#: 들어 있는 `"출처" / "Sources:"` 블록이 **아무 질의에나 0.63**으로 걸려
+#: 무관 질의의 최고점을 만들었다("오늘 점심 메뉴 추천"에도). 짧은 텍스트는
+#: 벡터가 방향을 못 잡아 모든 것과 어중간하게 닮는다.
+#:
+#: 20자는 한국어 한 문장의 하한쯤이다. 이보다 짧은 블록에 면접에서 쓸 사실이
+#: 담기는 경우는 없다.
+_MIN_CHUNK_CHARS = 20
+
+
 def chunks_from_report(sections: list[dict[str, Any]]) -> list[Chunk]:
     """리서치 리포트를 검색 청크로 변환한다.
 
@@ -94,15 +106,15 @@ def chunks_from_report(sections: list[dict[str, Any]]) -> list[Chunk]:
             "ref": str | None}]}]` 형태의 섹션 목록.
 
     Returns:
-        본문이 있는 블록만 담은 Chunk 목록. 짧은 블록은 id가 그대로 보존되고,
-        긴 블록은 "{블록id}#n"으로 쪼개진다.
+        쓸 만한 본문이 있는 블록만 담은 Chunk 목록. 짧은 블록은 id가 그대로
+        보존되고, 긴 블록은 "{블록id}#n"으로 쪼개진다.
     """
     chunks: list[Chunk] = []
     for section in sections:
         section_title = section.get("title", "")
         for block in section.get("blocks", []):
             text = (block.get("text") or "").strip()
-            if not text:
+            if len(text) < _MIN_CHUNK_CHARS:
                 continue
             for chunk_id, piece in _split(text, block["id"]):
                 chunks.append(

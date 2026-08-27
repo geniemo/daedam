@@ -5,9 +5,11 @@
 전사 표기 흔들림) 강하다. 두 랭킹을 RRF로 합쳐 순위를 내고, 관련성 판정은
 어느 한쪽 신호라도 충분하면 통과시킨다.
 
-코퍼스가 청크 35개 안팎이라 융합 계산은 1ms 미만이고, 임베딩까지 로컬이라
-면접 중 임계 경로에 네트워크 호출이 없다. 임베더가 없으면(환경 스위치 off,
-모델 로드 실패) BM25 단독으로 자연히 강등된다.
+코퍼스가 청크 100개 안팎이라 융합 계산은 1ms 미만이다. 임베딩은 기본이
+Gemini API라 질의마다 왕복이 한 번 있고(실측 0.47초), 그 값은 로컬 모델을
+GPU 없는 배포 대상에서 돌리는 값(질의 0.82초, 인덱스 50초)보다 싸다 —
+`embedding.py` 첫 주석 참고. 임베더가 없으면(환경 스위치 off, 준비 실패)
+BM25 단독으로 자연히 강등된다.
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ import re
 from rank_bm25 import BM25Okapi
 
 from .chunk import Chunk, Source
-from .embedding import LocalEmbedder
+from .embedding import Embedder
 
 #: 질의 토큰 중 이 비율 이상을 포함해야 어휘적으로 관련 있다고 본다.
 #:
@@ -30,13 +32,17 @@ _MIN_OVERLAP_RATIO = 0.35
 
 #: 이 코사인 유사도 이상이면 의미적으로 관련 있다고 본다.
 #:
-#: KURE-v1 실측으로 정했다 — 동의어·패러프레이즈 질의는 이 위로("UX"↔"사용자
-#: 경험" 0.56, "KPI 설정 능력"↔지표 정의 0.60, "일감 매칭 플랫폼"↔물류 중개
-#: 0.57), 무관 질의는 0.44 이하로 갈렸다. 경계 사례 하나는 알고 버린다:
-#: 전사 표기 변형만 남은 극단적으로 짧은 질의("유엑스 디자인" 0.43)는 무관
-#: 소음의 상단(0.44)과 겹쳐 어떤 임계값으로도 깨끗이 가를 수 없다. 검색
-#: 결과가 그대로 대화 컨텍스트에 실리므로 정밀도 쪽을 택한다.
-_MIN_COSINE = 0.45
+#: **임계값은 임베딩 모델에 딸려 있다.** 모델을 바꾸면 반드시 다시 재야 한다 —
+#: 유사도의 분포가 모델마다 다르다. 앞서 KURE-v1일 때는 0.45였다.
+#:
+#: gemini-embedding-001(768차원)로 실제 카드 셋의 코퍼스에 재측정했다.
+#:   관련 질의   0.662 ~ 0.801  (회사 사업 구조·직무 요구역량·인재상 등)
+#:   무관 질의   0.496 ~ 0.625  (점심 메뉴·복용법·항공권 등)
+#: 0.64는 그 사이에 있고 양쪽에서 0.02~0.04 떨어져 있다. 간격이 넓지 않으므로
+#: 코퍼스 성격이 크게 바뀌면 다시 잰다.
+#:
+#: 검색 결과가 그대로 대화 컨텍스트에 실리므로 경계에서는 정밀도 쪽을 택한다.
+_MIN_COSINE = 0.64
 
 #: RRF 상수. 표준값 60 — 상위 몇 위 안에서의 순위 차이를 완만하게 반영한다.
 _RRF_K = 60
@@ -62,7 +68,7 @@ class KnowledgeIndex:
     """리서치 리포트와 지원서를 함께 담는 세션 하나의 검색 인덱스."""
 
     def __init__(
-        self, chunks: list[Chunk], embedder: LocalEmbedder | None = None
+        self, chunks: list[Chunk], embedder: Embedder | None = None
     ) -> None:
         """인덱스를 만든다.
 
@@ -126,7 +132,8 @@ class KnowledgeIndex:
         )
         cosines = None
         if self._embedder is not None and self._vectors is not None:
-            query_vector = self._embedder.encode([query])[0]
+            # 질의와 문서에 다른 task_type을 준다 — 비대칭 검색의 권장 사용법이다.
+            query_vector = self._embedder.encode([query], query=True)[0]
             cosines = self._vectors @ query_vector
 
         # 관련성 게이트 — 어휘·의미 어느 한쪽이라도 신호가 충분하면 통과.

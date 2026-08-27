@@ -119,8 +119,9 @@ def create_app() -> FastAPI:
     for package in ("daedam", "interviewer"):
         logging.getLogger(package).setLevel(logging.INFO)
 
-    # 임베딩 모델(수 초)을 기동 시점에 예열한다 — 첫 검색이 면접 한가운데서
-    # 모델 로드로 멈추면 안 된다.
+    # 임베더를 기동 시점에 준비한다 — 첫 검색이 면접 한가운데서 준비 비용을
+    # 물면 안 된다. 기본(Gemini API)은 클라이언트 하나라 즉시 끝나고,
+    # SEARCH_EMBEDDINGS=local이면 여기서 모델을 내려받고 올린다(수 초~수 분).
     from daedam.knowledge.embedding import default_embedder
 
     default_embedder()

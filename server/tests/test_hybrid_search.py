@@ -21,7 +21,9 @@ class _FakeEmbedder:
     def __init__(self, groups: list[list[str]]) -> None:
         self._groups = groups
 
-    def encode(self, texts: list[str]) -> np.ndarray:
+    def encode(self, texts: list[str], *, query: bool = False) -> np.ndarray:
+        # 이 대역은 질의와 문서를 가르지 않는다 — 축이 키워드로 정해진다.
+        del query
         vectors = np.zeros((len(texts), len(self._groups) + 1))
         for row, text in enumerate(texts):
             for axis, keywords in enumerate(self._groups):
