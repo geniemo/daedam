@@ -44,15 +44,17 @@ STATE = {STATE_RESEARCH_REPORT: REPORT, STATE_APPLICATION: APPLICATION}
 def test_리포트에서_관련_정보를_찾는다() -> None:
     """기본 검색은 두 코퍼스를 다 본다. 순위는 검증하지 않는다 — BM25 길이
     정규화 때문에 짧은 청크가 앞설 수 있고, 그건 정상이다."""
-    result = search_knowledge(tool_context=ContextStub(STATE), query="정산 주기")
+    result = asyncio.run(search_knowledge(tool_context=ContextStub(STATE), query="정산 주기"))
     report_items = [i for i in result["results"] if i["source"] == "리서치 리포트"]
     assert report_items, "리포트 청크가 결과에 있어야 한다"
     assert report_items[0]["ref"] == "보도자료"
 
 
 def test_source로_지원서만_좁힌다() -> None:
-    result = search_knowledge(
-        tool_context=ContextStub(STATE), query="정산", source="application"
+    result = asyncio.run(
+        search_knowledge(
+            tool_context=ContextStub(STATE), query="정산", source="application"
+        )
     )
     assert result["results"]
     assert all(item["source"] == "지원서" for item in result["results"])
@@ -60,7 +62,7 @@ def test_source로_지원서만_좁힌다() -> None:
 
 def test_무관한_질의는_빈_결과와_지시() -> None:
     """모델이 '없음'을 지어내지 않고 말할 수 있어야 한다."""
-    result = search_knowledge(tool_context=ContextStub(STATE), query="등산 코스 추천")
+    result = asyncio.run(search_knowledge(tool_context=ContextStub(STATE), query="등산 코스 추천"))
     assert result["results"] == []
     assert "instruction" in result
 
@@ -68,7 +70,7 @@ def test_무관한_질의는_빈_결과와_지시() -> None:
 def test_시딩_안_된_세션은_크게_실패한다() -> None:
     """폴백으로 가리면 엉뚱한 데이터로 검색이 그럴듯하게 돌아버린다."""
     with pytest.raises(ValueError, match="시딩"):
-        search_knowledge(tool_context=ContextStub(), query="배차 자동화")
+        asyncio.run(search_knowledge(tool_context=ContextStub(), query="배차 자동화"))
 
 
 def test_같은_코퍼스는_인덱스를_재사용한다() -> None:
