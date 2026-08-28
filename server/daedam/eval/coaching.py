@@ -22,19 +22,18 @@
 빼면 코칭이 그 얘기를 못 한다. 거르는 것은 전사 잡음뿐이다.
 
 xAI API 확인 경로: daedam/interview/generation.py 첫 주석과 같다
-  (OpenAI 호환 / base_url https://api.x.ai/v1 / grok-4.5 / .parse)
+  (Gemini의 OpenAI 호환 엔드포인트 / .parse — `daedam.llm` 참고)
 """
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import Any
 
 from pydantic import BaseModel, Field
+from daedam.llm import MODEL_QUALITY, text_client
 
-_MODEL = "grok-4.5"
-_BASE_URL = "https://api.x.ai/v1"
+_MODEL = MODEL_QUALITY
 
 #: 전사 잡음을 거르는 하한. 기침이나 헛기침이 "어" 한 글자로 잡히는 것을
 #: 빼려는 것이지 짧은 답변을 빼려는 것이 아니다 — 답변이 짧았다는 것 자체가
@@ -191,7 +190,7 @@ def evaluate(
         company: 회사 이름.
         role: 직무 이름.
         transcript: `InterviewRecording`이 남긴 전사.
-        client: OpenAI 호환 클라이언트. 기본값은 XAI_API_KEY로 만든 실제
+        client: OpenAI 호환 클라이언트. 기본값은 GOOGLE_API_KEY로 만든 실제
             클라이언트고, 테스트는 대역을 주입한다.
 
     Returns:
@@ -215,9 +214,7 @@ def evaluate(
         )
 
     if client is None:
-        from openai import OpenAI
-
-        client = OpenAI(api_key=os.environ["XAI_API_KEY"], base_url=_BASE_URL)
+        client = text_client()
 
     completion = client.beta.chat.completions.parse(
         model=_MODEL,

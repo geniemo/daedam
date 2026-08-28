@@ -7,14 +7,13 @@
 면접 중에는 호출되지 않는다 — 검토 제출 시점의 배치 작업이다.
 
 xAI API 확인 경로 (docs.x.ai, 2026-08 확인):
-  - OpenAI 호환: base_url https://api.x.ai/v1, 모델 grok-4.5
+  - Gemini의 OpenAI 호환 엔드포인트 (`daedam.llm`)
   - 구조화 출력: client.beta.chat.completions.parse(response_format=<pydantic
     모델>) → choices[0].message.parsed
 """
 
 from __future__ import annotations
 
-import os
 from copy import deepcopy
 from typing import Any
 
@@ -23,9 +22,9 @@ from pydantic import BaseModel, Field
 from daedam.interview.question_pool import QuestionPool
 from daedam.interview.stages import STAGE_NAMES
 from daedam.knowledge.chunk import Chunk
+from daedam.llm import MODEL_QUALITY, text_client
 
-_MODEL = "grok-4.5"
-_BASE_URL = "https://api.x.ai/v1"
+_MODEL = MODEL_QUALITY
 
 #: 생성 대상 단계와 목표 개수. 실제로 나가는 수보다 넉넉하게 만들어 모델이
 #: 면접 맥락에 맞는 질문을 고를 여지를 준다.
@@ -108,7 +107,7 @@ def generate_question_pool(
         role: 직무 이름.
         report_chunks: 검토 반영된 리서치 리포트의 검색 청크.
         application_chunks: 지원서의 검색 청크.
-        client: OpenAI 호환 클라이언트. 기본값은 XAI_API_KEY로 만든 실제
+        client: OpenAI 호환 클라이언트. 기본값은 GOOGLE_API_KEY로 만든 실제
             클라이언트고, 테스트는 대역을 주입한다.
 
     Returns:
@@ -119,9 +118,7 @@ def generate_question_pool(
             못하면. 오프라인 배치라 조용히 넘어가지 않고 크게 실패한다.
     """
     if client is None:
-        from openai import OpenAI
-
-        client = OpenAI(api_key=os.environ["XAI_API_KEY"], base_url=_BASE_URL)
+        client = text_client()
 
     completion = client.beta.chat.completions.parse(
         model=_MODEL,
