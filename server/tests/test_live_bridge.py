@@ -168,12 +168,18 @@ def _handshake(websocket) -> dict:
 
 def test_접속하면_화면이_맞출_진행_상태를_먼저_받는다(tmp_path) -> None:
     """경과 시간·질문 번호의 출처는 서버 하나다. 남은 시간과 단계는 없다 —
-    면접을 끝내는 것은 지원자의 버튼이다."""
-    client = _client(_FakeRunner(), _seeded_store(tmp_path, "hs"))
+    면접을 끝내는 것은 지원자의 버튼이다.
+
+    판 id도 여기 실린다. 화면이 웹캠 녹화를 어느 판에 올릴지 알아야 하는데,
+    "가장 최근 판"으로 유추하게 두면 첫 조각이 판 생성보다 빠를 때 404를 받고
+    녹화가 통째로 죽는다."""
+    store = _seeded_store(tmp_path, "hs")
+    client = _client(_FakeRunner(), store)
     with client.websocket_connect("/ws/interview?card=hs") as websocket:
         message = _handshake(websocket)
 
-    assert message == {"type": "session", "elapsedSeconds": 0, "asked": 0}
+    assert message["elapsedSeconds"] == 0 and message["asked"] == 0
+    assert message["sessionId"] == store.latest_session("hs").id
 
 
 def test_왕복_오디오와_이벤트가_흐른다(tmp_path) -> None:

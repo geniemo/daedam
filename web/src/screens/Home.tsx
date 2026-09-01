@@ -159,8 +159,8 @@ function CompanyCard({ card, onClick }: { card: CardT; onClick: () => void }) {
               <span className="text-[12px] text-faint">점</span>
             </div>
           ) : card.analyzed ? (
-            /* 분석은 끝났는데 채점할 답변이 없었다 — 한 마디도 안 하고 끝낸
-               면접이다. "분석 중"으로 두면 오지 않을 결과를 계속 기다린다. */
+            /* 분석은 끝났는데 채점할 답변이 없었다. 아무 말 없이 끝난 면접은
+               애초에 여기 잡히지 않는다 — 서버가 "가장 최근"에서 뺀다. */
             <span className="text-[12.5px] text-faint">답변 없음</span>
           ) : (
             <span className="text-[12.5px] text-faint">분석 중</span>

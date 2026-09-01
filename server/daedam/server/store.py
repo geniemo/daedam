@@ -67,7 +67,7 @@ class ApplicationSummary:
     role: str
     #: 질문 풀까지 있어야 면접을 시작할 수 있다.
     ready: bool
-    #: 지금까지 마친 면접 수.
+    #: 지금까지 본 면접 수. 지원자가 한 마디도 안 한 것은 세지 않는다.
     interview_count: int
     #: 가장 최근 면접의 점수. **None인 이유가 둘이다** — 아직 분석 전이거나,
     #: 분석은 끝났는데 채점할 답변이 없었거나(지원자가 한 마디도 안 한 면접).
@@ -102,6 +102,24 @@ class SessionSummary:
     score: int | None
     #: 피드백이 만들어졌는가. 없으면 아직 분석 중이거나 실패한 것이다.
     has_feedback: bool
+    #: 지원자가 한 마디라도 했는가. 거짓이면 이건 면접 회차가 아니다.
+    has_answer: bool
+
+
+def has_answer(transcript: dict[str, Any] | None) -> bool:
+    """이 면접에 지원자의 답변이 하나라도 있는가 — "면접을 봤다"의 기준.
+
+    **면접관 발화는 세지 않는다.** 면접관은 시작하자마자 인사와 첫 질문을
+    하므로, 전사가 비어 있지 않다는 것만으로는 아무것도 알 수 없다. 시작하고
+    3초 만에 나온 면접도 전사에는 "안녕하세요, 자기소개 부탁드립니다"가 남는다.
+
+    브리지가 크레딧을 되돌릴 때 쓰는 기준과 같아야 한다 — 돌려준 면접이
+    이력에 회차로 남으면 앞뒤가 안 맞는다.
+    """
+    return any(
+        u.get("speaker") == "applicant"
+        for u in (transcript or {}).get("utterances", [])
+    )
 
 
 def _as_utc(value: datetime | None) -> datetime | None:
@@ -137,6 +155,7 @@ def _to_session_summary(row: InterviewSession) -> SessionSummary:
         ended_at=_as_utc(row.ended_at),
         score=row.score,
         has_feedback=row.feedback is not None,
+        has_answer=has_answer(row.transcript),
     )
 
 
@@ -398,14 +417,16 @@ class InterviewStore:
     # ── 내부 ─────────────────────────────────────────────────────────────
 
     def _summary(self, row: Application) -> ApplicationSummary:
-        done = [s for s in row.sessions if s.feedback is not None]
-        latest = max(row.sessions, key=lambda s: s.started_at, default=None)
+        # 지원자가 한 마디도 안 한 것은 세지 않는다 — 시작만 하고 나온 것은
+        # "면접을 봤다"가 아니다. 세면 카드가 없던 일의 결과를 보여준다.
+        answered = [s for s in row.sessions if has_answer(s.transcript)]
+        latest = max(answered, key=lambda s: s.started_at, default=None)
         return ApplicationSummary(
             id=row.id,
             company=row.company,
             role=row.role,
             ready=row.questions is not None,
-            interview_count=len(done),
+            interview_count=len(answered),
             latest_score=None if latest is None else latest.score,
             latest_analyzed=latest is not None and latest.feedback is not None,
             created_at=_as_utc(row.created_at),

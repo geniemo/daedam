@@ -60,7 +60,7 @@ from . import fillers
 from .accounts import Accounts
 from .credits import COST_INTERVIEW, Credits, InsufficientCredits
 from .recording import InterviewRecording
-from .store import InterviewData, InterviewStore
+from .store import InterviewData, InterviewStore, has_answer
 
 logger = logging.getLogger(__name__)
 
@@ -450,6 +450,10 @@ def create_live_router(
         await websocket.send_json(
             {
                 "type": "session",
+                # 화면이 웹캠 녹화를 어느 판에 올릴지 알아야 한다. "가장 최근
+                # 판"으로 유추하게 두면, 첫 조각이 판 생성보다 빠를 때 404를
+                # 받고 녹화가 통째로 죽는다.
+                "sessionId": session_id,
                 "elapsedSeconds": int(_elapsed_s(session.state)),
                 "asked": len(session.state.get(STATE_ASKED, [])),
             }
@@ -686,12 +690,7 @@ def create_live_router(
                 # 지원자가 한 마디도 안 한 면접은 되돌린다. 실수로 시작하고
                 # 바로 나온 경우인데, 실제 원가는 몇 초치라 거의 0이면서
                 # "잘못 눌렀는데 크레딧이 날아갔다"는 첫인상은 비싸다.
-                said = [
-                    u
-                    for u in recording.transcript_payload().get("utterances", [])
-                    if u.get("speaker") == "applicant"
-                ]
-                if not said:
+                if not has_answer(recording.transcript_payload()):
                     logger.info("답변이 없어 크레딧을 되돌린다 (session=%s)", session_id)
                     credits.refund(user_id, "interview", session_id)
                 logger.info("면접 종료 (card=%s, session=%s)", card, session_id)

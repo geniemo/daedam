@@ -52,6 +52,10 @@ COST_INTERVIEW = int(os.environ.get("CREDITS_PER_INTERVIEW", "4"))
 #: 사용자에게는 둘 다 "충전"이다.
 PURCHASE_REASON = "purchase"
 
+#: 되돌린 건을 원장에 남길 때 쓰는 reason. 조회 쪽(`refunded`)이 이 값으로
+#: 찾으므로 문자열을 양쪽에 흩어 두지 않는다.
+REFUND_REASON = "refund"
+
 
 def normalize_code(code: str) -> str:
     """손으로 치는 값이라 대소문자·앞뒤 공백으로 갈리지 않게 한다."""
@@ -173,16 +177,33 @@ class Credits:
                 )
             ).all()
             spent = -sum(row.delta for row in rows if row.delta < 0)
-            already = sum(row.delta for row in rows if row.reason == "refund")
+            already = sum(row.delta for row in rows if row.reason == REFUND_REASON)
             amount = spent - already
             if amount <= 0:
                 return
             session.add(
                 CreditEntry(
-                    user_id=user_id, delta=amount, reason="refund", ref_id=ref_id
+                    user_id=user_id, delta=amount, reason=REFUND_REASON, ref_id=ref_id
                 )
             )
         logger.info("크레딧 환불 +%d (%s, user=%s)", amount, reason, user_id)
+
+    def refunded(self, user_id: str, ref_id: str) -> bool:
+        """이 건을 되돌린 적이 있는가.
+
+        화면이 "크레딧은 돌려드렸습니다"라고 말해도 되는지 판정한다. 돈 이야기라
+        추측하지 않는다 — 되돌리는 경로가 하나가 아니라서(무응답 면접, 실패한
+        리서치) 원장을 보는 것만이 늘 맞다.
+        """
+        with self._db.session() as session:
+            found = session.scalar(
+                select(CreditEntry.id).where(
+                    CreditEntry.user_id == user_id,
+                    CreditEntry.ref_id == ref_id,
+                    CreditEntry.reason == REFUND_REASON,
+                )
+            )
+        return found is not None
 
     def redeem(self, user_id: str, code: str) -> int:
         """쿠폰 코드를 크레딧으로 바꾼다. 돌려주는 것은 얹힌 크레딧 수.

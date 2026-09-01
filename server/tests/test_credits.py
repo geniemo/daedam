@@ -104,6 +104,21 @@ def test_쓴_적_없는_건은_되돌릴_것이_없다(bundle) -> None:
     assert credits.balance(user_id) == before
 
 
+def test_되돌렸는지를_원장에서_읽는다(bundle) -> None:
+    """무응답 면접 화면이 "크레딧은 돌려드렸습니다"를 말해도 되는지 판정한다.
+    돈 이야기라 짐작하지 않는다 — 되돌린 행이 있어야만 참이다."""
+    _, credits, user_id = bundle
+    credits.charge(user_id, COST_INTERVIEW, "interview", "s-1")
+    assert credits.refunded(user_id, "s-1") is False
+
+    credits.refund(user_id, "interview", "s-1")
+    assert credits.refunded(user_id, "s-1") is True
+
+    # 되돌릴 것이 없었으면 행도 남지 않는다 — 참으로 새면 안 된다.
+    credits.refund(user_id, "interview", "s-2")
+    assert credits.refunded(user_id, "s-2") is False
+
+
 # ── 라우트에서 막히는가 ─────────────────────────────────────────────────
 
 

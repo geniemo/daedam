@@ -107,17 +107,40 @@ def test_같은_준비_데이터로_여러_판_본다(store_bundle) -> None:
     assert store.latest_session("abc").id == second
 
 
-def test_홈_목록은_마친_면접_수와_최근_점수를_센다(store_bundle) -> None:
+#: 지원자가 한 마디라도 한 전사. 이게 있어야 면접 회차로 센다.
+_ANSWERED = {
+    "durationS": 40.0,
+    "utterances": [
+        {"speaker": "interviewer", "text": "자기소개 부탁드립니다.", "at": 1.0},
+        {"speaker": "applicant", "text": "박지원입니다.", "at": 5.0},
+    ],
+}
+
+
+def test_홈_목록은_본_면접_수와_최근_점수를_센다(store_bundle) -> None:
+    """세는 단위는 "지원자가 답한 면접"이다. 면접관 인사만 남은 판은 세지 않는다 —
+    면접관은 시작하자마자 말하므로 전사가 있다는 것만으로는 아무것도 모른다."""
     store, _, user_id = store_bundle
     _save(store, user_id)
+
     done = store.start_session("abc")
+    store.save_transcript(done, _ANSWERED)
     store.save_feedback(done, {"coaching": {"score": 71}})
     store.end_session(done)
-    store.start_session("abc")  # 아직 피드백 없음
+
+    running = store.start_session("abc")  # 답은 했고 아직 분석 전
+    store.save_transcript(running, _ANSWERED)
+
+    # 시작하자마자 나온 판 — 면접관 인사만 남았다. 회차가 아니다.
+    bailed = store.start_session("abc")
+    store.save_transcript(bailed, {"durationS": 6.4, "utterances": [
+        {"speaker": "interviewer", "text": "안녕하세요. 자기소개 부탁드립니다.", "at": 1.0},
+    ]})
 
     [summary] = store.list_for_user(user_id)
-    assert summary.interview_count == 1  # 피드백까지 나온 것만 센다
-    assert summary.latest_score is None  # 가장 최근 판은 아직 분석 전
+    assert summary.interview_count == 2
+    assert summary.latest_score is None  # 가장 최근 회차는 아직 분석 전
+    assert summary.latest_analyzed is False
 
 
 def test_끊긴_면접은_이어받고_오래된_것은_닫는다(store_bundle) -> None:
