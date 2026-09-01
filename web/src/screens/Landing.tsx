@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { getProviders, loginUrl } from '@/api/auth'
+import { GoogleMark, KakaoMark } from '@/components/ProviderMark'
 
 /**
  * 로그인하지 않은 사람이 보는 첫 화면.
@@ -77,14 +78,22 @@ function LoginButton({ provider }: { provider: string }) {
   // 카카오는 지정 노란색(#FEE500)과 검정 글자를, 구글은 흰 바탕에 테두리를
   // 요구한다. 제품 팔레트를 여기서만 벗어나는 이유가 그것이다.
   const kakao = provider === 'kakao'
+  const Mark = kakao ? KakaoMark : provider === 'google' ? GoogleMark : null
   return (
     <a
       href={loginUrl(provider)}
-      className={`flex h-[50px] items-center justify-center rounded-control text-[14.5px] font-semibold ${
+      className={`relative flex h-[50px] items-center justify-center rounded-control text-[14.5px] font-semibold ${
         kakao ? 'text-[#191600]' : 'border border-field bg-surface text-ink'
       }`}
       style={kakao ? { background: '#FEE500' } : undefined}
     >
+      {/* 상징은 왼쪽에 고정하고 글자는 버튼 가운데에 둔다. 둘을 한 줄로 묶으면
+          라벨 길이가 달라서 버튼마다 상징의 위치가 어긋난다. */}
+      {Mark && (
+        <span className="absolute left-[16px] flex items-center">
+          <Mark />
+        </span>
+      )}
       {LABEL[provider] ?? `${provider}로 시작하기`}
     </a>
   )
