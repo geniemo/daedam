@@ -104,6 +104,11 @@ export interface Feedback {
       startDelayS: number | null
     }[]
   }
+  /**
+   * 시선·표정. 정면 기준을 잡고 면접한 경우에만 옵니다.
+   * 계약: server/daedam/eval/gaze.py
+   */
+  gaze?: GazeReport
   coaching: {
     /** 답변 점수의 평균. 평가할 답변이 없으면 null — 0점과 다르다. */
     score: number | null
@@ -124,11 +129,49 @@ export interface Feedback {
   }
 }
 
+export interface GazeReport {
+  /** 얼굴이 보인 초 수. 적으면 나머지 비율을 믿을 수 없습니다. */
+  seconds: number
+  /** 3×3 칸마다 머문 비율. 합이 1이고 4번이 정면입니다. */
+  cells: number[]
+  /** 정면에 머문 비율. */
+  steady: number
+  /** 정면에서 벗어난 정도의 평균. */
+  wander: number
+  /** 인상 키 → 비율. 키는 video/expression.ts의 IMPRESSIONS와 같습니다. */
+  impressions: Record<string, number>
+  /**
+   * 시간 순서를 담은 인상 띠(48칸). 비율만으로는 "언제" 그랬는지가 사라집니다 —
+   * 긴장 20%가 첫 답변에 몰렸는지 내내 흩어져 있었는지는 다른 이야기입니다.
+   */
+  series?: string[]
+  /** 답변마다 같은 모양으로 하나씩. 음성 지표의 답변과 순서가 같습니다. */
+  answers: Omit<GazeReport, 'answers'>[]
+}
+
 export interface FeedbackStatus {
-  /** running 만드는 중 · done 완료 · failed 실패 · absent 아직 면접 안 함 */
-  status: 'running' | 'done' | 'failed' | 'absent'
+  /**
+   * running 만드는 중 · done 완료 · failed 실패 · silent 면접은 했는데 한 마디도
+   * 남기지 않아 만들 것이 없음 · absent 아직 면접 안 함.
+   *
+   * silent와 absent를 가르는 것이 요점이다. 둘 다 "피드백이 없다"지만 화면이 할
+   * 말이 정반대다 — 방금 면접을 마친 사람에게 "아직 면접을 진행하지 않았습니다"는
+   * 거짓말이다.
+   */
+  status: 'running' | 'done' | 'failed' | 'silent' | 'absent'
   /** 어느 판의 피드백인가. absent면 없다. */
   sessionId?: string
+  /** silent일 때만 온다. 이 판의 크레딧을 되돌린 기록이 원장에 있는가. */
+  refunded?: boolean
+  /** 웹캠 녹화가 남아 있는가. 있으면 답변마다 영상으로 되감아 볼 수 있다. */
+  hasVideo?: boolean
+  /**
+   * 녹화가 시작된 시점의 면접 경과 초.
+   *
+   * 답변 구간은 서버가 받은 오디오로 센 시각이고 영상의 0초는 녹화가 시작된
+   * 순간이라 원점이 다르다. 영상에서 답변 위치 = `startS - videoStartS`.
+   */
+  videoStartS?: number
   feedback?: Feedback
 }
 
@@ -148,13 +191,24 @@ export async function getFeedback(
   return (await res.json()) as FeedbackStatus
 }
 
+/** 웹캠 녹화 주소. 오디오와 같은 규칙으로 구간만 받아 온다. */
+export const videoUrl = (interviewId: string, sessionId?: string) =>
+  `/api/interviews/${interviewId}/video${
+    sessionId ? `?session=${encodeURIComponent(sessionId)}` : ''
+  }`
+
 /** 녹음 파일 주소. Range 요청을 받으므로 구간만 가져간다. */
 export const audioUrl = (interviewId: string, sessionId?: string) =>
   `/api/interviews/${interviewId}/audio${
     sessionId ? `?session=${encodeURIComponent(sessionId)}` : ''
   }`
 
-/** 면접 한 판. 계약: server/daedam/server/interview_routes.py */
+/**
+ * 면접 한 회차. 계약: server/daedam/server/interview_routes.py
+ *
+ * 답변이 하나도 없는 면접은 이 목록에 오지 않는다 — 서버가 뺀다. 회차 번호를
+ * 이 목록의 길이로 매기므로, 오면 한 적 없는 회차가 생긴다.
+ */
 export interface InterviewSession {
   id: string
   /** ISO 8601. 이력 목록의 날짜 표시에 쓴다. */

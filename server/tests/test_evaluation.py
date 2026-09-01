@@ -1,7 +1,7 @@
 """면접 뒤 피드백 생성 테스트.
 
-Grok은 대역으로 대체한다. 여기서 보는 것은 배관이다 — 언제 시작하고, 무엇을
-저장하고, 실패하면 무엇이 남는가.
+코칭 LLM은 대역으로 대체한다. 여기서 보는 것은 배관이다 — 언제 시작하고,
+무엇을 저장하고, 실패하면 무엇이 남는가.
 """
 
 import time
@@ -83,11 +83,31 @@ def _wait(condition, timeout_s: float = 3.0) -> None:
         time.sleep(0.01)
 
 
-def test_전사가_없으면_시작하지_않는다(tmp_path) -> None:
-    """면접을 시작만 하고 끝낸 경우 — 만들 것이 없다."""
+def test_전사가_없으면_시작하지_않고_silent를_돌려준다(tmp_path) -> None:
+    """한 마디도 안 하고 끝낸 면접 — 만들 것이 없다.
+
+    absent가 아니라 silent인 것이 요점이다. 면접은 실제로 진행됐으므로 화면이
+    "아직 면접을 진행하지 않았습니다"라고 말하면 거짓말이 된다.
+    """
     store, session_id = _store(tmp_path)
     evaluation = InterviewEvaluation(store, coach=lambda **_: _coaching())
     assert evaluation.start(session_id) is False
+    assert evaluation.status(session_id).state == "silent"
+
+
+def test_없는_면접은_그대로_absent다(tmp_path) -> None:
+    """silent가 absent를 잡아먹으면 안 된다 — 기록 자체가 없는 경우다."""
+    store, _ = _store(tmp_path)
+    evaluation = InterviewEvaluation(store, coach=lambda **_: _coaching())
+    assert evaluation.status("없는판").state == "absent"
+
+
+def test_전사가_있는데_분석이_안_돌면_silent가_아니다(tmp_path) -> None:
+    """서버가 분석 도중 재시작된 경우. 답변은 남아 있으므로 silent가 아니고,
+    다시 깨우면 만들어진다 — silent로 뭉치면 되살릴 길이 화면에서 사라진다."""
+    store, session_id = _store(tmp_path)
+    _record(store, session_id)
+    evaluation = InterviewEvaluation(store, coach=lambda **_: _coaching())
     assert evaluation.status(session_id).state == "absent"
 
 

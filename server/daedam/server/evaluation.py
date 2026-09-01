@@ -11,21 +11,23 @@
 서버가 재시작돼도 그대로다. 메모리 상태는 "지금 만드는 중"을 알리는 데만 쓴다.
 
 **음성 지표와 코칭을 따로 담는다.** 지표는 순수 계산이라 늘 나오지만 코칭은
-Grok 호출이라 실패할 수 있다. 하나로 묶으면 코칭이 실패했을 때 멀쩡한 지표까지
+LLM 호출이라 실패할 수 있다. 하나로 묶으면 코칭이 실패했을 때 멀쩡한 지표까지
 못 보여준다.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
 
 from daedam.eval.coaching import evaluate
+from daedam.eval.gaze import analyze as analyze_gaze
 from daedam.eval.voice import analyze
 
-from .store import InterviewStore
+from .store import InterviewStore, has_answer
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +39,15 @@ class _State:
 
 @dataclass
 class FeedbackStatus:
-    """피드백 생성 상황. 화면이 이걸 보고 기다릴지 그릴지 정한다."""
+    """피드백 생성 상황. 화면이 이걸 보고 기다릴지 그릴지 정한다.
 
-    state: Literal["running", "done", "failed", "absent"]
+    `silent`와 `absent`를 가르는 이유: 둘 다 "피드백이 없다"지만 화면이 할 말이
+    정반대다. absent는 아직 안 본 면접이고, silent는 시작은 했는데 지원자가 한
+    마디도 안 한 면접이다 — 후자에게 "아직 면접을 진행하지 않았습니다"라고 하면
+    거짓말이고, 반대로 회차로 세면 한 적 없는 면접이 이력에 생긴다.
+    """
+
+    state: Literal["running", "done", "failed", "absent", "silent"]
     feedback: dict[str, Any] | None = None
 
 
@@ -69,9 +77,11 @@ class InterviewEvaluation:
         if self._states.get(session_id) is not None:
             return False
         record = self._store.load_session(session_id)
-        if record is None or not (record.transcript or {}).get("utterances"):
-            # 면접이 아무것도 남기지 않았다 — 만들 것이 없다.
-            logger.info("전사가 없어 피드백을 만들지 않습니다 (session=%s)", session_id)
+        if record is None or not has_answer(record.transcript):
+            # 지원자가 한 마디도 안 했다 — 채점할 것이 없다. 면접관 인사만 남은
+            # 전사로 코칭을 부르면 "평가할 답변이 없습니다"짜리 피드백이 저장되고,
+            # 그 행 때문에 한 적 없는 면접이 회차로 잡힌다(실측: 컬리 2회).
+            logger.info("답변이 없어 피드백을 만들지 않습니다 (session=%s)", session_id)
             return False
         self._states[session_id] = _State(phase="running")
         threading.Thread(target=self._run, args=(session_id,), daemon=True).start()
@@ -83,9 +93,16 @@ class InterviewEvaluation:
         if record is not None and record.feedback is not None:
             return FeedbackStatus(state="done", feedback=record.feedback)
         state = self._states.get(session_id)
-        if state is None:
-            return FeedbackStatus(state="absent")
-        return FeedbackStatus(state="failed" if state.phase == "failed" else "running")
+        if state is not None:
+            return FeedbackStatus(
+                state="failed" if state.phase == "failed" else "running"
+            )
+        if record is not None and not has_answer(record.transcript):
+            # `start()`가 만들기를 거절한 바로 그 조건이다. 메모리가 아니라 기록을
+            # 보므로 서버를 다시 띄워도 같은 답이 나온다 — 기다려도 생기지 않는
+            # 결과를 화면이 계속 기다리지 않게 하는 것이 요점이다.
+            return FeedbackStatus(state="silent")
+        return FeedbackStatus(state="absent")
 
     def _run(self, session_id: str) -> None:
         state = self._states[session_id]
@@ -112,6 +129,25 @@ class InterviewEvaluation:
                 payload["voice"] = _voice_payload(analyze(wav_path, transcript))
             else:
                 logger.warning("녹음이 없어 음성 지표를 건너뜁니다 (%s)", session_id)
+
+            # 시선·표정은 화면이 초당 한 줄로 올려 둔 것을 접는다. 답변 구간은
+            # 방금 위에서 나왔으므로 여기서만 자를 수 있다 — 화면은 면접이 도는
+            # 동안 그 경계를 모른다.
+            gaze_path = (
+                self._store.session_directory(record.application_id, session_id)
+                / "gaze.json"
+            )
+            if gaze_path.exists():
+                try:
+                    timeline = json.loads(gaze_path.read_text(encoding="utf-8"))
+                    gaze = analyze_gaze(
+                        timeline, (payload.get("voice") or {}).get("answers")
+                    )
+                    if gaze is not None:
+                        payload["gaze"] = gaze
+                except (OSError, ValueError):
+                    # 시선은 곁가지다. 못 읽어도 코칭과 음성 지표는 나가야 한다.
+                    logger.warning("시선 기록을 읽지 못했습니다 (%s)", session_id, exc_info=True)
 
             coaching = self._coach(
                 company=data.company, role=data.role, transcript=transcript

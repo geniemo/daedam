@@ -22,15 +22,44 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from .accounts import Accounts
+from .credits import Credits
 from .preparation import InterviewPreparation
 from .store import InterviewStore, SessionSummary
+
+
+#: 웹캠 녹화 파일 이름. 세션 디렉터리에서 mic.wav 옆에 놓인다.
+_VIDEO_NAME = "cam.webm"
+
+#: 녹화가 시작된 시점의 면접 경과 초를 적어 두는 곳.
+#:
+#: 답변 구간(`voice.answers[].startS`)은 서버가 받은 오디오 바이트로 센 시각이고,
+#: 영상의 0초는 녹화가 시작된 순간이다. **원점이 다르므로** 이 값을 빼야 리포트가
+#: 답변 위치로 정확히 감는다. 컬럼 대신 파일로 두는 것은 마이그레이션 없이 영상과
+#: 생사를 같이하게 하려는 것이다 — 영상을 지우면 이것도 같이 지워진다.
+_VIDEO_START_NAME = "cam.start"
+
+#: 시선·표정 타임라인. 초당 한 줄이라 20분이 1,200줄뿐이고, 영상과 달리
+#: 통째로 덮어쓴다 — 조각을 이어 붙이는 것이 아니라서 순서 문제가 없다.
+_GAZE_NAME = "gaze.json"
+
+#: 타임라인 상한. 초당 한 줄이면 20분이 100KB 안팎이라 1MB면 넉넉하다.
+_GAZE_MAX = 1024 * 1024
+
+#: 업로드 조각 하나의 상한. 640×480 15fps에서 5초 조각이 300KB 안팎이라
+#: 넉넉하다. 이걸 넘는 요청은 우리 클라이언트가 보낸 것이 아니다.
+_VIDEO_CHUNK_MAX = 4 * 1024 * 1024
+
+#: 한 판 영상의 상한. 20분이 60MB 안팎이므로 세 배 여유다. 디스크가 51GB뿐이라
+#: 상한이 없으면 한 사람이 남의 면접 자리를 다 먹는다.
+_VIDEO_MAX = 200 * 1024 * 1024
 
 
 class ReportUpdate(BaseModel):
@@ -49,11 +78,29 @@ def _session_payload(summary: SessionSummary) -> dict[str, Any]:
     }
 
 
+def _history(store: InterviewStore, application_id: str) -> list[dict[str, Any]]:
+    """화면에 보이는 면접 이력 — 최근 회차가 앞에 온다.
+
+    **지원자가 한 마디도 안 한 판은 뺀다.** 시작만 하고 나온 것은 "면접을
+    봤다"가 아니다. 회차 번호도 이 목록에서 매겨지므로, 빼지 않으면 한 적 없는
+    3회차가 생긴다.
+
+    기록 자체는 지우지 않는다 — 크레딧을 되돌린 근거이고, 답변이 없을 뿐
+    녹음은 남아 있다(전사가 실패한 것일 수도 있다).
+    """
+    return [
+        _session_payload(item)
+        for item in store.list_sessions(application_id)
+        if item.has_answer
+    ]
+
+
 def create_interviews_router(
     store: InterviewStore,
     preparation: InterviewPreparation,
     accounts: Accounts,
     evaluation: Any = None,
+    credits: Credits | None = None,
 ) -> APIRouter:
     """면접 조회·검토 라우터를 만든다.
 
@@ -63,6 +110,8 @@ def create_interviews_router(
         accounts: 요청의 사용자를 알려 준다 — 목록이 그 사용자의 것으로 좁혀진다.
         evaluation: 면접 뒤 피드백을 만드는 오케스트레이터. None이면 피드백
             조회가 늘 absent를 돌려준다(테스트).
+        credits: 원장. 아무 말도 없이 끝난 면접의 크레딧이 되돌려졌는지 화면에
+            알려 주는 데만 쓴다. None이면 그 사실을 싣지 않는다.
 
     Returns:
         /api/interviews 라우터.
@@ -130,9 +179,7 @@ def create_interviews_router(
             "report": data.report,
             "uncertain": data.uncertain,
             "ready": data.questions is not None,
-            "sessions": [
-                _session_payload(item) for item in store.list_sessions(interview_id)
-            ],
+            "sessions": _history(store, interview_id),
         }
 
     @router.put("/{interview_id}/report", status_code=202)
@@ -154,9 +201,9 @@ def create_interviews_router(
     def list_sessions(
         interview_id: str, user_id: str = Depends(accounts.current_user_id)
     ) -> list[dict[str, Any]]:
-        """면접 이력 — 최근 판이 앞에 온다."""
+        """면접 이력 — 최근 회차가 앞에 온다."""
         owned(interview_id, user_id)
-        return [_session_payload(item) for item in store.list_sessions(interview_id)]
+        return _history(store, interview_id)
 
     @router.get("/{interview_id}/feedback")
     def get_feedback(
@@ -166,9 +213,10 @@ def create_interviews_router(
     ) -> dict[str, Any]:
         """분석 화면이 기다리며 부르고, 리포트 화면이 결과를 읽는다.
 
-        상태는 넷이다. running은 만드는 중, done이면 feedback이 실려 온다.
-        failed는 만들다 실패한 것이고, absent는 아직 면접을 안 했다는 뜻이다 —
-        실패와 미실행을 같은 값으로 두면 화면이 무엇을 말할지 정할 수 없다.
+        상태는 다섯이다. running은 만드는 중, done이면 feedback이 실려 온다.
+        failed는 만들다 실패한 것, silent는 면접은 했는데 한 마디도 남기지 않아
+        만들 것이 없는 것, absent는 아직 면접을 안 했다는 뜻이다 — 넷을 한
+        값으로 뭉치면 화면이 무엇을 말할지 정할 수 없다.
         """
         owned(interview_id, user_id)
         latest = store.latest_session(interview_id)
@@ -183,7 +231,111 @@ def create_interviews_router(
         payload: dict[str, Any] = {"status": status.state, "sessionId": session_id}
         if status.feedback is not None:
             payload["feedback"] = status.feedback
+        # 웹캠 녹화가 있으면 리포트가 답변별로 되감아 보여준다. 원점이 달라
+        # 그대로 쓰면 어긋나므로 시작 시각을 함께 싣는다.
+        directory = store.session_directory(interview_id, session_id)
+        if (directory / _VIDEO_NAME).exists():
+            payload["hasVideo"] = True
+            start_file = directory / _VIDEO_START_NAME
+            try:
+                payload["videoStartS"] = float(start_file.read_text())
+            except (OSError, ValueError):
+                # 원점을 모르면 0으로 둔다 — 어긋나더라도 전체 재생은 된다.
+                payload["videoStartS"] = 0.0
+        if status.state == "silent" and credits is not None:
+            # 아무 말도 못 한 면접에서 사용자가 가장 먼저 묻는 것이 크레딧이다.
+            # 되돌리는 경로가 하나가 아니라(브리지의 무응답 환불) 짐작하지 않고
+            # 원장을 본다 — 돈 이야기는 틀리면 안 된다.
+            payload["refunded"] = credits.refunded(user_id, session_id)
         return payload
+
+    @router.post("/{interview_id}/video", status_code=204)
+    async def append_video(
+        interview_id: str,
+        request: Request,
+        session: str | None = None,
+        startS: float | None = None,
+        user_id: str = Depends(accounts.current_user_id),
+    ) -> None:
+        """웹캠 녹화 조각을 이어 붙인다.
+
+        면접용 WebSocket이 아니라 별도 HTTP로 받는다 — 영상은 곁가지라
+        업로드가 실패해도 면접이 흔들리면 안 된다. 소켓에 얹으면 한 채널에
+        두 종류의 바이트가 섞이고, 재접속 때 영상까지 같이 끊긴다.
+
+        **순서대로 이어 붙는 것이 전부다.** MediaRecorder는 첫 조각에만 WebM
+        헤더를 넣으므로, 중간이 비면 파일 전체가 깨진다. 그래서 클라이언트가
+        한 번에 하나씩 순서대로 보내고, 실패하면 건너뛰지 않고 멈춘다 —
+        잘린 파일은 재생되지만 구멍 난 파일은 안 된다.
+        """
+        owned(interview_id, user_id)
+        session_id = resolve_session(interview_id, session)
+        chunk = await request.body()
+        if not chunk:
+            return
+        if len(chunk) > _VIDEO_CHUNK_MAX:
+            raise HTTPException(status_code=413, detail="조각이 너무 큽니다")
+
+        path = store.session_directory(interview_id, session_id) / _VIDEO_NAME
+        path.parent.mkdir(parents=True, exist_ok=True)
+        written = path.stat().st_size if path.exists() else 0
+        if written + len(chunk) > _VIDEO_MAX:
+            raise HTTPException(status_code=413, detail="녹화가 너무 깁니다")
+        with path.open("ab") as handle:
+            handle.write(chunk)
+
+        # 원점은 첫 조각에만 실려 온다. 이미 적혀 있으면 덮지 않는다 —
+        # 재접속으로 뒤늦게 온 첫 조각이 앞의 값을 밀어내면 안 된다.
+        if startS is not None and written == 0:
+            (path.parent / _VIDEO_START_NAME).write_text(f"{startS:.2f}")
+
+    @router.put("/{interview_id}/gaze", status_code=204)
+    async def put_gaze(
+        interview_id: str,
+        request: Request,
+        session: str | None = None,
+        user_id: str = Depends(accounts.current_user_id),
+    ) -> None:
+        """시선·표정 타임라인을 저장한다. 면접 중 주기적으로 덮어쓴다.
+
+        영상과 달리 **통째로 교체한다.** 초당 한 줄이라 20분이 100KB 안팎이고,
+        이어 붙이지 않으니 순서가 어긋날 일도 중간이 빌 일도 없다. 창을 닫아도
+        마지막으로 올린 데까지는 남는다.
+
+        답변별로 쪼개는 것은 서버가 나중에 한다 — 답변 구간은 면접이 끝난 뒤
+        오디오를 분석해야 알 수 있어서, 화면은 시각이 붙은 타임라인만 보낸다.
+        """
+        owned(interview_id, user_id)
+        session_id = resolve_session(interview_id, session)
+        body = await request.body()
+        if len(body) > _GAZE_MAX:
+            raise HTTPException(status_code=413, detail="타임라인이 너무 깁니다")
+        try:
+            payload = json.loads(body)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail="JSON이 아닙니다") from error
+        if not isinstance(payload, dict) or not isinstance(payload.get("seconds"), list):
+            raise HTTPException(status_code=400, detail="타임라인 형식이 아닙니다")
+
+        directory = store.session_directory(interview_id, session_id)
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / _GAZE_NAME).write_text(
+            json.dumps(payload, ensure_ascii=False), encoding="utf-8"
+        )
+
+    @router.get("/{interview_id}/video")
+    def get_video(
+        interview_id: str,
+        session: str | None = None,
+        user_id: str = Depends(accounts.current_user_id),
+    ) -> FileResponse:
+        """면접에서 녹화된 지원자 영상. 리포트가 되돌아보기용으로 재생한다."""
+        owned(interview_id, user_id)
+        session_id = resolve_session(interview_id, session)
+        path = store.session_directory(interview_id, session_id) / _VIDEO_NAME
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="녹화가 없습니다")
+        return FileResponse(path, media_type="video/webm")
 
     @router.get("/{interview_id}/audio")
     def get_audio(

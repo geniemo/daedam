@@ -235,7 +235,7 @@ def create_app() -> FastAPI:
     # 면접이 끝나면 브리지가 이걸 깨우고, 분석 화면이 결과를 기다린다.
     evaluation = InterviewEvaluation(store)
     app.include_router(
-        create_interviews_router(store, preparation, accounts, evaluation)
+        create_interviews_router(store, preparation, accounts, evaluation, credits)
     )
 
     # 음성 브리지는 자기 러너로 돈다. ADK 앱(dev UI) 쪽 세션 저장소와는
