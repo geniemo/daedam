@@ -205,11 +205,26 @@ curl -s localhost:8000/api/auth/providers
 
 ---
 
-## 아직 검증되지 않았다
+## 어디까지 실제로 돌려 봤나
 
-**이 왕복은 한 번도 실행된 적이 없다.** 코드와 배선은 다 있고 세션·소유권·
-차단은 테스트로 덮여 있지만, 제공자로 갔다 돌아오는 구간(redirect → 동의 →
-콜백 → 토큰 → 프로필 파싱)은 실제로 돌려 봐야 한다. 위 "잘 안 될 때" 표는
-문서를 근거로 미리 적어 둔 것이지 실측이 아니다.
+**카카오는 통과했다.** redirect → 동의 → 콜백 → 토큰 → 프로필 파싱까지 실제
+로그인으로 확인했다. 그 과정에서 문서만 보고는 알 수 없던 것 셋이 나왔고, 위
+본문에 반영돼 있다 — 동의항목 id를 scope로 써야 하는 것, OpenID Connect를 따로
+켜야 하는 것, 토큰 교환이 `client_secret_post`여야 하는 것.
 
-키를 받아 오면 그때 한 번 통과시켜 보고, 걸리는 곳이 있으면 고치면 된다.
+**구글은 아직 왕복해 본 적이 없다.** 다만 카카오에서 데였던 세 지점은 미리
+확인해 두었다 (2026-08-29, discovery 문서 직접 조회):
+
+```
+$ curl -s https://accounts.google.com/.well-known/openid-configuration
+token_endpoint_auth_methods_supported: ['client_secret_post', 'client_secret_basic']
+scopes_supported:                      ['openid', 'email', 'profile']
+```
+
+- `client_secret_basic`을 지원하므로 authlib 기본값 그대로 된다. 카카오처럼
+  `_TOKEN_AUTH_METHOD`에 넣을 것이 없다.
+- scope가 표준 이름 그대로다. 카카오의 동의항목 id 같은 예외가 없다.
+- 프로필은 표준 OIDC 클레임(`sub`·`name`·`email`·`picture`)이라
+  `_profile_from`이 손댈 것 없이 받는다.
+
+남은 위험은 콘솔 쪽이다 — 게시 상태와 리디렉션 URI 일치. 둘 다 위에 적어 뒀다.
