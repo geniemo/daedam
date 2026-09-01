@@ -5,24 +5,41 @@ import { getMe, logout, withdraw } from '@/api/auth'
 import { getCredits } from '@/api/credits'
 import { OutlineButton, SectionLabel } from '@/components/ui'
 
-const PROVIDER_LABEL: Record<string, string> = {
-  kakao: '카카오',
-  google: 'Google',
-  local: '로그인 없이 실행 중',
+/** 제공자마다 화면에 나갈 말. `note`는 프로필이 어디 소속인지만 적는다. */
+const PROVIDER: Record<string, { name: string; title: string; note: string }> = {
+  kakao: {
+    name: '카카오 계정',
+    title: '카카오로 로그인 중',
+    note: '프로필은 카카오에서 관리합니다',
+  },
+  google: {
+    name: 'Google 계정',
+    title: 'Google 계정으로 로그인 중',
+    note: '프로필은 Google에서 관리합니다',
+  },
+  local: {
+    name: '기본 계정',
+    title: '로그인 없이 실행 중',
+    note: '로그인 제공자가 설정되지 않았습니다',
+  },
 }
 
 /**
  * 내 정보.
  *
  * 프로필은 읽기 전용이다 — 이름·사진·이메일이 전부 카카오·구글에서 오므로
- * 여기서 고쳐 봐야 다음 로그인에 덮인다. 고치려면 제공자 쪽에서 고쳐야 한다는
- * 사실을 화면이 말해 준다.
+ * 여기서 고쳐 봐야 다음 로그인에 덮인다.
  */
 export function Account() {
   const nav = useNavigate()
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe, retry: false })
   const { data: credits } = useQuery({ queryKey: ['credits'], queryFn: getCredits })
   const queryClient = useQueryClient()
+  const provider = PROVIDER[me?.provider ?? ''] ?? {
+    name: me?.provider ?? '계정',
+    title: me?.provider ?? '연결됨',
+    note: '',
+  }
 
   return (
     <main className="mx-auto max-w-(--container-doc) px-8 pt-[44px] pb-20 animate-dm-fade">
@@ -40,14 +57,16 @@ export function Account() {
           />
         ) : (
           <span className="flex h-[52px] w-[52px] items-center justify-center rounded-full border border-field bg-surface text-[17px] font-semibold text-muted">
-            {(me?.name || '지원자').slice(-2, -1)}
+            {/* 첫 글자. 앞서는 끝에서 두 번째(박지원 → "지")를 썼는데, 한글
+                이름에서만 그럴듯하고 "Park"에서는 "r"이 나온다. */}
+            {(me?.name || '지원자').trim().charAt(0)}
           </span>
         )}
         <span className="flex flex-col gap-[4px]">
           <span className="text-[17px] font-semibold text-ink">{me?.name || '지원자'}</span>
-          <span className="text-[13px] text-muted">
-            {me?.email || '이메일을 받지 않았습니다'}
-          </span>
+          {/* 카카오는 동의항목을 켜지 않으면 이메일을 주지 않는다. 그때 "없습니다"
+              라고 적으면 빠진 것처럼 읽힌다 — 대신 이 줄이 무엇인지 말한다. */}
+          <span className="text-[13px] text-muted">{me?.email || provider.name}</span>
         </span>
       </section>
 
@@ -56,13 +75,20 @@ export function Account() {
           <SectionLabel>연결된 계정</SectionLabel>
         </div>
         <div className="flex items-center gap-[12px]">
-          <span className="flex flex-1 flex-col gap-[3px]">
-            <span className="text-[14px] font-semibold text-ink">
-              {PROVIDER_LABEL[me?.provider ?? ''] ?? me?.provider}
+          <span className="flex flex-1 flex-col gap-[4px]">
+            <span className="flex items-center gap-[7px]">
+              {/* 강조색이 아니라 긍정색인 이유: 여기서 할 일이 없는 상태가
+                  정상이다. 머스터드는 이 앱에서 "봐야 할 것"이라 없는 문제를
+                  만든다. */}
+              <span
+                className="inline-block shrink-0 rounded-full bg-positive"
+                style={{ width: 5, height: 5 }}
+              />
+              <span className="text-[14px] font-semibold text-ink">{provider.title}</span>
             </span>
-            <span className="text-[12.5px] text-muted">
-              이름과 사진은 여기서 옵니다. 바꾸시려면 해당 서비스에서 바꿔 주세요.
-            </span>
+            {provider.note && (
+              <span className="text-[12.5px] leading-[1.6] text-muted">{provider.note}</span>
+            )}
           </span>
           {me && me.provider !== 'local' && (
             <OutlineButton
@@ -111,7 +137,7 @@ export function Account() {
             ))}
           </ul>
         ) : (
-          <p className="m-0 text-[13px] text-faint">아직 내역이 없습니다.</p>
+          <p className="m-0 text-[13px] text-faint">사용·충전 내역이 여기에 표시됩니다.</p>
         )}
       </section>
 
