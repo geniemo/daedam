@@ -27,6 +27,8 @@ export type Connection = 'idle' | 'connecting' | 'live' | 'reconnecting' | 'ende
  * "남은 시간"이 없고, 단계는 서버가 질문을 고르는 내부 사정입니다.
  */
 export interface SessionInfo {
+  /** 이 면접이 어느 판인가. 웹캠 녹화를 올릴 주소가 여기서 나옵니다. */
+  sessionId: string
   elapsedSeconds: number
   asked: number
 }
@@ -36,6 +38,8 @@ interface InterviewState {
   phase: Phase
   /** 지금까지 나간 뼈대질문 수. 화면의 "질문 N"입니다. */
   askedCount: number
+  /** 진행 중인 판의 id. 서버가 첫 session 메시지로 알려줍니다. */
+  sessionId: string | null
   /** 면접관이 실제로 하고 있는 말. 조각으로 와서 이어 붙입니다. */
   caption: string
   /** 직전 조각이 턴의 끝이었는지 — 다음 조각에서 자막을 새로 시작합니다. */
@@ -58,6 +62,7 @@ const initial = {
   connection: 'idle' as Connection,
   phase: 'speaking' as Phase,
   askedCount: 0,
+  sessionId: null,
   caption: '',
   captionDone: true,
   elapsed: 0,
@@ -84,7 +89,8 @@ export const useInterviewStore = create<InterviewState>((set) => ({
       captionDone: final,
     })),
 
-  applySession: (info) => set({ elapsed: info.elapsedSeconds, askedCount: info.asked }),
+  applySession: (info) =>
+    set({ elapsed: info.elapsedSeconds, askedCount: info.asked, sessionId: info.sessionId }),
 
   setResumeToken: (resumeToken) => set({ resumeToken }),
 

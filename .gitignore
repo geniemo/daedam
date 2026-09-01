@@ -35,3 +35,13 @@ recordings/
 .DS_Store
 Thumbs.db
 *:Zone.Identifier
+
+# 서버 실행 로그 (터미널 대신 파일로 띄울 때 생긴다)
+*.log
+
+# MediaPipe 런타임·모델 (26MB). 의존성이지 소스가 아니라 커밋하지 않는다 —
+# scripts/fetch-vision.mjs가 빌드 전에 받아 온다.
+web/public/vision/
+
+# 발표·시연 영상 원본. 저장소가 아니라 드라이브에 둘 크기다 (147MB)
+/video/
