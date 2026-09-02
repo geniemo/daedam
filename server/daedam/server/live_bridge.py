@@ -57,7 +57,7 @@ from interviewer.tools import (
 )
 
 from . import fillers
-from .accounts import Accounts
+from .accounts import LOCAL_PROVIDER, Accounts
 from .credits import COST_INTERVIEW, Credits, InsufficientCredits
 from .recording import InterviewRecording
 from .store import InterviewData, InterviewStore, has_answer
@@ -267,7 +267,24 @@ def _vocabulary_for(data: InterviewData | None, name: str = "") -> list[str]:
     )
 
 
-def _session_state_from(data: InterviewData, profile: str) -> dict[str, Any]:
+def _onboarded_name(account: dict[str, Any] | None) -> str:
+    """온보딩에서 사용자가 직접 입력한 이름. 아니면 빈 문자열.
+
+    로컬 개발 모드의 기본 사용자는 "지원자"라는 자리 이름을 달고 늘
+    onboarded=True다 — 그 이름이 등록 데이터의 실명을 덮으면 안 된다
+    (실측: 호칭·어휘 힌트가 전부 "지원자"로 밀렸다). 소셜 계정만,
+    온보딩을 마친 경우만 믿는다.
+    """
+    if not account:
+        return ""
+    if not account.get("onboarded") or account.get("provider") == LOCAL_PROVIDER:
+        return ""
+    return str(account.get("name") or "")
+
+
+def _session_state_from(
+    data: InterviewData, profile: str, name: str = ""
+) -> dict[str, Any]:
     """준비 데이터를 세션 state로 옮긴다 — 시딩의 실체.
 
     이 키들을 instruction(회사·직무·목차)과 툴들(질문 풀·검색 인덱스·시간
@@ -277,9 +294,11 @@ def _session_state_from(data: InterviewData, profile: str) -> dict[str, Any]:
     return {
         STATE_COMPANY: data.company,
         STATE_ROLE: data.role,
-        # instruction이 "지원자 OO님과 면접을 진행합니다"로 쓴다. 비어 있으면
-        # "지원자와"로 떨어지므로 없는 이름을 지어내지 않는다.
-        STATE_CANDIDATE: data.name,
+        # instruction이 "지원자 OO님과 면접을 진행합니다"로 쓴다. 온보딩에서
+        # 입력한 계정 이름이 우선이다 — 등록 데이터의 이름은 비어 있을 수
+        # 있고(실측), 어휘 힌트와 호칭이 다른 이름을 쓰면 안 된다. 둘 다
+        # 없으면 "지원자와"로 떨어진다 — 없는 이름을 지어내지 않는다.
+        STATE_CANDIDATE: name or data.name,
         STATE_APPLICATION: data.application,
         STATE_RESEARCH_REPORT: search_sections_from_report(data.report),
         STATE_QUESTION_POOL: data.questions,
@@ -341,6 +360,11 @@ def create_live_router(
             await websocket.send_json({"type": "ended"})
             await websocket.close(code=4003, reason="권한 없음")
             return
+        # 온보딩에서 입력한 이름 — 면접관 호칭과 전사 어휘 힌트가 같이 쓴다.
+        # 이름이 `account`인 이유: `profile`은 이 클로저에서 시간 예산
+        # 프로필이라, 같은 이름에 대입하면 클로저 읽기가 UnboundLocal로
+        # 죽는다(실측).
+        account_name = _onboarded_name(accounts.profile(user_id))
 
         # 같은 카드의 이전 커넥션을 닫는다. 닫히면 그쪽 수신 펌프가
         # disconnect를 받아 자기 정리를 시작한다.
@@ -410,7 +434,7 @@ def create_live_router(
                 app_name=runner.app_name,
                 user_id=_USER_ID,
                 session_id=session_id,
-                state=_session_state_from(data, profile),
+                state=_session_state_from(data, profile, name=account_name),
             )
 
         # 면접이 남기는 것. 커넥션이 끊겼다 붙어도 같은 디렉터리에 이어 쓴다 —
@@ -505,10 +529,7 @@ def create_live_router(
         # 준비 단계에서 뽑아 둔 것을 쓴다. 없으면(추출 실패·그 단계가 없던 옛
         # 면접) 규칙 폴백으로 만든다 — 면접 시작 경로에 LLM 호출을 두지 않는다.
         prepared = store.load(card)
-        # 이름은 `account`다 — `profile`은 이 클로저에서 시간 예산 프로필이라,
-        # 같은 이름에 대입하면 위쪽 읽기(413)가 UnboundLocal로 죽는다(실측).
-        account = accounts.profile(user_id) or {}
-        vocabulary = _vocabulary_for(prepared, name=str(account.get("name") or ""))
+        vocabulary = _vocabulary_for(prepared, name=account_name)
         run_config = RunConfig(
             response_modalities=["AUDIO"],
             # 면접관 목소리를 고정한다(`interviewer.agent.VOICE`) — 세션마다
