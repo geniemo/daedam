@@ -32,6 +32,10 @@ const screens = [
   ['/landing', '/landing', '/src/screens/Landing.tsx', 'Landing'],
   ['/account', '/account', '/src/screens/Account.tsx', 'Account'],
   ['/credits', '/credits', '/src/screens/Credits.tsx', 'Credits'],
+  // 온보딩도 랜딩처럼 라우터에 없다 — RequireLogin 게이트가 그린다.
+  ['/onboarding', '/onboarding', '/src/screens/Onboarding.tsx', 'Onboarding'],
+  ['/terms', '/terms', '/src/screens/Legal.tsx', 'Terms'],
+  ['/privacy', '/privacy', '/src/screens/Legal.tsx', 'Privacy'],
 ]
 
 const { Chrome } = await load('/src/components/Chrome.tsx')

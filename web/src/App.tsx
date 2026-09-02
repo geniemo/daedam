@@ -7,6 +7,8 @@ import { Chrome } from '@/components/Chrome'
 import { useActiveCard } from '@/store/app'
 import { Home } from '@/screens/Home'
 import { Landing } from '@/screens/Landing'
+import { Onboarding } from '@/screens/Onboarding'
+import { Privacy, Terms } from '@/screens/Legal'
 import { Account } from '@/screens/Account'
 import { Credits } from '@/screens/Credits'
 import { Register } from '@/screens/Register'
@@ -29,7 +31,11 @@ import { Report } from '@/screens/Report'
 function RequireLogin() {
   const { data: me, isPending } = useQuery({ queryKey: ['me'], queryFn: getMe, retry: false })
   if (isPending) return null
-  return me ? <Chrome /> : <Landing />
+  if (!me) return <Landing />
+  // 이름과 동의 없이는 앱에 못 들어간다. 라우트가 아니라 게이트에서 거는
+  // 이유: 주소를 쳐서 건너뛸 방법이 없어야 동의가 동의다.
+  if (!me.onboarded) return <Onboarding />
+  return <Chrome />
 }
 
 /**
@@ -49,6 +55,9 @@ function RequireCard({ children }: { children: ReactNode }) {
 const needsCard = (element: ReactNode) => <RequireCard>{element}</RequireCard>
 
 const router = createBrowserRouter([
+  // 로그인 전에도 읽을 수 있어야 한다 — 온보딩·랜딩이 여기로 링크한다.
+  { path: '/terms', element: <Terms /> },
+  { path: '/privacy', element: <Privacy /> },
   {
     element: <RequireLogin />,
     children: [
