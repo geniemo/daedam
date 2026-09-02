@@ -501,6 +501,23 @@ def create_live_router(
             ),
             # Live 커넥션 재개 핸들을 받기 위해 켠다.
             session_resumption=types.SessionResumptionConfig(),
+            # 세션 시간 한도를 푼다. audio-only 세션은 압축 없이 15분에서
+            # 끊기는데, full 프로필 면접(17분·하드캡 34분)이 그 한도를 넘는다.
+            # 압축을 켜면 한도가 사라진다 — "enabling context window compression
+            # extends session duration to unlimited time"
+            # (~/refs/adk-docs/docs/live/dev-guide/part4.md, ADK 전달 경로는
+            # run_config.py:270 → flows/llm_flows/basic.py:148 확인).
+            #
+            # 값은 보수적으로 잡는다. 이 모델의 컨텍스트 크기가 문서에 없어서
+            # (예시는 128k), 32k급이어도 토큰 한도에 닿기 전에 압축이 돌게
+            # 트리거를 낮게 둔다. 오디오가 초당 ~25토큰이라 target 16k는 최근
+            # ~10분을 원문으로 지킨다 — 잘려 나가는 것은 더 오래된 대화의
+            # 세부인데, 질문은 풀에서 오고 평가는 저장된 전사로 하므로 영향은
+            # "10분 전 답변을 파고드는 꼬리질문"의 정밀도뿐이다.
+            context_window_compression=types.ContextWindowCompressionConfig(
+                trigger_tokens=24_000,
+                sliding_window=types.SlidingWindow(target_tokens=16_000),
+            ),
             # 전사 힌트. 언어를 못 박고, 그날 나올 낱말을 미리 준다. 입력
             # (지원자) 쪽은 이름·용어가 깨져서고("박지원"→"박지훈", "Jetson AGX
             # Orin"→"Jeston Ajax 올인"), 출력(면접관) 쪽은 기본값(빈 설정 =
