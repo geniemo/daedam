@@ -322,11 +322,12 @@ def test_예산보다_앞서_가는_것은_막지_않는다(probes) -> None:
 
 
 def test_시간이_다_지나도_면접을_끝내지_않는다(probes) -> None:
-    """끝내는 것은 지원자의 종료 버튼이다. 시간 예산은 단계를 옮기는 데만 쓴다 —
-    마지막 단계 예산을 넘겨도 마무리 지시가 아니라 이어가라는 지시가 온다."""
+    """끝내는 것은 지원자의 종료 버튼이다 — 툴은 done을 돌려주지 않는다.
+    다만 마무리 시간대의 안내는 "이어가라"가 아니라 "인사로 마치라"다.
+    실측(21.7분): 이어가라는 안내가 마무리에서 새 질문 12개를 만들었다."""
     result = _call(ContextStub(_state(600.0)))
     assert "done" not in result
-    assert "이어가세요" in result["instruction"]
+    assert "마치십시오" in result["instruction"]
 
 
 def test_질문을_다_쓰면_꼬리질문으로_이어가라고_한다(probes) -> None:
@@ -411,3 +412,19 @@ def test_추출에_확인_이력이_넘어간다(probes) -> None:
         "측정 방법 — TensorRT FP16 양자화",
         "제어 연동 (답을 얻지 못함)",
     ]
+
+
+def test_소진_안내는_마무리_시간대에_끝내라고_한다(probes) -> None:
+    """실측(21.7분): 소진 안내가 단계 구분 없이 "꼬리질문으로"라서 면접관이
+    마무리에서 6분간 새 질문을 이어 갔다 — 마무리 시간대에는 인사로 끝내게 한다."""
+    # dev 프로필 마무리 시작은 420초. 풀을 다 쓴 상태로 그 뒤에 부른다.
+    context = ContextStub(_state(started_s_ago=430.0, stage=3, asked=["a", "b", "c"]))
+    result = _call(context)
+    assert "마치십시오" in result["instruction"]
+    assert "꼬리질문" not in result["instruction"]
+
+
+def test_소진_안내는_중반에는_꼬리질문을_시킨다(probes) -> None:
+    context = ContextStub(_state(started_s_ago=100.0, stage=1, asked=["a", "b", "c"]))
+    result = _call(context)
+    assert "꼬리질문" in result["instruction"]

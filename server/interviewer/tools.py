@@ -405,6 +405,17 @@ def _deliver(
     state[STATE_STAGE] = at
     if found is None:
         logger.info("질문 소진 (경과 %.0f초, %d개 배달)", elapsed_s, len(asked))
+        # 마무리 시간대의 소진은 "더 파라"가 아니라 "끝내라"다. 안내문이 단계
+        # 구분 없이 꼬리질문을 시키면 면접관이 인사 대신 새 질문을 무한히
+        # 만든다 — 실측(21.7분 면접): 마무리 진입 후 6분간 12문을 이어 가서
+        # 지원자가 종료 버튼으로 끊어야 했다.
+        flow = _session_flow_from(state)
+        if flow.stage_index_at(elapsed_s) >= len(STAGE_NAMES) - 1:
+            return {
+                "instruction": "준비된 질문이 다 나갔고 마무리 시간입니다. 새 주제를"
+                " 파지 말고, 지원자의 마지막 말에 짧게 화답한 뒤 감사 인사로 면접을"
+                " 마치십시오."
+            }
         return {
             "instruction": "준비된 질문이 다 나갔습니다. 지금까지의 답변에서 더 확인할 것을"
             " 꼬리질문으로 이어가세요. 답변을 들으면 다음 질문 전에 이 툴을 다시 부르세요."
