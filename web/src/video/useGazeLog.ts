@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { cellOf, deviation, AWAY_RATIO, type Baseline } from './gaze'
-import { impressionOf, strengths } from './expression'
+import { cellOf, deviation, type Baseline } from './gaze'
+import { strengths } from './expression'
 import type { FaceFrame } from './useFaceTracking'
 
 /**
@@ -13,6 +13,11 @@ import type { FaceFrame } from './useFaceTracking'
  * **요약이 아니라 타임라인을 보냅니다.** 답변 구간은 면접이 끝난 뒤 서버가
  * 오디오를 분석해야 알 수 있습니다 — 그때 잘라 쓸 수 있게 시각을 남깁니다.
  * 클라이언트가 미리 합쳐 버리면 답변별로 나눌 방법이 사라집니다.
+ *
+ * **여기서 인상을 매기지 않습니다.** 앞서는 프레임마다 근육 문턱으로
+ * 분류했는데, 차분한 얼굴에서 근육 신호가 0에 깔려 전부 한 칸으로 몰렸습니다.
+ * 인상은 3초 스냅샷을 서버가 VLM으로 읽습니다(eval/expression.py). 근육
+ * 세기(`s`)는 계속 남깁니다 — 미소 같은 확인 가능한 사실의 재료입니다.
  *
  * **얼굴을 못 찾은 초는 빠집니다.** 자리를 비운 시간을 "정면을 안 봤다"로 세면
  * 없는 사실을 만드는 것입니다. 빠진 초가 많으면 리포트가 그 사실을 말해야 하므로
@@ -27,8 +32,6 @@ export interface GazeSecond {
   at: number
   /** 3×3 격자에서의 칸(0~8, 4가 정면). */
   cell: number
-  /** 이 초에 가장 많았던 인상. */
-  impression: string
   /** 정면에서 벗어난 정도(흔들림 대비 배수)의 평균. */
   ratio: number
   /**
@@ -86,7 +89,6 @@ export function useGazeLog(
     let lastAt = -1
     let bucketStart = -1
     let cells: number[] = []
-    let impressions: string[] = []
     let ratios: number[] = []
     let muscles: { smile: number; worry: number; wide: number }[] = []
 
@@ -95,14 +97,12 @@ export function useGazeLog(
       seconds.current.push({
         at: Math.round(bucketStart * 10) / 10,
         cell: modeNumber(cells),
-        impression: mode(impressions),
         ratio: Math.round((ratios.reduce((a, b) => a + b, 0) / ratios.length) * 100) / 100,
         s: (['smile', 'worry', 'wide'] as const).map((key) =>
           Math.round((muscles.reduce((a, m) => a + m[key], 0) / muscles.length) * 1000) / 1000,
         ) as [number, number, number],
       })
       cells = []
-      impressions = []
       ratios = []
       muscles = []
     }
@@ -124,7 +124,6 @@ export function useGazeLog(
 
       const dev = deviation(baseline, frame.gaze)
       cells.push(cellOf(dev))
-      impressions.push(impressionOf(frame.shapes, dev.ratio < AWAY_RATIO))
       ratios.push(dev.ratio)
       muscles.push(strengths(frame.shapes))
     }, 33)

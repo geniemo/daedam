@@ -6,6 +6,7 @@ import type { Feedback, FeedbackStatus, InterviewSession } from '@/api/preparati
 import { useActiveCard } from '@/store/app'
 import { AccentDot, SectionLabel, Spinner } from '@/components/ui'
 import { Delivery } from './Delivery'
+import { IMPRESSIONS } from '@/video/expression'
 
 /**
  * README §10. 피드백 리포트 — 코칭 중심. 점수에서 시작해 답변별 개선 제안으로.
@@ -425,12 +426,14 @@ function ReportBody({
         </section>
       )}
 
-      {feedback.gaze && <Delivery gaze={feedback.gaze} />}
+      {(feedback.gaze || feedback.expression) && (
+        <Delivery gaze={feedback.gaze} expression={feedback.expression} />
+      )}
 
       {(coaching.strengths.length > 0 || coaching.improvements.length > 0) && (
         <section className="border-b border-line py-[30px]">
           <div className="mb-[18px]">
-            <SectionLabel>내용 평가</SectionLabel>
+            <SectionLabel>종합 평가</SectionLabel>
           </div>
           <div className="grid grid-cols-2 gap-[14px]">
             <div className="flex flex-col gap-3">
@@ -464,6 +467,19 @@ function ReportBody({
             const open = openQ === index
             // 음성 구간과 코칭은 같은 순서로 나온다 — 둘 다 면접 순서다.
             const span = voice?.answers[index]
+            // 이 답변 동안의 우세 인상. 답변 하나는 스냅샷 몇 장뿐이라(3초당
+            // 1장) 정밀한 %가 아니라 우세만 말한다 — 표본 얇은 데서 소수점을
+            // 붙이면 없는 정밀도를 주장하는 것이 된다.
+            const answerExpression = feedback.expression?.answers[index]
+            const dominant =
+              answerExpression && answerExpression.frames >= 2
+                ? IMPRESSIONS.reduce((best, item) =>
+                    (answerExpression.impressions[item.key] ?? 0) >
+                    (answerExpression.impressions[best.key] ?? 0)
+                      ? item
+                      : best,
+                  )
+                : null
             return (
               <div
                 key={index}
@@ -480,6 +496,11 @@ function ReportBody({
                   <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold">
                     {open ? '' : answer.question}
                   </span>
+                  {dominant && (
+                    <span className="rounded-chip bg-surface-2 px-[8px] py-[2px] text-[11px] text-body-2">
+                      {dominant.label} 우세
+                    </span>
+                  )}
                   {span && (
                     <span className="num text-[11.5px] text-faintest">
                       {(span.endS - span.startS).toFixed(1)}초
