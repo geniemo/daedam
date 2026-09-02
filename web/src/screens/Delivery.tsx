@@ -46,7 +46,8 @@ function dominantAway(cells: number[]): string | null {
     bestShare = share
   })
   if (best < 0 || bestShare < 0.08) return null
-  return ['왼쪽 위', '위', '오른쪽 위', '왼쪽', '', '오른쪽', '왼쪽 아래', '아래', '오른쪽 아래'][best]
+  // 뒤에 '으로'가 붙는 자리다. '위·아래'는 '위으로'가 되므로 전부 '쪽'으로 끝낸다.
+  return ['왼쪽 위쪽', '위쪽', '오른쪽 위쪽', '왼쪽', '', '오른쪽', '왼쪽 아래쪽', '아래쪽', '오른쪽 아래쪽'][best]
 }
 
 /**
