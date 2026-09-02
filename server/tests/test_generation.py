@@ -33,8 +33,8 @@ def _question(stage: int, text: str = "질문?", ids: list[str] | None = None) -
 
 
 def _minimum_pool() -> list[_GeneratedQuestion]:
-    """생성 대상 단계(1·2)의 최소 개수(3/2)를 딱 맞춘 유효 응답."""
-    per_stage = {1: 3, 2: 2}
+    """생성 대상 단계(1·2)의 최소 개수(3/3)를 딱 맞춘 유효 응답."""
+    per_stage = {1: 3, 2: 3}
     return [_question(stage) for stage, count in per_stage.items() for _ in range(count)]
 
 
@@ -70,7 +70,7 @@ def _generate(questions: list[_GeneratedQuestion]) -> list[dict]:
 def test_생성_결과가_풀_입력_형태가_된다() -> None:
     raw = _generate(_minimum_pool())
     pool = QuestionPool.from_dicts(raw)
-    assert len(pool) == 9  # 고정 자기소개 2 + 생성 5 + 고정 마무리 2
+    assert len(pool) == 10  # 고정 자기소개 2 + 생성 6 + 고정 마무리 2
     assert raw[0]["id"] == "q-open-0" and raw[2]["id"] == "q-1-0"
 
 
@@ -131,7 +131,7 @@ def test_프롬프트는_생성_대상_단계만_명시한다() -> None:
         company="A", role="B",
         report_chunks=REPORT_CHUNKS, application_chunks=APPLICATION_CHUNKS,
     )
-    assert "- 1 직무역량: 5개" in prompt and "- 2 인성·컬처핏: 4개" in prompt
+    assert "- 1 직무역량: 5개" in prompt and "- 2 인성·컬처핏: 6개" in prompt
     # 생성 대상이 아닌 단계는 지시에 등장하지 않는다 — 구조로 이미 막혀 있다.
     # ("자기소개"는 지원서 청크 제목에 있을 수 있으므로 단계 표기로 확인한다.)
     assert "0 자기소개" not in prompt and "마무리" not in prompt
