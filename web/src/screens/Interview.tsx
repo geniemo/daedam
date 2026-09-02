@@ -7,6 +7,7 @@ import { fill } from '@/data/mock'
 import { useCamera } from '@/video/useCamera'
 import { SelfView } from '@/video/SelfView'
 import { useRecorder } from '@/video/useRecorder'
+import { useSnapshots } from '@/video/useSnapshots'
 import { useFaceTracking } from '@/video/useFaceTracking'
 import { useGazeLog } from '@/video/useGazeLog'
 
@@ -69,6 +70,16 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
   const baseline = useAppStore((s) => s.baseline)
   const face = useFaceTracking(camera.stream, camera.state === 'on' && baseline !== null)
   const gaze = useGazeLog(face.latest, baseline, elapsedNow)
+
+  // 표정 판독용 스냅샷. 녹화와 별개로 3초마다 한 장 — 서버가 영상 디코더 없이
+  // Gemini로 판독하도록 화면이 프레임을 직접 보낸다. 시선과 달리 기준선이
+  // 필요 없어서 카메라만 켜져 있으면 찍는다.
+  useSnapshots(
+    camera.stream,
+    sessionId ? `/api/interviews/${card.id}/frames?session=${sessionId}` : null,
+    face.latest,
+    elapsedNow,
+  )
 
   // 주기적으로 통째로 덮어쓴다. 영상과 달리 이어 붙이는 것이 아니라 순서를
   // 걱정할 필요가 없고, 창을 닫아도 마지막으로 올린 데까지는 남는다.

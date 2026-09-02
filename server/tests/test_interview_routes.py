@@ -417,3 +417,76 @@ def test_분석이_끝났는데_점수가_없는_경우를_가른다(tmp_path) -
     store.save_feedback(later, {"coaching": {"score": 71}})
     [item] = client.get("/api/interviews").json()
     assert item["analyzed"] is True and item["score"] == 71
+
+
+def test_스냅샷은_시각이_이름이_된다(tmp_path) -> None:
+    """f00012.3.jpg — 이름이 곧 시각이라 목록 파일 없이 답변별로 나눌 수 있다."""
+    bundle = _store(tmp_path, ("aaa", True))
+    store, _ = bundle
+    session_id = store.start_session("aaa")
+    r = _client(bundle).post(
+        f"/api/interviews/aaa/frames?session={session_id}&at=12.3",
+        content=b"\xff\xd8jpeg",
+    )
+    assert r.status_code == 204
+    saved = store.session_directory("aaa", session_id) / "frames" / "f00012.3.jpg"
+    assert saved.read_bytes() == b"\xff\xd8jpeg"
+
+
+def test_같은_시각의_스냅샷은_덮어쓴다(tmp_path) -> None:
+    """재전송이 와도 장수만 같다 — 영상 조각과 달리 순서·중복 문제가 없다."""
+    bundle = _store(tmp_path, ("aaa", True))
+    store, _ = bundle
+    session_id = store.start_session("aaa")
+    url = f"/api/interviews/aaa/frames?session={session_id}&at=3.0"
+    client = _client(bundle)
+    assert client.post(url, content=b"old").status_code == 204
+    assert client.post(url, content=b"new").status_code == 204
+    directory = store.session_directory("aaa", session_id) / "frames"
+    assert [p.name for p in directory.glob("*.jpg")] == ["f00003.0.jpg"]
+    assert (directory / "f00003.0.jpg").read_bytes() == b"new"
+
+
+def test_너무_큰_스냅샷은_거절한다(tmp_path) -> None:
+    from daedam.server.interview_routes import _FRAME_MAX
+
+    bundle = _store(tmp_path, ("aaa", True))
+    store, _ = bundle
+    session_id = store.start_session("aaa")
+    r = _client(bundle).post(
+        f"/api/interviews/aaa/frames?session={session_id}&at=1.0",
+        content=b"x" * (_FRAME_MAX + 1),
+    )
+    assert r.status_code == 413
+    assert not (store.session_directory("aaa", session_id) / "frames").exists()
+
+
+def test_스냅샷_장수에_상한이_있다(tmp_path, monkeypatch) -> None:
+    """상한이 없으면 시각만 바꿔 보내는 클라이언트가 디스크를 다 먹는다."""
+    from daedam.server import interview_routes
+
+    monkeypatch.setattr(interview_routes, "_FRAMES_COUNT_MAX", 2)
+    bundle = _store(tmp_path, ("aaa", True))
+    store, _ = bundle
+    session_id = store.start_session("aaa")
+    client = _client(bundle)
+    for at in ("1.0", "2.0"):
+        ok = client.post(
+            f"/api/interviews/aaa/frames?session={session_id}&at={at}", content=b"x"
+        )
+        assert ok.status_code == 204
+    r = client.post(
+        f"/api/interviews/aaa/frames?session={session_id}&at=3.0", content=b"x"
+    )
+    assert r.status_code == 413
+
+
+def test_남의_면접에는_스냅샷을_올릴_수_없다(tmp_path) -> None:
+    bundle = _store(tmp_path, ("aaa", True), ("bbb", True))
+    store, _ = bundle
+    other = store.start_session("bbb")
+    r = _client(bundle).post(
+        f"/api/interviews/aaa/frames?session={other}&at=1.0", content=b"x"
+    )
+    assert r.status_code == 404
+    assert not (store.session_directory("bbb", other) / "frames").exists()
