@@ -29,6 +29,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from daedam.eval import expression
+
 from .accounts import Accounts
 from .credits import Credits
 from .preparation import InterviewPreparation
@@ -52,6 +54,17 @@ _GAZE_NAME = "gaze.json"
 
 #: 타임라인 상한. 초당 한 줄이면 20분이 100KB 안팎이라 1MB면 넉넉하다.
 _GAZE_MAX = 1024 * 1024
+
+#: 스냅샷 디렉터리 이름은 판독하는 쪽(eval/expression.py)이 소유한다 —
+#: 올리는 곳과 읽는 곳이 서로 다른 이름을 보게 되면 판독이 조용히 빈다.
+_FRAMES_DIR = expression.FRAMES_DIR
+
+#: 스냅샷 한 장의 상한. 320×240 JPEG(품질 0.8)이 15KB 안팎이라 넉넉하다.
+_FRAME_MAX = 200 * 1024
+
+#: 한 판의 장수 상한. 3초당 한 장이면 20분이 400장이다 — 두 배가 넘는 값이라
+#: 여기 걸리는 것은 우리 화면이 아니다.
+_FRAMES_COUNT_MAX = 900
 
 #: 업로드 조각 하나의 상한. 640×480 15fps에서 5초 조각이 300KB 안팎이라
 #: 넉넉하다. 이걸 넘는 요청은 우리 클라이언트가 보낸 것이 아니다.
@@ -322,6 +335,43 @@ def create_interviews_router(
         (directory / _GAZE_NAME).write_text(
             json.dumps(payload, ensure_ascii=False), encoding="utf-8"
         )
+
+    @router.post("/{interview_id}/frames", status_code=204)
+    async def append_frame(
+        interview_id: str,
+        request: Request,
+        at: float,
+        session: str | None = None,
+        user_id: str = Depends(accounts.current_user_id),
+    ) -> None:
+        """표정 판독용 스냅샷 한 장을 저장한다. 화면이 3초마다 보낸다.
+
+        영상(cam.webm)이 이미 올라오는데 따로 받는 이유: 서버가 영상에서
+        프레임을 뽑으려면 디코더(opencv급 의존성)가 필요하다. 화면은 프레임을
+        이미 손에 들고 있으므로 찍는 쪽이 보내는 것이 싸다.
+
+        `at`은 면접 경과 초 — 답변 구간과 같은 시계라, 분석이 답변별로 나눌
+        열쇠다. **파일 이름이 곧 시각이다**(f00012.3.jpg). 별도 목록 파일이
+        없으니 같은 장이 다시 와도 덮어쓸 뿐, 순서·중복 문제가 없다. 영상
+        조각과 달리 한 장쯤 빠져도 구멍이 아니다 — 그래서 화면도 재시도 없이
+        놓아 보낸다.
+        """
+        owned(interview_id, user_id)
+        session_id = resolve_session(interview_id, session)
+        if not 0 <= at < 24 * 3600:
+            raise HTTPException(status_code=400, detail="시각이 이상합니다")
+        body = await request.body()
+        if not body:
+            return
+        if len(body) > _FRAME_MAX:
+            raise HTTPException(status_code=413, detail="스냅샷이 너무 큽니다")
+
+        directory = store.session_directory(interview_id, session_id) / _FRAMES_DIR
+        directory.mkdir(parents=True, exist_ok=True)
+        if len(list(directory.glob("*.jpg"))) >= _FRAMES_COUNT_MAX:
+            raise HTTPException(status_code=413, detail="스냅샷이 너무 많습니다")
+        # 07.1f: 1200.0초(20분)까지 자릿수가 같아 이름 정렬이 곧 시간 정렬이다.
+        (directory / f"f{at:07.1f}.jpg").write_bytes(body)
 
     @router.get("/{interview_id}/video")
     def get_video(

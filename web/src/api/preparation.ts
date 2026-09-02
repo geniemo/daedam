@@ -105,10 +105,16 @@ export interface Feedback {
     }[]
   }
   /**
-   * 시선·표정. 정면 기준을 잡고 면접한 경우에만 옵니다.
-   * 계약: server/daedam/eval/gaze.py
+   * 시선. 판독(expression)이 있으면 그 시선 방향에서 오고 — 지원자 기준
+   * 좌우라 홍채 기하의 뒤집힘이 없습니다 — 판독 없는 지난 판만 홍채
+   * 기록(eval/gaze.py)에서 옵니다.
    */
   gaze?: GazeReport
+  /**
+   * 표정 — 스냅샷을 VLM이 면접관의 눈으로 읽은 것. 카메라를 켠 경우에만
+   * 오고, 판독이 실패하면 빠집니다. 계약: server/daedam/eval/expression.py
+   */
+  expression?: ExpressionReport
   coaching: {
     /** 답변 점수의 평균. 평가할 답변이 없으면 null — 0점과 다르다. */
     score: number | null
@@ -138,15 +144,28 @@ export interface GazeReport {
   steady: number
   /** 정면에서 벗어난 정도의 평균. */
   wander: number
-  /** 인상 키 → 비율. 키는 video/expression.ts의 IMPRESSIONS와 같습니다. */
+  /** 답변마다 같은 모양으로 하나씩. 음성 지표의 답변과 순서가 같습니다. */
+  answers: Omit<GazeReport, 'answers'>[]
+}
+
+export interface ExpressionReport {
+  /** 판독에 쓰인 스냅샷 수. 적으면 아래 비율을 믿을 수 없습니다. */
+  frames: number
+  /** 인상 키 → 비율(합 1). 키는 video/expression.ts의 IMPRESSIONS와 같습니다. */
   impressions: Record<string, number>
   /**
    * 시간 순서를 담은 인상 띠(48칸). 비율만으로는 "언제" 그랬는지가 사라집니다 —
    * 긴장 20%가 첫 답변에 몰렸는지 내내 흩어져 있었는지는 다른 이야기입니다.
    */
   series?: string[]
-  /** 답변마다 같은 모양으로 하나씩. 음성 지표의 답변과 순서가 같습니다. */
-  answers: Omit<GazeReport, 'answers'>[]
+  /**
+   * 프레임을 통틀어 판독이 짚은 잘한 점·고칠 점. 화면이 직접 그리지는
+   * 않습니다 — 서버가 종합 평가의 두 목록에 합쳐 보냅니다(evaluation.py).
+   */
+  strengths?: string[]
+  observations: string[]
+  /** 답변마다 하나씩. 음성 지표의 답변과 순서가 같습니다. */
+  answers: { frames: number; impressions: Record<string, number> }[]
 }
 
 export interface FeedbackStatus {

@@ -187,3 +187,78 @@ def test_전사도_피드백에_함께_담는다(tmp_path) -> None:
     feedback = evaluation.status(session_id).feedback
     assert feedback["durationS"] == 3.0
     assert len(feedback["utterances"]) == 2
+
+
+def _wait_done(evaluation, session_id, timeout_s: float = 3.0):
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        status = evaluation.status(session_id)
+        if status.state in ("done", "failed"):
+            return status
+        time.sleep(0.02)
+    raise AssertionError("피드백이 제 시간에 끝나지 않았습니다")
+
+
+def test_스냅샷이_있으면_표정_판독이_실린다(tmp_path) -> None:
+    store, session_id = _store(tmp_path)
+    _record(store, session_id)
+    frames = store.session_directory("itv", session_id) / "frames"
+    frames.mkdir(parents=True)
+    (frames / "f00001.0.jpg").write_bytes(b"jpg")
+
+    def judge(directory, **_):
+        assert directory == frames
+        return {
+            "frames": [
+                {"at": 1.0, "confident": 30, "focused": 60, "tense": 10,
+                 "flustered": 0, "gaze": "camera", "note": ""}
+            ],
+            "strengths": ["차분한 시선"],
+            "observations": ["카메라를 눈높이로"],
+        }
+
+    evaluation = InterviewEvaluation(store, coach=lambda **_: _coaching(), judge=judge)
+    assert evaluation.start(session_id)
+    status = _wait_done(evaluation, session_id)
+    assert status.state == "done"
+    expression = status.feedback["expression"]
+    assert expression["impressions"]["focused"] == 0.6
+    # 관찰은 코칭의 두 목록에 합쳐진다 — 조언이 두 집이면 어색하고,
+    # 고칠 점만 합치면 목록이 한쪽으로 분다.
+    assert status.feedback["coaching"]["improvements"] == ["개선", "카메라를 눈높이로"]
+    assert status.feedback["coaching"]["strengths"] == ["강점", "차분한 시선"]
+    # 시선은 판독의 방향에서 온다 — 홍채 기하의 좌우 뒤집힘이 없는 쪽이다.
+    assert status.feedback["gaze"]["source"] == "vlm"
+    assert status.feedback["gaze"]["steady"] == 1.0
+    assert "gaze" not in expression
+
+
+def test_판독이_실패해도_지표와_코칭은_나간다(tmp_path) -> None:
+    """판독은 곁가지다 — LLM 하나가 죽었다고 리포트가 통째로 죽으면 안 된다."""
+    store, session_id = _store(tmp_path)
+    _record(store, session_id)
+    frames = store.session_directory("itv", session_id) / "frames"
+    frames.mkdir(parents=True)
+    (frames / "f00001.0.jpg").write_bytes(b"jpg")
+
+    def judge(directory, **_):
+        raise RuntimeError("판독 실패")
+
+    evaluation = InterviewEvaluation(store, coach=lambda **_: _coaching(), judge=judge)
+    assert evaluation.start(session_id)
+    status = _wait_done(evaluation, session_id)
+    assert status.state == "done"
+    assert "expression" not in status.feedback
+    assert status.feedback["coaching"]["summary"] == "총평"
+
+
+def test_스냅샷이_없으면_판독을_부르지_않는다(tmp_path) -> None:
+    store, session_id = _store(tmp_path)
+    _record(store, session_id)
+
+    def judge(directory, **_):  # pragma: no cover
+        raise AssertionError("스냅샷이 없는데 판독을 불렀다")
+
+    evaluation = InterviewEvaluation(store, coach=lambda **_: _coaching(), judge=judge)
+    assert evaluation.start(session_id)
+    assert _wait_done(evaluation, session_id).state == "done"

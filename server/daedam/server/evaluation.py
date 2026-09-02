@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Literal
 
 from daedam.eval.coaching import evaluate
+from daedam.eval import expression
 from daedam.eval.gaze import analyze as analyze_gaze
 from daedam.eval.voice import analyze
 
@@ -58,14 +59,17 @@ class InterviewEvaluation:
         self,
         store: InterviewStore,
         coach: Callable[..., Any] = evaluate,
+        judge: Callable[..., Any] = expression.judge,
     ) -> None:
         """
         Args:
             store: 준비·기록 파일 저장소.
             coach: 코칭 생성 함수. 테스트가 대역을 주입한다.
+            judge: 스냅샷 판독 함수. 같은 이유로 주입 가능하다.
         """
         self._store = store
         self._coach = coach
+        self._judge = judge
         self._states: dict[str, _State] = {}
 
     def start(self, session_id: str) -> bool:
@@ -149,10 +153,54 @@ class InterviewEvaluation:
                     # 시선은 곁가지다. 못 읽어도 코칭과 음성 지표는 나가야 한다.
                     logger.warning("시선 기록을 읽지 못했습니다 (%s)", session_id, exc_info=True)
 
+            # 표정은 스냅샷을 VLM으로 읽는다(eval/expression.py의 왜 참고).
+            # 시선과 별도 필드인 이유: 계기가 다르다 — 시선은 홍채 기하,
+            # 표정은 판독이라 한쪽만 실패할 수 있고 실제로 그렇게 다룬다.
+            frames_dir = (
+                self._store.session_directory(record.application_id, session_id)
+                / expression.FRAMES_DIR
+            )
+            if frames_dir.is_dir():
+                try:
+                    judgement = self._judge(frames_dir)
+                    if judgement is not None:
+                        folded = expression.fold(
+                            judgement, (payload.get("voice") or {}).get("answers")
+                        )
+                        # 시선은 판독이 있으면 판독을 쓴다. 홍채 기하는 방향
+                        # 라벨이 카메라 시점이라 지원자 기준과 좌우가 뒤집혔고
+                        # (실측: 오른쪽 셀프뷰를 보는데 "왼쪽 58.7%"), 벗어남
+                        # 문턱도 화면을 훑는 정상 시선을 이탈로 셌다. 판독이
+                        # 없는 지난 판만 홍채 기록으로 남는다.
+                        vlm_gaze = folded.pop("gaze", None)
+                        if vlm_gaze is not None:
+                            payload["gaze"] = vlm_gaze
+                        payload["expression"] = folded
+                except Exception:
+                    # 판독은 곁가지다. 실패해도 지표·코칭은 나가야 한다.
+                    logger.warning(
+                        "표정 판독 실패 (%s)", session_id, exc_info=True
+                    )
+
             coaching = self._coach(
                 company=data.company, role=data.role, transcript=transcript
             )
             payload["coaching"] = coaching.as_dict()
+            # 판독의 잘한 점·고칠 점(시선·카메라·표정)을 코칭 목록에 합친다.
+            # 조언 목록이 전달력과 평가 두 집에 나뉘어 있으면 어색하고(사용자
+            # 지적), 고칠 점만 합치면 목록이 한쪽으로 분다 — 잘한 점도 판독이
+            # 근거를 봤을 때만 나오므로 같은 규칙으로 합친다.
+            if frames_dir.is_dir():
+                try:
+                    folded_expression = payload.get("expression") or {}
+                    payload["coaching"]["improvements"] = list(
+                        payload["coaching"].get("improvements") or []
+                    ) + list(folded_expression.get("observations") or [])
+                    payload["coaching"]["strengths"] = list(
+                        payload["coaching"].get("strengths") or []
+                    ) + list(folded_expression.get("strengths") or [])
+                except Exception:  # pragma: no cover - 방어적
+                    pass
 
             self._store.save_feedback(session_id, payload)
             del self._states[session_id]  # 완료 — 이제부터 저장된 것이 진실이다
