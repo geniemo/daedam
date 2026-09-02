@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException, Request
@@ -114,13 +115,44 @@ class Accounts:
                 created = True
                 logger.info("새 사용자 (%s)", provider)
             found.email = email
-            found.name = name or found.name
+            # 온보딩에서 입력한 이름은 제공자 프로필이 되덮지 못한다 — 카카오는
+            # 실명이 아니라 닉네임을 주고, 구글은 로마자일 수 있다. 그 이름이
+            # 전사 힌트와 면접관 호칭으로 나가므로 사용자 입력이 우선이다.
+            if found.onboarded_at is None:
+                found.name = name or found.name
             found.avatar_url = avatar_url
             session.flush()
             user_id = found.id
         if created and self._credits is not None:
             self._credits.grant(user_id, SIGNUP_GRANT, "signup_grant")
         return user_id
+
+    def complete_onboarding(self, user_id: str, name: str) -> dict[str, Any] | None:
+        """온보딩을 끝낸다 — 이름을 확정하고 동의 시각을 남긴다.
+
+        이 호출은 화면의 약관·개인정보 동의 체크와 한 몸이다. 화면이 체크 없이
+        제출하지 못하게 하고, 서버는 제출 시각을 `onboarded_at`으로 기록한다 —
+        음성·영상·얼굴 스틸을 AI로 처리하는 서비스라 동의의 증거가 필요하다.
+
+        Returns:
+            갱신된 프로필. 사용자가 없으면 None.
+
+        Raises:
+            ValueError: 이름이 비었거나 너무 길다.
+        """
+        name = name.strip()
+        if not name:
+            raise ValueError("이름을 입력해 주세요")
+        if len(name) > 64:
+            raise ValueError("이름이 너무 깁니다")
+        with self._db.session() as session:
+            user = session.get(User, user_id)
+            if user is None:
+                return None
+            user.name = name
+            user.onboarded_at = datetime.now(UTC)
+        logger.info("온보딩 완료 (id=%s)", user_id)
+        return self.profile(user_id)
 
     def delete(self, user_id: str) -> bool:
         """계정을 지운다. 준비 데이터·면접 기록·크레딧 원장이 함께 사라진다.
@@ -155,6 +187,10 @@ class Accounts:
                 "email": user.email,
                 "avatarUrl": user.avatar_url,
                 "provider": user.provider,
+                # 로컬 개발 모드는 게이트를 걸지 않는다 — 앱 등록 없이 서버를
+                # 띄우는 개발자에게 온보딩 화면은 마찰일 뿐이다.
+                "onboarded": user.onboarded_at is not None
+                or user.provider == LOCAL_PROVIDER,
             }
 
     def default_user_id(self) -> str:

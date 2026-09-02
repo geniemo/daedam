@@ -230,3 +230,50 @@ def test_탈퇴하면_계정과_남긴_것이_전부_사라진다(tmp_path) -> N
 def test_로그인하지_않으면_탈퇴할_수_없다(tmp_path) -> None:
     client = _app(Accounts(_db(tmp_path), login_required=True))
     assert client.delete("/api/auth/me").status_code == 401
+
+
+def test_온보딩이_이름과_동의_시각을_남긴다(tmp_path) -> None:
+    """이름은 전사 힌트·호칭으로 나가고, 동의 시각은 법적 증거로 남는다."""
+    accounts = Accounts(_db(tmp_path), login_required=True)
+    user_id = accounts.upsert(provider="kakao", provider_user_id="k1", name="닉네임")
+    client = _app(accounts)
+    client.post(f"/pretend-login/{user_id}")
+
+    assert client.get("/api/auth/me").json()["onboarded"] is False
+    r = client.post("/api/auth/onboard", json={"name": "  박지원  "})
+    assert r.status_code == 200
+    me = client.get("/api/auth/me").json()
+    assert me["name"] == "박지원" and me["onboarded"] is True
+
+
+def test_재로그인이_온보딩_이름을_덮지_않는다(tmp_path) -> None:
+    """카카오는 닉네임을 준다 — 사용자가 입력한 실명이 우선이다."""
+    accounts = Accounts(_db(tmp_path), login_required=True)
+    user_id = accounts.upsert(provider="kakao", provider_user_id="k1", name="닉네임")
+    accounts.complete_onboarding(user_id, "박지원")
+
+    again = accounts.upsert(provider="kakao", provider_user_id="k1", name="새닉네임")
+    assert again == user_id
+    assert accounts.profile(user_id)["name"] == "박지원"
+
+
+def test_온보딩_전에는_재로그인이_이름을_갱신한다(tmp_path) -> None:
+    accounts = Accounts(_db(tmp_path), login_required=True)
+    user_id = accounts.upsert(provider="kakao", provider_user_id="k1", name="옛닉")
+    accounts.upsert(provider="kakao", provider_user_id="k1", name="새닉")
+    assert accounts.profile(user_id)["name"] == "새닉"
+
+
+def test_빈_이름_온보딩은_400이다(tmp_path) -> None:
+    accounts = Accounts(_db(tmp_path), login_required=True)
+    user_id = accounts.upsert(provider="kakao", provider_user_id="k1")
+    client = _app(accounts)
+    client.post(f"/pretend-login/{user_id}")
+    assert client.post("/api/auth/onboard", json={"name": "   "}).status_code == 400
+
+
+def test_로컬_모드는_온보딩을_묻지_않는다(tmp_path) -> None:
+    """앱 등록 없이 도는 개발 모드에 온보딩 화면은 마찰일 뿐이다."""
+    accounts = Accounts(_db(tmp_path), login_required=False)
+    profile = accounts.profile(accounts.default_user_id())
+    assert profile["onboarded"] is True

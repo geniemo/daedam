@@ -61,6 +61,12 @@ class User(Base):
     #: 틀리는 낱말이다(실측 "박지원" → "박지훈").
     name: Mapped[str] = mapped_column(String(64), default="")
     avatar_url: Mapped[str | None] = mapped_column(String(512), default=None)
+    #: 온보딩(이름 입력 + 약관·개인정보 동의) 완료 시각. null이면 미완 — 화면이
+    #: 온보딩으로 보낸다. 동의 시각을 남기는 것이 목적의 절반이다: 음성·영상·
+    #: 얼굴 스틸을 AI로 처리하는 서비스라 "언제 동의했는가"가 기록으로 남아야 한다.
+    onboarded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     applications: Mapped[list[Application]] = relationship(
