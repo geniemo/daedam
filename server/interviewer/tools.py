@@ -52,6 +52,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -427,7 +428,7 @@ def _deliver(
     return {"ask": found.text, "instruction": _ASK_INSTRUCTION}
 
 
-def ask_question(
+async def ask_question(
     tool_context: ToolContext,
     tag: str,
     answered: Literal["yes", "no", ""] = "",
@@ -498,8 +499,15 @@ def ask_question(
             for at in (stage_now, stage_now + 1):
                 if at < len(STAGE_NAMES):
                     candidates.update(_experience_candidates(pool, stage=at, asked=asked))
-            extraction = _extract_probes(
-                question=question.text, answer=answer, experiences=list(candidates)
+            # **이벤트 루프에서 돌리지 않는다.** ADK는 동기 툴 함수를 루프에서
+            # 그대로 호출하는데(function_tool.py의 _invoke_callable — to_thread도
+            # executor도 없다), 이 호출은 Grok 왕복이라 약 2초다. 루프에서 돌면
+            # 그 2초 동안 서버 전체가 멈춘다 — 다른 사람 면접의 오디오까지.
+            extraction = await asyncio.to_thread(
+                _extract_probes,
+                question=question.text,
+                answer=answer,
+                experiences=list(candidates),
             )
             limit = _PROBE_LIMIT_BY_STAGE[min(stage_now, len(_PROBE_LIMIT_BY_STAGE) - 1)]
             probes = [
@@ -601,11 +609,19 @@ STATE_RESEARCH_REPORT = "research_report"
 #: 형태는 `daedam.knowledge.chunk.chunks_from_application`의 입력과 같다.
 STATE_APPLICATION = "application"
 
-@lru_cache(maxsize=2)
+#: 인덱스를 몇 개까지 들고 있는가. **동시 사용자 수보다 커야 한다** — 앞서
+#: 2였는데, 서로 다른 카드로 셋이 동시에 면접하면 매 검색이 캐시 미스가 되어
+#: 인덱스를 다시 만들었다. 카드 하나의 벡터가 청크 100개 × 768차원 ≈ 300 KB라
+#: 32개를 들고 있어도 10 MB 남짓이다.
+_INDEX_CACHE = 32
+
+
+@lru_cache(maxsize=_INDEX_CACHE)
 def _cached_knowledge_index(corpus_json: str) -> KnowledgeIndex:
     """코퍼스 내용을 키로 인덱스를 재사용한다.
 
-    임베딩 인덱스는 청크 벡터 인코딩이 수십 ms라 한 번 만들고 다시 쓴다.
+    인덱스를 만드는 값이 크다 — 청크 100개를 임베딩하는 데 2.2초다(실측).
+    같은 카드의 면접이 여러 번, 검색이 여러 번이므로 한 번 만들고 다시 쓴다.
     """
     sections, parts = json.loads(corpus_json)
     return KnowledgeIndex(
@@ -629,7 +645,7 @@ def _knowledge_index_from(state: Mapping[str, Any]) -> KnowledgeIndex:
     )
 
 
-def search_knowledge(
+async def search_knowledge(
     tool_context: ToolContext, query: str, source: Source | None = None
 ) -> dict:
     """회사 리서치 리포트와 지원서에서 관련 정보를 검색합니다.
@@ -655,7 +671,11 @@ def search_knowledge(
         results: 출처(source)·제목(title)·본문(text)을 담은 결과 목록,
         관련도 순 최대 3개. 관련 정보가 없으면 results가 비고 instruction으로 알립니다.
     """
-    found = _knowledge_index_from(tool_context.state).search(query, source=source)
+    # 인덱스 빌드(첫 검색)와 질의 임베딩이 모두 네트워크·계산이라 루프를
+    # 막는다 — `ask_question`의 같은 주석 참고. 실측으로 빌드 2.2초, 질의 0.47초.
+    found = await asyncio.to_thread(
+        lambda: _knowledge_index_from(tool_context.state).search(query, source=source)
+    )
     # 모델이 무엇을 찾았고 무엇이 걸렸는지 남긴다. 검색은 면접 중 유일한 사실
     # 조회 경로인데, 이 줄이 없으면 툴이 쓰이는지조차 알 수 없다.
     logger.info(

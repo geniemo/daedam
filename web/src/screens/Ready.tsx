@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { getCredits } from '@/api/credits'
 import { useNavigate } from 'react-router'
-import { useActiveCard } from '@/store/app'
+import { useActiveCard, useAppStore } from '@/store/app'
+import { useCamera } from '@/video/useCamera'
+import { useFaceTracking } from '@/video/useFaceTracking'
+import { GazeBaseline } from '@/video/GazeBaseline'
 import { AccentDot, CheckDot, EmptyDot, OutlineButton, SectionLabel } from '@/components/ui'
 import { STAGE_NAMES } from '@/data/mock'
 
@@ -11,11 +16,14 @@ const HEARD_LEVEL = 0.12
  * 시작 전 확인 (README §5).
  *
  * 마이크 항목은 실제로 입력을 받아 봐야 체크된다 — 말했을 때 막대가 움직이고
- * 그 순간 체크가 켜진다. 나머지 둘은 사용자가 직접 누른다. 확인하지 않아도
- * 시작은 막지 않는다. 지원자가 준비됐다고 판단하는 것이 이 목록의 목적이지
- * 통과 조건이 아니다.
+ * 그 순간 체크가 켜진다. 나머지 둘은 사용자가 직접 누른다.
+ *
+ * **셋을 다 마쳐야 시작할 수 있다.** 앞서는 안내일 뿐 통과 조건이 아니었는데,
+ * 마이크가 소리를 못 잡은 채로 시작한 면접이 실제로 세 판 나왔다(전사에
+ * 면접관 인사만 남고 지원자 답변이 0개). 크레딧을 되돌려 주더라도 사용자가
+ * 쓴 시간은 돌아오지 않는다 — 시작 전에 막는 편이 싸다.
  */
-function Preflight() {
+function Preflight({ onReady }: { onReady: (ready: boolean) => void }) {
   const [heard, setHeard] = useState(false)
   const [testing, setTesting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -23,6 +31,38 @@ function Preflight() {
 
   const bar = useRef<HTMLDivElement>(null)
   const teardown = useRef<(() => void) | null>(null)
+
+  // 카메라 권한은 **반드시 여기서** 받는다. 면접 화면이 요청하면 첫 질문이
+  // 나오는 순간 브라우저 권한 창이 뜬다. 켜 두면 면접 화면이 그대로 이어받는다.
+  const camera = useCamera()
+  const preview = useRef<HTMLVideoElement>(null)
+  const setCameraReady = useAppStore((s) => s.setCameraReady)
+  useEffect(() => {
+    setCameraReady(camera.state === 'on')
+  }, [camera.state, setCameraReady])
+  useEffect(() => {
+    const el = preview.current
+    if (!el) return
+    el.srcObject = camera.stream
+    if (camera.stream) void el.play().catch(() => {})
+  }, [camera.stream])
+
+  // 얼굴 인식이 이 기기에서 실시간으로 도는지 여기서 확인된다. 안 돌면 시선·표정
+  // 분석 전체가 무의미하므로, 보정을 붙이기 전에 이 숫자부터 봐야 한다.
+  const face = useFaceTracking(camera.stream, camera.state === 'on')
+  const baseline = useAppStore((s) => s.baseline)
+  const setBaseline = useAppStore((s) => s.setBaseline)
+  const [baselining, setBaselining] = useState(false)
+  // 카메라를 끄면 기준선도 버린다 — 다시 켜면 자리가 달라져 있을 수 있다.
+  //
+  // **켜짐 → 꺼짐 전환일 때만** 지운다. "지금 켜져 있지 않으면 지운다"로 두면
+  // 첫 렌더('idle')와 잠깐의 상태 변화에서도 돌아서, 방금 잡은 기준선을
+  // 조용히 날린다. 실측에서 면접 화면까지 기준선이 안 넘어갔다.
+  const wasOn = useRef(false)
+  useEffect(() => {
+    if (wasOn.current && camera.state !== 'on') setBaseline(null)
+    wasOn.current = camera.state === 'on'
+  }, [camera.state, setBaseline])
 
   // 화면을 벗어나면 마이크를 반드시 놓는다 — 안 놓으면 면접 화면이 마이크를
   // 다시 잡을 때 브라우저 표시가 둘이 되고, 탭이 계속 녹음 중으로 남는다.
@@ -75,8 +115,23 @@ function Preflight() {
 
   const manual = ['조용한 곳에서 진행합니다', '중간에 그만두면 그때까지의 답변으로 리포트를 받습니다']
 
+  // 시작 버튼이 이걸 보고 열린다. boolean 하나만 올려 보내므로 부모는 항목
+  // 구성을 몰라도 된다 — 항목이 늘어도 여기만 고친다.
+  const ready = heard && manual.every((label) => checked[label])
+  useEffect(() => onReady(ready), [ready, onReady])
+
   return (
     <div className="mb-[26px] flex flex-col gap-3 rounded-card border border-line bg-surface p-5">
+      {baselining && (
+        <GazeBaseline
+          latest={face.latest}
+          onDone={(b) => {
+            setBaseline(b)
+            setBaselining(false)
+          }}
+          onCancel={() => setBaselining(false)}
+        />
+      )}
       <SectionLabel>시작 전 확인</SectionLabel>
       <div className="flex flex-col gap-[10px]">
         <div className="flex items-center gap-[9px]">
@@ -103,6 +158,87 @@ function Preflight() {
         )}
         {error && <p className="m-0 pl-6 text-[12px] text-accent">{error}</p>}
 
+        {/* 카메라는 통과 조건이 아니다 — 없어도 면접은 된다. 다만 쓸 거라면
+            권한은 여기서 받아야 한다. */}
+        <div className="flex items-center gap-[9px]">
+          {camera.state === 'on' ? <CheckDot size={15} /> : <EmptyDot size={15} />}
+          <span
+            className={`text-[13.5px] ${camera.state === 'on' ? 'text-ink' : 'text-muted'}`}
+          >
+            {camera.state === 'on'
+              ? '카메라가 켜졌습니다'
+              : camera.state === 'missing'
+                ? '카메라를 찾지 못했습니다'
+                : camera.state === 'denied'
+                  ? '카메라 권한이 막혀 있습니다'
+                  : '카메라로 내 모습을 보며 연습할 수 있습니다'}
+          </span>
+          <div className="flex-1" />
+          <button
+            onClick={() => (camera.state === 'on' ? camera.stop() : void camera.start())}
+            className="border-b border-field text-[12.5px] text-muted"
+          >
+            {camera.state === 'on' ? '끄기' : '카메라 켜기'}
+          </button>
+        </div>
+
+        {/* 얼굴이 화면에 어떻게 담기는지 여기서 확인한다. 썸네일로는 구도도
+            조명도 못 본다 — 이 화면에서 카메라 항목이 하는 일이 그것뿐이라
+            크게 둔다. 면접 중의 셀프뷰는 반대로 작다(SelfView 참고). */}
+        {camera.state === 'on' && (
+          <div className="flex flex-col items-center gap-[8px] pl-6">
+            <video
+              ref={preview}
+              muted
+              playsInline
+              className="rounded-card border border-line bg-surface-2 object-cover"
+              style={{ width: 320, height: 240, transform: 'scaleX(-1)' }}
+            />
+            <span className="text-[12px] text-faint">
+              얼굴이 가운데에 오고 밝은지 확인해 주세요
+            </span>
+            {/* 시선 분석은 보정이 있어야만 성립한다 — 없으면 그럴듯한 헛숫자가
+                나오므로, 건너뛰면 그 지표 자체를 만들지 않는다. */}
+            {face.state === 'loading' && (
+              <span className="text-[12px] text-faintest">얼굴 인식을 준비하고 있습니다</span>
+            )}
+            {face.state === 'failed' && (
+              <span className="text-[12px] text-faintest">
+                얼굴 인식을 시작하지 못했습니다 · 영상은 그대로 녹화됩니다
+              </span>
+            )}
+            {face.state === 'running' && (
+              <div className="flex items-center gap-[10px]">
+                {baseline ? (
+                  <>
+                    <CheckDot size={15} />
+                    <span className="text-[13px] text-ink">정면 기준을 잡았습니다</span>
+                    <button
+                      onClick={() => setBaselining(true)}
+                      className="border-b border-field text-[12.5px] text-muted"
+                    >
+                      다시 하기
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <EmptyDot size={15} />
+                    <span className="text-[13px] text-muted">
+                      정면을 한 번 잡아 두면 면접 중 시선이 얼마나 흔들렸는지 알려 드립니다
+                    </span>
+                    <button
+                      onClick={() => setBaselining(true)}
+                      className="border-b border-field text-[12.5px] text-muted"
+                    >
+                      정면 잡기
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {manual.map((label) => (
           <button
             key={label}
@@ -121,9 +257,78 @@ function Preflight() {
 }
 
 /** README §5. 준비 완료 */
+/**
+ * 면접 시작 — 누르면 크레딧이 빠지므로 확인을 한 단계 둔다.
+ *
+ * 리포트의 "이 회사로 다시 면접 보기"에서 두 번만 누르면 여기까지 오는데,
+ * 시작하는 순간 되돌릴 수 없는 차감이 일어난다. 잔액을 작은 글씨로 적어 두는
+ * 것은 안내지 확인이 아니다 — 얼마가 빠지는지 말하고 한 번 더 받는다.
+ *
+ * 모달이 아니라 자리에서 펼치는 이유: 이 화면의 다른 확인(회원 탈퇴)과 같은
+ * 방식이고, 모달은 마이크 점검 화면 위를 덮어 버린다.
+ */
+function StartInterview({
+  cost,
+  balance,
+  onStart,
+}: {
+  cost?: number
+  balance?: number
+  onStart: () => void
+}) {
+  const [confirming, setConfirming] = useState(false)
+
+  if (!confirming) {
+    return (
+      <>
+        <button
+          onClick={() => setConfirming(true)}
+          className="rounded-control bg-ink px-[34px] py-[14px] text-[15px] font-semibold text-white"
+        >
+          면접 시작하기
+        </button>
+        {cost !== undefined && (
+          <span className="text-[12.5px] text-faint">
+            크레딧 {balance}개 보유 · 면접에 {cost}개
+          </span>
+        )}
+      </>
+    )
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-[10px] rounded-card border border-accent-line bg-accent-bg px-[18px] py-[14px]">
+      <span className="text-[13.5px] text-body-2">
+        면접을 시작하면 크레딧 <span className="num font-semibold">{cost}</span>개가
+        사용됩니다.
+      </span>
+      <div className="flex items-center gap-[8px]">
+        <OutlineButton
+          onClick={() => setConfirming(false)}
+          className="px-[16px] py-[10px] text-[13.5px]"
+        >
+          취소
+        </OutlineButton>
+        {/* AudioContext는 이 클릭 핸들러 안에서 생성됩니다 — 밖에서 만들면
+            자동재생 정책에 막혀 무음이 됩니다. useVoiceSession 참조. */}
+        <button
+          onClick={onStart}
+          className="rounded-control bg-ink px-[24px] py-[10px] text-[13.5px] font-semibold text-white"
+        >
+          시작하기
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function Ready() {
   const nav = useNavigate()
   const card = useActiveCard()
+  const { data: credits } = useQuery({ queryKey: ['credits'], queryFn: getCredits })
+  const short = credits !== undefined && credits !== null && credits.balance < credits.costs.interview
+  // 시작 전 확인을 다 마쳤는가. Preflight가 올려 준다.
+  const [ready, setReady] = useState(false)
 
   return (
     <main className="mx-auto max-w-(--container-doc) px-8 pt-[44px] pb-20 animate-dm-fade">
@@ -180,7 +385,7 @@ export function Ready() {
         </div>
       </div>
 
-      <Preflight />
+      <Preflight onReady={setReady} />
 
       {/* 지원서 수정 버튼이 있던 자리. STEP 2는 등록용 초안(스토어의 parts)을
           읽지 이 면접의 지원서를 읽지 않아 빈 화면이 떴고, 그 화면의 버튼은
@@ -188,14 +393,37 @@ export function Ready() {
           live 모드에서는 리서치가 한 번 더 도는 것과 같다. */}
       <div className="flex items-center">
         <div className="flex-1" />
-        {/* AudioContext는 이 클릭 핸들러 안에서 생성됩니다 — 밖에서 만들면
-            자동재생 정책에 막혀 무음이 됩니다. useVoiceSession 참조. */}
-        <button
-          onClick={() => nav('/interview')}
-          className="rounded-control bg-ink px-[34px] py-[14px] text-[15px] font-semibold text-white"
-        >
-          면접 시작하기
-        </button>
+        <div className="flex flex-col items-end gap-[9px]">
+          {/* 여기서 막는다. 면접 화면까지 들어갔다가 소켓이 닫히면 마이크
+              권한을 물어본 뒤에 못 한다고 말하는 꼴이 된다. */}
+          {short || !ready ? (
+            <>
+              <button
+                disabled
+                className="rounded-control bg-faintest px-[34px] py-[14px] text-[15px] font-semibold text-white"
+              >
+                면접 시작하기
+              </button>
+              {/* 크레딧이 먼저다 — 확인을 다 마쳐도 시작할 수 없는 쪽이라
+                  그걸 먼저 말해야 헛수고를 안 한다. */}
+              {short ? (
+                <span className="text-[12.5px] text-accent">
+                  크레딧이 부족합니다 · 면접에 {credits?.costs.interview}개 필요
+                </span>
+              ) : (
+                <span className="text-[12.5px] text-faint">
+                  위의 시작 전 확인을 모두 마쳐 주세요
+                </span>
+              )}
+            </>
+          ) : (
+            <StartInterview
+              cost={credits?.costs.interview}
+              balance={credits?.balance}
+              onStart={() => nav('/interview')}
+            />
+          )}
+        </div>
       </div>
     </main>
   )

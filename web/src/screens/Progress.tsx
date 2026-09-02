@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import { getFeedback, getPreparationStatus } from '@/api/preparation'
 import { useActiveCard } from '@/store/app'
@@ -75,22 +76,36 @@ export function Regen() {
 export function Analyzing() {
   const nav = useNavigate()
   const card = useActiveCard()
-  const [failed, setFailed] = useState(false)
+  const queryClient = useQueryClient()
+  // 기다려도 결과가 오지 않는 경우가 둘이고 할 말이 다르다 — 만들다 실패한
+  // 것과, 한 마디도 안 해서 만들 것이 없는 것. 후자에는 되돌린 크레딧까지
+  // 같이 들고 있는다(서버 원장이 알려 준다 — 짐작으로 안심시키지 않는다).
+  const [stopped, setStopped] = useState<{ silent: boolean; refunded: boolean } | null>(null)
 
   useEffect(() => {
     let alive = true
+    // 면접이 끝나면 두 가지가 이미 바뀌어 있다 — 시작할 때 빠진 크레딧과,
+    // 방금 늘어난 면접 횟수. 캐시를 비우지 않으면 헤더의 잔액과 홈 카드가
+    // 새로고침 전까지 옛 값을 보여준다.
+    const refresh = () => queryClient.invalidateQueries()
     const timer = setInterval(async () => {
       try {
         const status = await getFeedback(card.id)
         if (!alive) return
         if (status.status === 'done') {
           clearInterval(timer)
+          await refresh()
           nav('/report')
-        } else if (status.status === 'failed' || status.status === 'absent') {
-          // absent는 면접이 아무것도 남기지 않았다는 뜻이다. 둘 다 기다려서
-          // 해결되지 않으므로 화면을 붙잡고 있지 않는다.
+        } else if (status.status !== 'running') {
+          // 기다려서 해결되지 않는 상태다(failed·silent·absent). 화면을 붙잡고
+          // 있지 않는다. 무응답이면 브리지가 크레딧을 되돌려 두었으므로,
+          // 실패든 아니든 잔액은 갱신해야 헤더가 옛 값을 보여주지 않는다.
           clearInterval(timer)
-          setFailed(true)
+          await refresh()
+          setStopped({
+            silent: status.status === 'silent',
+            refunded: status.refunded === true,
+          })
         }
       } catch {
         // 서버가 없으면(프론트 단독 실행) 목업 리포트라도 보여준다.
@@ -102,16 +117,29 @@ export function Analyzing() {
       alive = false
       clearInterval(timer)
     }
-  }, [card.id, nav])
+  }, [card.id, nav, queryClient])
 
-  if (failed) {
+  if (stopped) {
+    // 면접 화면과 같은 어두운 배경 위다. 여기서 리포트로 보내면 같은 말을 다시
+    // 만나므로, 무엇이 일어났는지 여기서 말하고 나가는 길만 준다.
+    const { silent, refunded } = stopped
     return (
-      <div className="fixed inset-0 z-60 flex flex-col items-center justify-center gap-[18px] bg-stage">
+      <div className="fixed inset-0 z-60 flex flex-col items-center justify-center gap-[18px] bg-stage px-8 text-center">
+        {silent && (
+          /* 눕은 파형 — 조금 전까지 이 자리에서 움직이던 막대다. */
+          <div className="flex items-center" style={{ gap: 3, height: 20 }}>
+            {Array.from({ length: 16 }, (_, i) => (
+              <div key={i} className="bg-stage-line" style={{ width: 3, height: 2 }} />
+            ))}
+          </div>
+        )}
         <h1 className="m-0 text-[19px] font-semibold text-stage-ink-2">
-          분석 결과를 만들지 못했습니다
+          {silent ? '답변이 녹음되지 않았습니다' : '분석 결과를 만들지 못했습니다'}
         </h1>
-        <p className="m-0 text-[13.5px] text-stage-muted">
-          녹음과 전사는 남아 있습니다. 다시 시도하려면 면접을 한 번 더 진행해 주세요.
+        <p className="m-0 max-w-[420px] text-[13.5px] leading-[1.8] text-stage-muted">
+          {silent
+            ? `${refunded ? '크레딧은 돌려드렸습니다. ' : ''}마이크를 확인한 뒤 다시 시작해 주세요.`
+            : '녹음과 전사는 남아 있습니다. 잠시 뒤 리포트를 다시 열어 보세요.'}
         </p>
         <button
           onClick={() => nav('/')}

@@ -27,7 +27,12 @@ export interface VoiceSessionHandlers {
   onQuestion?: (index: number) => void
   onCaption?: (text: string, final: boolean) => void
   onResumeToken?: (token: string) => void
-  onEnded?: () => void
+  /**
+   * 면접이 끝났다. `reason`은 정상 종료가 아닐 때만 실린다 — 지금은
+   * 'credits'(크레딧 부족으로 시작조차 못 함) 하나다. 화면은 이때
+   * 결과가 아니라 홈으로 가야 한다.
+   */
+  onEnded?: (reason?: string) => void
   onError?: (err: Error) => void
 }
 
@@ -47,7 +52,12 @@ export class VoiceSession {
 
   private inCtx: AudioContext | null = null
   private outCtx: AudioContext | null = null
-  private stream: MediaStream | null = null
+  /**
+   * 마이크 스트림. 웹캠 녹화가 이 트랙을 같이 담아 소리 있는 클립을 만든다 —
+   * 여기서 한 번 잡은 것을 나눠 쓴다. 따로 getUserMedia를 부르면 장치를 두 번
+   * 열고 에코 제거·게인 설정이 갈린다.
+   */
+  stream: MediaStream | null = null
   private recorder: AudioWorkletNode | null = null
   private player: AudioWorkletNode | null = null
 
@@ -209,7 +219,7 @@ export class VoiceSession {
           break
         case 'ended':
           this.closing = true
-          this.opts.handlers.onEnded?.()
+          this.opts.handlers.onEnded?.(msg.reason as string | undefined)
           break
       }
     }

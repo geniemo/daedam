@@ -25,14 +25,13 @@ xAI API 확인 경로: `daedam.interview.generation` 모듈 docstring과 같다.
 
 from __future__ import annotations
 
-import os
 import re
 from typing import Any
 
 from pydantic import BaseModel, Field
+from daedam.llm import MODEL_QUALITY, text_client
 
-_MODEL = "grok-4.5"
-_BASE_URL = "https://api.x.ai/v1"
+_MODEL = MODEL_QUALITY
 
 #: 어휘 힌트 상한. 많이 넣을수록 좋은 것이 아니라, 흔한 말까지 넣으면
 #: 엉뚱한 곳에서 그 낱말로 끌려간다. 폴백은 규칙으로 긁는 것이라 더 좁게 둔다.
@@ -83,16 +82,14 @@ def generate_vocabulary(
         name: 지원자 이름.
         application: 지원서 파트 목록.
         questions: 질문 풀. 면접관이 실제로 읽을 문장이다.
-        client: OpenAI 호환 클라이언트. 기본값은 XAI_API_KEY로 만든 실제
+        client: OpenAI 호환 클라이언트. 기본값은 GOOGLE_API_KEY로 만든 실제
             클라이언트고, 테스트는 대역을 주입한다.
 
     Returns:
         `custom_vocabulary`에 그대로 넣을 목록. 중복 없이 순서를 지킨다.
     """
     if client is None:
-        from openai import OpenAI
-
-        client = OpenAI(api_key=os.environ["XAI_API_KEY"], base_url=_BASE_URL)
+        client = text_client()
 
     completion = client.beta.chat.completions.parse(
         model=_MODEL,

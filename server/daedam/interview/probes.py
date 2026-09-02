@@ -6,8 +6,9 @@
 넘어간다(실측). 서버가 답변을 읽고 방향을 정해주면 꼬리질문이 답변에 붙는다.
 
 **모델은 가벼운 것을 쓴다.** 면접 중 턴 사이에 돌아야 해서 지연이 곧 침묵이다.
-실측: grok-4.20-0309-non-reasoning 약 2초, grok-4.5 13~16초. 2초는 면접관의
-짧은 반응 하나로 덮이는 길이고 16초는 면접이 멈춘 것이다.
+실측(같은 프롬프트, 중앙값): gemini-3.5-flash-lite 1.2초, gemini-3.7-flash
+4.2초, gemini-2.5-flash 7.4초. 1초대는 면접관의 짧은 추임새 하나로 덮이고
+4초는 면접이 멈춘 것으로 들린다. 앞서 쓰던 grok-4.20-non-reasoning이 2초였다.
 
 **실패해도 면접은 돈다.** 타임아웃이든 에러든 빈 목록으로 돌아오고, 호출자는
 파볼 곳이 없는 것으로 보고 다음 뼈대질문으로 간다. 면접 중 LLM 호출은 면접을
@@ -19,17 +20,16 @@ xAI API 확인 경로: `daedam.interview.generation` 모듈 docstring과 같다.
 from __future__ import annotations
 
 import logging
-import os
 from dataclasses import dataclass
 from typing import Any
 
 from pydantic import BaseModel, Field
+from daedam.llm import MODEL_FAST, text_client
 
 logger = logging.getLogger(__name__)
 
 #: 추론 없이 바로 답하는 모델. 면접 중이라 속도가 품질보다 앞선다.
-_MODEL = "grok-4.20-0309-non-reasoning"
-_BASE_URL = "https://api.x.ai/v1"
+_MODEL = MODEL_FAST
 
 #: 이보다 오래 걸리면 포기한다. 그 사이 면접관은 반응 한마디로 버티는데,
 #: 그보다 길어지면 침묵이 된다.
@@ -98,7 +98,7 @@ def extract_probes(
         answer: 지원자의 답변 전문. 여러 조각이면 이어 붙여서.
         experiences: 이어갈 경험 후보 — 아직 안 물은 뼈대질문이 딛고 선 경험마다
             대표 문장 하나. 주면 답변이 어느 경험을 비중 있게 말했는지 같이 고른다.
-        client: OpenAI 호환 클라이언트. 기본값은 XAI_API_KEY로 만든 실제
+        client: OpenAI 호환 클라이언트. 기본값은 GOOGLE_API_KEY로 만든 실제
             클라이언트고, 테스트는 대역을 주입한다.
 
     Returns:
@@ -108,11 +108,7 @@ def extract_probes(
     if not answer.strip():
         return Extraction(probes=[])
     if client is None:
-        from openai import OpenAI
-
-        client = OpenAI(
-            api_key=os.environ["XAI_API_KEY"], base_url=_BASE_URL, timeout=_TIMEOUT_S
-        )
+        client = text_client(timeout_s=_TIMEOUT_S)
     try:
         completion = client.beta.chat.completions.parse(
             model=_MODEL,

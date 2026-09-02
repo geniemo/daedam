@@ -21,7 +21,7 @@ from google.genai import types
 
 from daedam.server import live_bridge
 from daedam.server.live_bridge import _client_messages_from, create_live_router
-from daedam.server.store import FileInterviewStore
+from conftest import make_store
 
 
 def _audio_event(data: bytes = b"\x01\x02") -> Event:
@@ -124,12 +124,18 @@ class _FakeRunner:
         )
 
 
-def _seeded_store(tmp_path, *interview_ids: str) -> FileInterviewStore:
-    """준비 데이터(질문 포함)가 저장된 상태의 저장소를 만든다."""
-    store = FileInterviewStore(tmp_path / "data")
+def _seeded_store(tmp_path, *interview_ids: str):
+    """준비 데이터(질문 포함)가 저장된 상태의 저장소를 만든다.
+
+    계정은 저장소에 매달아 둔다 — 브리지가 소유권을 확인하려면 둘이 같은
+    데이터베이스를 봐야 한다.
+    """
+    store, accounts, user_id = make_store(tmp_path / "data")
+    store.accounts = accounts
     for interview_id in interview_ids:
         store.save(
             interview_id,
+            user_id=user_id,
             company="한결물류",
             role="데이터 엔지니어",
             application=[{"part": "자소서", "items": [{"title": "지원동기", "body": "본문"}]}],
@@ -143,11 +149,13 @@ def _seeded_store(tmp_path, *interview_ids: str) -> FileInterviewStore:
     return store
 
 
-def _client(
-    runner: _FakeRunner, store: FileInterviewStore, profile: str = "demo"
-) -> TestClient:
+def _client(runner: _FakeRunner, store, profile: str = "demo") -> TestClient:
     app = FastAPI()
-    app.include_router(create_live_router(runner, store, profile=profile))
+    app.include_router(
+        create_live_router(
+            runner, store, store.accounts, store.accounts.credits, profile=profile
+        )
+    )
     return TestClient(app)
 
 
@@ -160,12 +168,18 @@ def _handshake(websocket) -> dict:
 
 def test_접속하면_화면이_맞출_진행_상태를_먼저_받는다(tmp_path) -> None:
     """경과 시간·질문 번호의 출처는 서버 하나다. 남은 시간과 단계는 없다 —
-    면접을 끝내는 것은 지원자의 버튼이다."""
-    client = _client(_FakeRunner(), _seeded_store(tmp_path, "hs"))
+    면접을 끝내는 것은 지원자의 버튼이다.
+
+    판 id도 여기 실린다. 화면이 웹캠 녹화를 어느 판에 올릴지 알아야 하는데,
+    "가장 최근 판"으로 유추하게 두면 첫 조각이 판 생성보다 빠를 때 404를 받고
+    녹화가 통째로 죽는다."""
+    store = _seeded_store(tmp_path, "hs")
+    client = _client(_FakeRunner(), store)
     with client.websocket_connect("/ws/interview?card=hs") as websocket:
         message = _handshake(websocket)
 
-    assert message == {"type": "session", "elapsedSeconds": 0, "asked": 0}
+    assert message["elapsedSeconds"] == 0 and message["asked"] == 0
+    assert message["sessionId"] == store.latest_session("hs").id
 
 
 def test_왕복_오디오와_이벤트가_흐른다(tmp_path) -> None:
@@ -210,30 +224,77 @@ def test_새_세션은_준비_데이터가_시딩되고_개시_신호로_시작�
     assert session.state["profile"] == "demo"
 
 
-def test_준비_데이터_없는_면접은_거절된다(tmp_path) -> None:
+def test_질문이_없는_면접은_거절된다(tmp_path) -> None:
     """조용한 폴백 대신 명시적 거절 — 시딩 실패가 첫 접속에서 드러난다."""
-    client = _client(_FakeRunner(), FileInterviewStore(tmp_path / "empty"))
-    with client.websocket_connect("/ws/interview?card=nope") as websocket:
+    store = _seeded_store(tmp_path)
+    # 리서치가 아직 안 끝난 카드 — 내 것이지만 질문 풀이 없다.
+    store.save(
+        "half",
+        user_id=store.accounts.default_user_id(),
+        company="한결물류",
+        role="데이터 엔지니어",
+        application=[],
+        report=[],
+        uncertain=[],
+    )
+    client = _client(_FakeRunner(), store)
+    with client.websocket_connect("/ws/interview?card=half") as websocket:
         assert websocket.receive_json() == {"type": "ended"}
         with pytest.raises(WebSocketDisconnect):
             websocket.receive_bytes()
 
 
-def test_재접속에는_개시_신호가_없다(tmp_path) -> None:
-    """이미 진행된 면접에 다시 붙으면 인사를 반복하지 않는다."""
-    runner = _FakeRunner()
-    asyncio.run(
-        runner.session_service.create_session(
-            app_name="daedam", user_id="user", session_id="re", state={}
-        )
+def test_남의_면접에는_붙을_수_없다(tmp_path) -> None:
+    """카드 id만 알면 들어와 원래 있던 사람을 끊어낼 수 있었다 — 인증의
+    구멍이 여기였다. 없는 카드도 같은 응답이라 존재 여부가 새지 않는다."""
+    from daedam.db import User
+
+    store = _seeded_store(tmp_path, "mine")
+    with store._db.session() as session:
+        stranger = User(provider="kakao", provider_user_id="stranger")
+        session.add(stranger)
+        session.flush()
+        stranger_id = stranger.id
+    store.save(
+        "theirs",
+        user_id=stranger_id,
+        company="비밀",
+        role="비밀",
+        application=[],
+        report=[],
+        uncertain=[],
     )
-    client = _client(runner, _seeded_store(tmp_path, "re"))
+    store.save_questions("theirs", [{"id": "q", "stage": 0, "text": "?", "priority": 1, "tags": []}])
+
+    client = _client(_FakeRunner(), store)
+    for card in ("theirs", "nope"):
+        with client.websocket_connect(f"/ws/interview?card={card}") as websocket:
+            assert websocket.receive_json() == {"type": "ended"}
+            with pytest.raises(WebSocketDisconnect):
+                websocket.receive_bytes()
+
+
+def test_재접속에는_개시_신호가_없다(tmp_path) -> None:
+    """이미 진행된 면접에 다시 붙으면 인사를 반복하지 않는다.
+
+    재접속의 판정 기준은 "끝나지 않은 면접이 있는가"다. 커넥션이 끊긴 것과
+    면접이 끝난 것은 다르다 — 15~20분 면접은 Live 커넥션 수명(~10분) 때문에
+    반드시 재접속한다.
+    """
+    runner = _FakeRunner()
+    store = _seeded_store(tmp_path, "re")
+    # 앞 커넥션이 열어 둔 면접 한 판.
+    store.start_session("re")
+
+    client = _client(runner, store)
     with client.websocket_connect("/ws/interview?card=re") as websocket:
         _handshake(websocket)
         websocket.send_bytes(b"\x00")
         websocket.receive_bytes()
 
     assert runner.heard[0].blob is not None  # 개시 신호 없이 바로 오디오
+    # 판이 새로 열리지 않았다 — 같은 면접을 이어받았다.
+    assert len(store.list_sessions("re")) == 1
 
 
 def test_같은_카드의_새_접속이_이전_커넥션을_닫는다(tmp_path) -> None:
@@ -272,16 +333,21 @@ def test_지원자가_끝내면_종료를_알리고_정리한다(tmp_path) -> No
         assert websocket.receive_json() == {"type": "ended"}
 
 
-def test_세션은_카드_id로_만들어진다(tmp_path) -> None:
+def test_대화_세션은_면접_한_판마다_새로_만들어진다(tmp_path) -> None:
+    """앞서는 카드 id를 대화 세션 id로 썼다. 같은 카드로 두 번째 면접을 보면
+    첫 면접의 대화 이력을 이어받아, 면접관이 이미 물어본 것을 아는 상태로
+    시작한다."""
     runner = _FakeRunner()
-    client = _client(runner, _seeded_store(tmp_path, "card-77"))
+    store = _seeded_store(tmp_path, "card-77")
+    client = _client(runner, store)
     with client.websocket_connect("/ws/interview?card=card-77") as websocket:
         _handshake(websocket)
         websocket.send_bytes(b"\x00")
         websocket.receive_bytes()
 
+    [session] = store.list_sessions("card-77")
     assert runner.session is not None
-    assert runner.session.id == "card-77"
+    assert runner.session.id == session.id != "card-77"
 
 
 # ── 면접이 남기는 것 (§리포트의 재료) ────────────────────────────────
@@ -328,8 +394,12 @@ def test_면접이_음성과_전사를_남긴다(tmp_path) -> None:
         while websocket.receive_json()["type"] != "ended":
             pass
 
-    directory = store.directory("rec")
-    saved = json.loads((directory / "transcript.json").read_text(encoding="utf-8"))
+    [session] = store.list_sessions("rec")
+    directory = store.session_directory("rec", session.id)
+    # 전사는 질의 대상이라 면접 기록으로 올라간다. 디스크의 transcript.json은
+    # 재접속이 이어 쓰기 위한 작업 파일이다.
+    saved = store.load_session(session.id).transcript
+    assert json.loads((directory / "transcript.json").read_text(encoding="utf-8")) == saved
     assert [(u["speaker"], u["text"]) for u in saved["utterances"]] == [
         ("interviewer", "자기소개 부탁드립니다."),
         ("applicant", "네, 저는"),
@@ -365,12 +435,14 @@ def test_면접이_끝나면_세션을_비운다(tmp_path) -> None:
     assert session is None
 
 
-def test_새_면접은_앞_판의_기록을_지운다(tmp_path) -> None:
-    """녹음은 이어 쓰기라 남기면 새 면접이 앞 면접 뒤에 붙는다."""
+def test_새_면접은_앞_판을_지우지_않고_쌓는다(tmp_path) -> None:
+    """앞서는 새 면접이 앞 판의 녹음·전사·피드백을 지웠다. 반복이 곧 제품
+    가치이므로 판마다 따로 남는다 — 지난번보다 나아졌는지가 재방문 이유다."""
     store = _seeded_store(tmp_path, "clean")
-    directory = store.directory("clean")
-    for name in ("mic.pcm", "mic.wav", "transcript.json", "feedback.json"):
-        (directory / name).write_bytes(b"x")
+    old = store.start_session("clean")
+    store.save_transcript(old, {"utterances": [{"text": "앞 판"}]})
+    store.save_feedback(old, {"coaching": {"score": 55}})
+    store.end_session(old)
 
     client = _client(_FakeRunner(), store)
     with client.websocket_connect("/ws/interview?card=clean") as websocket:
@@ -378,16 +450,25 @@ def test_새_면접은_앞_판의_기록을_지운다(tmp_path) -> None:
         websocket.send_bytes(b"\x00")
         websocket.receive_bytes()
 
-    # 앞 판의 피드백도 지운다 — 새 면접이 끝나기 전까지 옛 결과를 보여준다.
-    assert not (directory / "feedback.json").exists()
+    assert len(store.list_sessions("clean")) == 2
+    kept = store.load_session(old)
+    assert kept.transcript == {"utterances": [{"text": "앞 판"}]}
+    assert kept.feedback == {"coaching": {"score": 55}}
+    # 녹음도 판마다 다른 디렉터리라 서로 덮지 않는다.
+    [new, _] = store.list_sessions("clean")
+    assert store.session_directory("clean", new.id) != store.session_directory(
+        "clean", old
+    )
 
 
 def test_지원자_이름이_세션에_실린다(tmp_path) -> None:
     """instruction이 "지원자 OO님과 면접을 진행합니다"로 쓰고, 전사 어휘
     힌트로도 나간다 — 이름은 ASR이 가장 자주 틀리는 낱말이다."""
-    store = FileInterviewStore(tmp_path / "data")
+    store = _seeded_store(tmp_path)
+    user_id = store.accounts.default_user_id()
     store.save(
         "named",
+        user_id=user_id,
         company="SK 하이닉스",
         role="기반기술",
         application=[],
@@ -408,3 +489,41 @@ def test_지원자_이름이_세션에_실린다(tmp_path) -> None:
         websocket.receive_bytes()
 
     assert runner.session.state["candidate"] == "박지원"
+
+
+# ── 토큰 사용 집계 (원가 실측) ───────────────────────────────────────────
+
+
+def test_토큰은_턴마다_더해진다() -> None:
+    """Live API는 턴마다 누적 맥락을 다시 과금한다 — 마지막 턴의 숫자만 보면
+    실제 청구를 크게 밑돈다. 그래서 합계를 쓴다."""
+    from daedam.server.live_bridge import _Usage
+
+    def _usage(prompt: int, response: int, audio: int, text: int):
+        return types.GenerateContentResponseUsageMetadata(
+            prompt_token_count=prompt,
+            candidates_token_count=response,
+            prompt_tokens_details=[
+                types.ModalityTokenCount(modality="AUDIO", token_count=audio),
+                types.ModalityTokenCount(modality="TEXT", token_count=text),
+            ],
+        )
+
+    usage = _Usage()
+    usage.add(_usage(1_000, 100, 800, 200))
+    usage.add(_usage(3_000, 120, 2_600, 400))
+
+    assert usage.turns == 2
+    assert usage.prompt == 4_000 and usage.response == 220
+    # 오디오와 텍스트는 요율이 4배 차이라 갈라서 남긴다.
+    assert usage.prompt_by_modality == {"AUDIO": 3_400, "TEXT": 600}
+    assert "2턴" in usage.summary() and "AUDIO=3400" in usage.summary()
+
+
+def test_사용량이_없으면_집계도_비어_있다() -> None:
+    from daedam.server.live_bridge import _Usage
+
+    usage = _Usage()
+    usage.add(types.GenerateContentResponseUsageMetadata())
+    assert usage.turns == 1 and usage.prompt == 0
+    assert usage.prompt_by_modality == {}

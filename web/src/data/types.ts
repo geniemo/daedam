@@ -11,6 +11,10 @@ export interface Card {
   status: CardStatus
   pct?: number
   score?: number
+  /** 지금까지 마친 면접 수. 같은 준비 데이터로 몇 번이든 볼 수 있다. */
+  interviewCount?: number
+  /** 가장 최근 면접의 분석이 끝났는가. 점수가 없어도 끝났을 수 있다. */
+  analyzed?: boolean
 }
 
 export interface ApplicationItem {

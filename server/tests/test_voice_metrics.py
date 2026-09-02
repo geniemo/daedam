@@ -82,18 +82,28 @@ def test_짧은_공백은_한_답변_안의_숨이다(tmp_path) -> None:
 
 def test_답변_안의_멈춤은_센다(tmp_path) -> None:
     """머뭇거림을 소리로 잰다 — 전사는 '음·어'를 지워서 글자로는 못 센다."""
-    path = _wav(tmp_path, _tone(1.0), _silence(0.6), _tone(1.0))
-    metrics = analyze(path, _transcript(("applicant", "머뭇", 2.9)))
+    path = _wav(tmp_path, _tone(1.0), _silence(0.9), _tone(1.0))
+    metrics = analyze(path, _transcript(("applicant", "머뭇", 3.2)))
 
     (answer,) = metrics.answers
     assert len(answer.pauses) == 1
     assert metrics.pause_ratio > 0
 
 
+def test_숨_쉬는_길이는_멈춤이_아니다(tmp_path) -> None:
+    """0.6초는 숨과 어절 경계의 길이다. 이걸 세면 7초짜리 답변에도 "2번
+    끊겼습니다"가 붙는다 — 그 길이 안에 머뭇거림이 두 번 있을 수는 없다."""
+    path = _wav(tmp_path, _tone(1.0), _silence(0.6), _tone(1.0))
+    metrics = analyze(path, _transcript(("applicant", "숨", 2.9)))
+
+    (answer,) = metrics.answers
+    assert answer.pauses == ()
+
+
 def test_말하기_속도는_멈춘_시간을_빼고_잰다(tmp_path) -> None:
     """멈춤을 포함해 나누면 또박또박 말해도 느리게 나온다."""
-    path = _wav(tmp_path, _tone(1.0), _silence(0.6), _tone(1.0))
-    metrics = analyze(path, _transcript(("applicant", "가나다라마가나다라마", 2.9)))
+    path = _wav(tmp_path, _tone(1.0), _silence(0.9), _tone(1.0))
+    metrics = analyze(path, _transcript(("applicant", "가나다라마가나다라마", 3.2)))
 
     # 음절 10개, 실제 말한 시간 2.0초 → 300음절/분 언저리
     assert metrics.syllables_per_minute == pytest.approx(300, rel=0.15)
@@ -126,7 +136,7 @@ def test_멈춤이_많다고_작은_목소리가_되지_않는다(tmp_path) -> N
     같은 크기로 말했는데도 뜸을 들였다는 이유로 흔들림이 커진다."""
     steady = _wav(tmp_path / "a", _tone(2.0, 3000))
     paused = _wav(
-        tmp_path / "b", _tone(0.6, 3000), _silence(0.6), _tone(0.6, 3000)
+        tmp_path / "b", _tone(0.6, 3000), _silence(0.9), _tone(0.6, 3000)
     )
     a = analyze(steady, _transcript(("applicant", "가", 2.5)))
     b = analyze(paused, _transcript(("applicant", "나", 2.5)))

@@ -36,12 +36,15 @@ server/                  ADK 백엔드 (미착수)
 | 용도 | 모델 | 비고 |
 |---|---|---|
 | 실시간 음성 면접 | `gemini-3.1-flash-live-preview` | 네이티브 오디오. 함수 호출은 **순차 전용** |
-| 회사 리서치 | Gemini Deep Research | 비동기 전용, 20~60분, 작업당 $1~7 |
-| 뼈대질문 풀 생성 | **Grok (xAI)** | 부트캠프 협찬 토큰 — 개인 지출 최소화 |
-| 답변 내용 평가·코칭 (§10) | **Grok (xAI)** | 위와 동일 |
+| 회사 리서치 | Gemini Deep Research | 비동기 전용, 10~15분, 작업당 $1~3 |
+| 의미 검색 임베딩 | `gemini-embedding-001` | 768차원. 로컬 모델은 폴백(`SEARCH_EMBEDDINGS=local`) |
+| 파볼 곳 추출 (면접 중) | `gemini-3.5-flash-lite` | 실측 1.2초 — 지연이 곧 침묵이다 |
+| 질문 생성·어휘·코칭 | `gemini-3.7-flash` | 오프라인 배치. 질이 우선 |
 
-오프라인 LLM 작업은 기본적으로 Grok입니다. Gemini가 뚜렷하게 나은 작업만 예외로
-Gemini를 씁니다.
+**전부 Gemini입니다.** 앞서 오프라인 작업은 Grok(xAI)이었는데(부트캠프 협찬
+토큰) 벤더를 하나로 줄였습니다 — 키도 하나, 장애 지점도 하나입니다. 호출 형태가
+`chat.completions.parse` + Pydantic으로 같아서 Gemini의 OpenAI 호환 엔드포인트로
+그대로 옮겼습니다. 모델 선택은 `server/daedam/llm.py` 한 곳에 있습니다.
 
 ## 확정된 결정
 

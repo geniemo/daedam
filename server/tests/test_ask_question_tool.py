@@ -59,7 +59,11 @@ def _state(started_s_ago: float = 0.0, **overrides: Any) -> dict[str, Any]:
 
 
 def _call(context: ContextStub, tag: str = "경험상세", answered: str = "", evidence: str = "") -> dict:
-    return ask_question(tool_context=context, tag=tag, answered=answered, evidence=evidence)
+    # 툴이 async가 됐다 — 블로킹(Grok 왕복)을 이벤트 루프 밖으로 밀어냈기
+    # 때문이다(interviewer/tools.py). 테스트는 그 자리에서 돌려 받는다.
+    return asyncio.run(
+        ask_question(tool_context=context, tag=tag, answered=answered, evidence=evidence)
+    )
 
 
 class _FakeExtract:

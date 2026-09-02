@@ -47,8 +47,10 @@ export function Home() {
         role: item.role,
         date: savedLabel(item.savedAt),
         // 면접을 마쳤으면 리포트로 간다. 그다음이 준비 완료, 그다음이 준비 중.
-        status: item.score !== null ? 'done' : item.ready ? 'ready' : 'researching',
+        status: item.interviewCount > 0 ? 'done' : item.ready ? 'ready' : 'researching',
         score: item.score ?? undefined,
+        interviewCount: item.interviewCount,
+        analyzed: item.analyzed,
       })),
     )
   }, [data, isError, setCards])
@@ -142,16 +144,27 @@ function CompanyCard({ card, onClick }: { card: CardT; onClick: () => void }) {
       {card.status === 'done' && (
         <div className="flex items-end border-t border-hair-2 pt-[11px]">
           <div className="flex flex-col gap-[3px]">
-            <span className="text-[12px] text-faint">면접 완료</span>
+            <span className="text-[12px] text-faint">
+              {/* 몇 번 봤는지가 이 카드의 이력이다 — 다시 볼수록 늘어난다. */}
+              {(card.interviewCount ?? 1) > 1 ? `면접 ${card.interviewCount}회` : '면접 완료'}
+            </span>
             <span className="text-[12.5px] text-muted">리포트 보기 →</span>
           </div>
           <div className="flex-1" />
-          <div className="flex items-baseline gap-[3px]">
-            <span className="num text-[28px] leading-none font-bold tracking-[-.04em]">
-              {card.score}
-            </span>
-            <span className="text-[12px] text-faint">점</span>
-          </div>
+          {card.score !== undefined ? (
+            <div className="flex items-baseline gap-[3px]">
+              <span className="num text-[28px] leading-none font-bold tracking-[-.04em]">
+                {card.score}
+              </span>
+              <span className="text-[12px] text-faint">점</span>
+            </div>
+          ) : card.analyzed ? (
+            /* 분석은 끝났는데 채점할 답변이 없었다. 아무 말 없이 끝난 면접은
+               애초에 여기 잡히지 않는다 — 서버가 "가장 최근"에서 뺀다. */
+            <span className="text-[12.5px] text-faint">답변 없음</span>
+          ) : (
+            <span className="text-[12.5px] text-faint">분석 중</span>
+          )}
         </div>
       )}
     </div>

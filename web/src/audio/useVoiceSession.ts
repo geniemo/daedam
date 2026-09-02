@@ -22,7 +22,10 @@ export interface Levels {
   output: number
 }
 
-export function useVoiceSession(cardId: string, onFinished: () => void) {
+export function useVoiceSession(
+  cardId: string,
+  onFinished: (reason?: string) => void,
+) {
   const session = useRef<VoiceSession | null>(null)
   /** Audio-rate values live here, never in the store — see store/app.ts. */
   const levels = useRef<Levels>({ input: 0, output: 0 })
@@ -39,11 +42,14 @@ export function useVoiceSession(cardId: string, onFinished: () => void) {
     reset,
   } = useInterviewStore.getState()
 
-  const finish = useCallback(() => {
-    if (finished.current) return
-    finished.current = true
-    onFinished()
-  }, [onFinished])
+  const finish = useCallback(
+    (reason?: string) => {
+      if (finished.current) return
+      finished.current = true
+      onFinished(reason)
+    },
+    [onFinished],
+  )
 
   useEffect(() => {
     finished.current = false
@@ -136,5 +142,8 @@ export function useVoiceSession(cardId: string, onFinished: () => void) {
     finish()
   }, [finish])
 
-  return { levels, end }
+  // 웹캠 녹화가 마이크 트랙을 같이 담으려면 필요하다. ref로 내보내는 이유는
+  // 세션이 연결된 뒤에야 생기고, 그 사이 화면을 다시 그릴 이유가 없어서다.
+  const micStream = useCallback(() => session.current?.stream ?? null, [])
+  return { levels, end, micStream }
 }
