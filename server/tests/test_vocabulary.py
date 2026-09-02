@@ -146,6 +146,20 @@ def test_문항_제목처럼_긴_문장은_뺀다() -> None:
     assert "자기소개서" in terms
 
 
+def test_추출_어휘를_키워드_뒤에_합친다() -> None:
+    """순서가 곧 가치다 — 확실한 것(이름·회사)이 앞, 추출이 다음, 규칙이 뒤."""
+    terms = interview_vocabulary(
+        company="A",
+        role="B",
+        name="박지원",
+        application=_application("TensorRT"),
+        stored=["산학협력", "박지원"],   # 추출이 이름을 다시 내도 한 번만
+    )
+    assert terms[:3] == ["박지원", "A", "B"]
+    assert terms.index("산학협력") < terms.index("TensorRT")
+    assert terms.count("박지원") == 1
+
+
 def test_질문_태그도_그날의_주제어다() -> None:
     terms = interview_vocabulary(
         company="A",
@@ -168,17 +182,32 @@ def test_중복은_한_번만_넣는다() -> None:
 # ── 브리지가 무엇을 쓰는가 ───────────────────────────────────────────────
 
 
-def test_준비된_어휘가_있으면_그것을_쓴다() -> None:
+def test_준비된_어휘에_키워드를_합친다() -> None:
+    """추출만 쓰면 확실한 낱말이 빠질 수 있다 — 실측에서 이름이 빠진 채
+    면접이 돌아 전사가 깨졌다. 키워드가 앞, 추출이 그 다음이다."""
     data = InterviewData(
         company="A",
         role="B",
         name="박지원",
-        application=_application("TensorRT"),
+        application=_application("TensorRT로 최적화했습니다"),
         report=[],
         uncertain=[],
         vocabulary=["산학협력"],
     )
-    assert _vocabulary_for(data) == ["산학협력"]
+    terms = _vocabulary_for(data)
+    assert terms[:3] == ["박지원", "A", "B"]
+    assert "산학협력" in terms          # 추출 어휘
+    assert "TensorRT" in terms          # 규칙 키워드도 같이
+
+
+def test_계정_이름이_등록_이름보다_앞선다() -> None:
+    """등록 때 이름이 비어 있던 면접이 실제로 있다 — 면접 시점의 계정
+    프로필 이름으로 채운다."""
+    data = InterviewData(
+        company="A", role="B", name="", application=[], report=[], uncertain=[],
+        vocabulary=["산학협력"],
+    )
+    assert _vocabulary_for(data, name="박지원")[0] == "박지원"
 
 
 def test_준비된_어휘가_없으면_규칙_폴백으로_만든다() -> None:

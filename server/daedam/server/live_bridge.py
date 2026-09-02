@@ -241,19 +241,29 @@ def _elapsed_s(state: Mapping[str, Any]) -> float:
     return 0.0 if started_at is None else max(0.0, time.time() - float(started_at))
 
 
-def _vocabulary_for(data: InterviewData | None) -> list[str]:
-    """이 면접의 전사 어휘 힌트. 준비 단계에서 뽑아 둔 것이 우선이다."""
+def _vocabulary_for(data: InterviewData | None, name: str = "") -> list[str]:
+    """이 면접의 전사 어휘 힌트 — 키워드에 준비 단계의 추출 어휘를 합친다.
+
+    추출 어휘만 쓰지 않는 이유: 추출은 LLM이라 확실한 낱말을 빠뜨릴 수 있고,
+    실측에서 이름이 빠진 채 면접이 돌아 전사가 깨졌다. 이름·회사·직무 같은
+    키워드는 규칙으로 늘 싣고 그 위에 추출을 얹는다.
+
+    Args:
+        data: 준비 데이터.
+        name: 지원자 이름 — 계정 프로필에서 온다. 등록 때 이름이 비어 있던
+            면접이 실제로 있어서, 여기서 채워야 이름이 힌트에 실린다.
+    """
     if data is None:
         return []
-    if data.vocabulary:
-        return data.vocabulary
-    logger.info("준비된 전사 어휘가 없어 규칙 폴백을 씁니다 (%s)", data.company)
+    if not data.vocabulary:
+        logger.info("준비된 전사 어휘가 없어 키워드만 싣습니다 (%s)", data.company)
     return interview_vocabulary(
-        name=data.name,
+        name=name or data.name,
         company=data.company,
         role=data.role,
         application=data.application,
         questions=data.questions,
+        stored=data.vocabulary or None,
     )
 
 
@@ -495,7 +505,10 @@ def create_live_router(
         # 준비 단계에서 뽑아 둔 것을 쓴다. 없으면(추출 실패·그 단계가 없던 옛
         # 면접) 규칙 폴백으로 만든다 — 면접 시작 경로에 LLM 호출을 두지 않는다.
         prepared = store.load(card)
-        vocabulary = _vocabulary_for(prepared)
+        # 이름은 `account`다 — `profile`은 이 클로저에서 시간 예산 프로필이라,
+        # 같은 이름에 대입하면 위쪽 읽기(413)가 UnboundLocal로 죽는다(실측).
+        account = accounts.profile(user_id) or {}
+        vocabulary = _vocabulary_for(prepared, name=str(account.get("name") or ""))
         run_config = RunConfig(
             response_modalities=["AUDIO"],
             # 면접관 목소리를 고정한다(`interviewer.agent.VOICE`) — 세션마다

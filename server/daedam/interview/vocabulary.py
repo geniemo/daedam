@@ -172,11 +172,17 @@ def interview_vocabulary(
     name: str = "",
     application: list[dict[str, Any]],
     questions: list[dict[str, Any]] | None = None,
+    stored: list[str] | None = None,
 ) -> list[str]:
-    """규칙으로 긁는 폴백. 준비 때 추출이 없었거나 실패한 면접이 쓴다.
+    """면접에 실을 어휘 힌트 — 확실한 키워드에 저장된 추출 어휘를 합친다.
 
-    영문 약어까지가 한계다 — 한글은 조사가 붙어 와서 규칙으로 못 가른다.
-    그래도 이름과 회사는 여기서도 실린다. 그 둘이 가장 값이 크다.
+    앞서는 저장된 추출 어휘가 있으면 그것만 썼는데, 추출은 LLM이라 확실한
+    낱말을 빠뜨릴 수 있다 — 실측에서 이름이 힌트에 빠진 채 면접이 돌아
+    전사가 깨졌다. 키워드(이름·회사·직무·지원서 제목·영문 용어·질문 태그)는
+    규칙이라 절대 빠지지 않고, 추출 어휘는 그 위에 얹는다.
+
+    한글 일반 용어까지 가는 것은 여전히 추출의 몫이다 — 조사가 붙어 와서
+    규칙으로는 못 가른다("산학협력을", "산학협력에서").
 
     Args:
         company: 회사 이름.
@@ -184,10 +190,11 @@ def interview_vocabulary(
         name: 지원자 이름.
         application: 지원서 파트 목록.
         questions: 질문 풀. 태그가 그날의 주제어다.
+        stored: 준비 단계에서 뽑아 둔 추출 어휘. 없으면 키워드만 싣는다.
 
     Returns:
         `custom_vocabulary`에 그대로 넣을 목록. 상한을 넘으면 앞에서 자른다 —
-        앞쪽이 회사·직무·지원서 제목이라 값이 큰 순서다.
+        앞쪽이 이름·회사·추출 어휘라 값이 큰 순서다.
     """
     titles = [
         title
@@ -209,8 +216,11 @@ def interview_vocabulary(
     tags = [tag for question in questions or [] for tag in question.get("tags", [])]
     return _merged(
         _seed_terms(company=company, role=role, name=name),
+        list(stored or []),
         [*titles, *ascii_terms, *tags],
-        limit=_MAX_FALLBACK_TERMS,
+        # 추출 어휘가 있으면 넉넉한 상한을 쓴다 — 정제된 목록이라서다.
+        # 키워드만일 때는 좁게 둔다(규칙으로 긁은 것이라 잡음이 섞인다).
+        limit=_MAX_TERMS if stored else _MAX_FALLBACK_TERMS,
     )
 
 
