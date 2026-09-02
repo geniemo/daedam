@@ -74,8 +74,11 @@ class _FakeExtract:
         self.result: list[Probe] = list(PROBES)
         self.leads_with: str = ""
 
-    def __call__(self, *, question: str, answer: str, experiences=None) -> Extraction:
-        self.calls.append({"question": question, "answer": answer, "experiences": experiences or []})
+    def __call__(self, *, question: str, answer: str, experiences=None, covered=None) -> Extraction:
+        self.calls.append({
+            "question": question, "answer": answer,
+            "experiences": experiences or [], "covered": covered or [],
+        })
         return Extraction(probes=list(self.result), leads_with=self.leads_with)
 
 
@@ -388,3 +391,23 @@ def test_자기소개_단계는_파볼_곳이_하나다(probes) -> None:
     context.hear("안녕하십니까, 데이터의 본질을 보는 지원자 박지원입니다. 딥페이크 탐지를 했습니다.")
     _call(context)
     assert len(context.state[STATE_PROBES]) == 1
+
+
+def test_추출에_확인_이력이_넘어간다(probes) -> None:
+    """추출은 (질문, 답변)만 보므로 면접 전체의 기억은 서버가 넣어 줘야 한다.
+    실측(13분 면접): 직무 단계에서 확인한 기술 지점을 인성 단계의 같은 경험에서
+    다시 팠다 — 근거가 있으면 근거까지, 끝내 못 들은 것은 그 사실을 싣는다."""
+    log = [
+        {"question_id": "z", "topic": "측정 방법", "hint": "", "status": "covered",
+         "evidence": "TensorRT FP16 양자화"},
+        {"question_id": "z", "topic": "제어 연동", "hint": "", "status": "unanswered",
+         "evidence": ""},
+    ]
+    context = ContextStub(_state(stage=1, probe_log=log))
+    _call(context)  # 뼈대질문 배달
+    context.hear("엣지에서 검사와 판별을 완결했습니다.")
+    _call(context)  # 답변 → 추출
+    assert probes.calls[0]["covered"] == [
+        "측정 방법 — TensorRT FP16 양자화",
+        "제어 연동 (답을 얻지 못함)",
+    ]

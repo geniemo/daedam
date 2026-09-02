@@ -503,11 +503,23 @@ async def ask_question(
             # 그대로 호출하는데(function_tool.py의 _invoke_callable — to_thread도
             # executor도 없다), 이 호출은 Grok 왕복이라 약 2초다. 루프에서 돌면
             # 그 2초 동안 서버 전체가 멈춘다 — 다른 사람 면접의 오디오까지.
+            # 이미 닫힌 파볼 곳을 추출에 알려 준다. 추출은 (질문, 답변)만
+            # 보므로 이것 없이는 면접 전체의 기억이 없고, 실측(13분 면접)에서
+            # 직무 단계에 확인한 기술 지점을 인성 단계의 같은 경험에서 다시
+            # 팠다. covered는 근거까지, unanswered는 끝내 못 들은 것이라
+            # 다시 물어도 심문이다 — 둘 다 뺀다.
+            covered = [
+                f"{entry['topic']} — {entry['evidence'][:40]}"
+                if entry.get("evidence")
+                else f"{entry['topic']} (답을 얻지 못함)"
+                for entry in list(state.get(STATE_PROBE_LOG, []))[-20:]
+            ]
             extraction = await asyncio.to_thread(
                 _extract_probes,
                 question=question.text,
                 answer=answer,
                 experiences=list(candidates),
+                covered=covered,
             )
             limit = _PROBE_LIMIT_BY_STAGE[min(stage_now, len(_PROBE_LIMIT_BY_STAGE) - 1)]
             probes = [
