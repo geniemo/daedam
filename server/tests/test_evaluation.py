@@ -262,3 +262,37 @@ def test_스냅샷이_없으면_판독을_부르지_않는다(tmp_path) -> None:
     evaluation = InterviewEvaluation(store, coach=lambda **_: _coaching(), judge=judge)
     assert evaluation.start(session_id)
     assert _wait_done(evaluation, session_id).state == "done"
+
+
+def test_앞토막에서_끊긴_뼈대질문_전사를_원문으로_채운다() -> None:
+    """출력 전사 스트림이 죽으면 질문이 반토막으로 남는다 — 원문은 서버가 안다."""
+    from daedam.server.evaluation import _repair_transcript
+
+    questions = [{"text": "성균관대 졸업작품을 진행하며 발휘한 패기는 무엇인가요?"}]
+    transcript = {
+        "utterances": [
+            {"speaker": "interviewer", "text": "성균관대 졸업작품을", "at": 1.0},
+            {"speaker": "applicant", "text": "성균관대 졸업작품을 했습니다", "at": 5.0},
+            {"speaker": "interviewer", "text": "네,", "at": 9.0},
+        ]
+    }
+    repaired = _repair_transcript(transcript, questions)
+    assert repaired["utterances"][0]["text"] == questions[0]["text"]
+    # 지원자 발화와 짧은 추임새는 건드리지 않는다.
+    assert repaired["utterances"][1]["text"] == "성균관대 졸업작품을 했습니다"
+    assert repaired["utterances"][2]["text"] == "네,"
+    # 원본은 그대로다 — 읽는 시점의 보정이다.
+    assert transcript["utterances"][0]["text"] == "성균관대 졸업작품을"
+
+
+def test_온전한_질문_전사는_보정하지_않는다() -> None:
+    from daedam.server.evaluation import _repair_transcript
+
+    questions = [{"text": "지원 이유는 무엇인가요?"}]
+    transcript = {
+        "utterances": [
+            {"speaker": "interviewer", "text": "지원 이유는 무엇인가요?", "at": 1.0}
+        ]
+    }
+    repaired = _repair_transcript(transcript, questions)
+    assert repaired["utterances"][0]["text"] == "지원 이유는 무엇인가요?"
