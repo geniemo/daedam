@@ -7,6 +7,8 @@ export interface Me {
   avatarUrl: string | null
   /** kakao · google, 또는 로그인 없이 도는 개발 모드의 local. */
   provider: string
+  /** 온보딩(이름 입력 + 약관·개인정보 동의)을 마쳤는가. false면 화면이 온보딩으로 보낸다. */
+  onboarded: boolean
 }
 
 /**
@@ -43,4 +45,23 @@ export async function logout(): Promise<void> {
 export async function withdraw(): Promise<void> {
   const res = await fetch('/api/auth/me', { method: 'DELETE' })
   if (!res.ok) throw new Error(`탈퇴 실패: ${res.status}`)
+}
+
+/**
+ * 온보딩 제출 — 이름 확정 + 약관·개인정보 동의.
+ *
+ * 소셜 프로필 이름은 못 믿는다(카카오는 닉네임, 구글은 로마자일 수 있다).
+ * 여기서 받은 이름이 면접관 호칭과 전사 어휘 힌트로 나간다.
+ */
+export async function completeOnboarding(name: string): Promise<Me> {
+  const res = await fetch('/api/auth/onboard', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+  if (!res.ok) {
+    const detail = (await res.json().catch(() => null)) as { detail?: string } | null
+    throw new Error(detail?.detail || `온보딩 실패: ${res.status}`)
+  }
+  return (await res.json()) as Me
 }

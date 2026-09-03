@@ -112,3 +112,20 @@ def test_후보가_있으면_프롬프트에_실린다() -> None:
 
 def test_후보가_없으면_그_문단이_없다() -> None:
     assert "이어갈 경험 후보" not in probe_prompt(question=QUESTION, answer=ANSWER)
+
+
+def test_프롬프트에_확인_이력이_실린다() -> None:
+    """면접 전체의 기억은 호출자가 넣어 준다 — 없으면 단계를 건너 같은 것을 판다."""
+    prompt = probe_prompt(
+        question="현장완결주의를 어떻게 구현했나요?",
+        answer="엣지에서 완결했습니다.",
+        covered=["측정 방법 — TensorRT FP16 양자화", "제어 연동 (답을 얻지 못함)"],
+    )
+    assert "[이미 확인한 것]" in prompt
+    assert "TensorRT FP16" in prompt and "제어 연동" in prompt
+    assert prompt.index("[이미 확인한 것]") < prompt.index("[이어갈 경험 후보]") if "[이어갈 경험 후보]" in prompt else True
+
+
+def test_확인_이력이_없으면_그_단락도_없다() -> None:
+    prompt = probe_prompt(question="Q", answer="A")
+    assert "[이미 확인한 것]" not in prompt

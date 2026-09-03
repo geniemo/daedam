@@ -57,7 +57,7 @@ from interviewer.tools import (
 )
 
 from . import fillers
-from .accounts import Accounts
+from .accounts import LOCAL_PROVIDER, Accounts
 from .credits import COST_INTERVIEW, Credits, InsufficientCredits
 from .recording import InterviewRecording
 from .store import InterviewData, InterviewStore, has_answer
@@ -74,7 +74,13 @@ _LANGUAGE_CODES = ["ko-KR"]
 
 #: 발화가 끝났다고 보기까지 필요한 침묵. 면접에서는 문장 사이 숨(0.3~0.5초)으로
 #: 끊기면 안 되고, 정말 끝났을 때 1.2초 뜸 들이는 것은 부자연스럽지 않다.
-_SILENCE_MS = 1200
+#:
+#: 1500의 근거는 실측이다(21.7분 면접, 답변 42개): 답변 안 생각-멈춤이 중앙값
+#: 0.97초·p90 1.4초라, 그보다 짧은 문턱에서는 일상적 멈춤이 "답변 끝"으로
+#: 넘어가 면접관이 끼어들었다. 1.5초는 분포의 무릎이다 — p90까지 살리면서
+#: (50회 중 3회만 초과) 답변 끝 반응 지연은 +0.5초 안팎. 2초로 올려도 더
+#: 살아나는 멈춤이 없다(1.5~2초 구간이 비어 있다).
+_SILENCE_MS = 1500
 
 #: Live API 입력 규격. 프론트 pcm-recorder가 이 형식 그대로 보낸다.
 _INPUT_MIME = "audio/pcm;rate=16000"
@@ -235,23 +241,50 @@ def _elapsed_s(state: Mapping[str, Any]) -> float:
     return 0.0 if started_at is None else max(0.0, time.time() - float(started_at))
 
 
-def _vocabulary_for(data: InterviewData | None) -> list[str]:
-    """이 면접의 전사 어휘 힌트. 준비 단계에서 뽑아 둔 것이 우선이다."""
+def _vocabulary_for(data: InterviewData | None, name: str = "") -> list[str]:
+    """이 면접의 전사 어휘 힌트 — 키워드에 준비 단계의 추출 어휘를 합친다.
+
+    추출 어휘만 쓰지 않는 이유: 추출은 LLM이라 확실한 낱말을 빠뜨릴 수 있고,
+    실측에서 이름이 빠진 채 면접이 돌아 전사가 깨졌다. 이름·회사·직무 같은
+    키워드는 규칙으로 늘 싣고 그 위에 추출을 얹는다.
+
+    Args:
+        data: 준비 데이터.
+        name: 지원자 이름 — 계정 프로필에서 온다. 등록 때 이름이 비어 있던
+            면접이 실제로 있어서, 여기서 채워야 이름이 힌트에 실린다.
+    """
     if data is None:
         return []
-    if data.vocabulary:
-        return data.vocabulary
-    logger.info("준비된 전사 어휘가 없어 규칙 폴백을 씁니다 (%s)", data.company)
+    if not data.vocabulary:
+        logger.info("준비된 전사 어휘가 없어 키워드만 싣습니다 (%s)", data.company)
     return interview_vocabulary(
-        name=data.name,
+        name=name or data.name,
         company=data.company,
         role=data.role,
         application=data.application,
         questions=data.questions,
+        stored=data.vocabulary or None,
     )
 
 
-def _session_state_from(data: InterviewData, profile: str) -> dict[str, Any]:
+def _onboarded_name(account: dict[str, Any] | None) -> str:
+    """온보딩에서 사용자가 직접 입력한 이름. 아니면 빈 문자열.
+
+    로컬 개발 모드의 기본 사용자는 "지원자"라는 자리 이름을 달고 늘
+    onboarded=True다 — 그 이름이 등록 데이터의 실명을 덮으면 안 된다
+    (실측: 호칭·어휘 힌트가 전부 "지원자"로 밀렸다). 소셜 계정만,
+    온보딩을 마친 경우만 믿는다.
+    """
+    if not account:
+        return ""
+    if not account.get("onboarded") or account.get("provider") == LOCAL_PROVIDER:
+        return ""
+    return str(account.get("name") or "")
+
+
+def _session_state_from(
+    data: InterviewData, profile: str, name: str = ""
+) -> dict[str, Any]:
     """준비 데이터를 세션 state로 옮긴다 — 시딩의 실체.
 
     이 키들을 instruction(회사·직무·목차)과 툴들(질문 풀·검색 인덱스·시간
@@ -261,9 +294,11 @@ def _session_state_from(data: InterviewData, profile: str) -> dict[str, Any]:
     return {
         STATE_COMPANY: data.company,
         STATE_ROLE: data.role,
-        # instruction이 "지원자 OO님과 면접을 진행합니다"로 쓴다. 비어 있으면
-        # "지원자와"로 떨어지므로 없는 이름을 지어내지 않는다.
-        STATE_CANDIDATE: data.name,
+        # instruction이 "지원자 OO님과 면접을 진행합니다"로 쓴다. 온보딩에서
+        # 입력한 계정 이름이 우선이다 — 등록 데이터의 이름은 비어 있을 수
+        # 있고(실측), 어휘 힌트와 호칭이 다른 이름을 쓰면 안 된다. 둘 다
+        # 없으면 "지원자와"로 떨어진다 — 없는 이름을 지어내지 않는다.
+        STATE_CANDIDATE: name or data.name,
         STATE_APPLICATION: data.application,
         STATE_RESEARCH_REPORT: search_sections_from_report(data.report),
         STATE_QUESTION_POOL: data.questions,
@@ -325,6 +360,11 @@ def create_live_router(
             await websocket.send_json({"type": "ended"})
             await websocket.close(code=4003, reason="권한 없음")
             return
+        # 온보딩에서 입력한 이름 — 면접관 호칭과 전사 어휘 힌트가 같이 쓴다.
+        # 이름이 `account`인 이유: `profile`은 이 클로저에서 시간 예산
+        # 프로필이라, 같은 이름에 대입하면 클로저 읽기가 UnboundLocal로
+        # 죽는다(실측).
+        account_name = _onboarded_name(accounts.profile(user_id))
 
         # 같은 카드의 이전 커넥션을 닫는다. 닫히면 그쪽 수신 펌프가
         # disconnect를 받아 자기 정리를 시작한다.
@@ -394,7 +434,7 @@ def create_live_router(
                 app_name=runner.app_name,
                 user_id=_USER_ID,
                 session_id=session_id,
-                state=_session_state_from(data, profile),
+                state=_session_state_from(data, profile, name=account_name),
             )
 
         # 면접이 남기는 것. 커넥션이 끊겼다 붙어도 같은 디렉터리에 이어 쓴다 —
@@ -489,7 +529,7 @@ def create_live_router(
         # 준비 단계에서 뽑아 둔 것을 쓴다. 없으면(추출 실패·그 단계가 없던 옛
         # 면접) 규칙 폴백으로 만든다 — 면접 시작 경로에 LLM 호출을 두지 않는다.
         prepared = store.load(card)
-        vocabulary = _vocabulary_for(prepared)
+        vocabulary = _vocabulary_for(prepared, name=account_name)
         run_config = RunConfig(
             response_modalities=["AUDIO"],
             # 면접관 목소리를 고정한다(`interviewer.agent.VOICE`) — 세션마다
@@ -501,6 +541,23 @@ def create_live_router(
             ),
             # Live 커넥션 재개 핸들을 받기 위해 켠다.
             session_resumption=types.SessionResumptionConfig(),
+            # 세션 시간 한도를 푼다. audio-only 세션은 압축 없이 15분에서
+            # 끊기는데, full 프로필 면접(17분·하드캡 34분)이 그 한도를 넘는다.
+            # 압축을 켜면 한도가 사라진다 — "enabling context window compression
+            # extends session duration to unlimited time"
+            # (~/refs/adk-docs/docs/live/dev-guide/part4.md, ADK 전달 경로는
+            # run_config.py:270 → flows/llm_flows/basic.py:148 확인).
+            #
+            # 값은 보수적으로 잡는다. 이 모델의 컨텍스트 크기가 문서에 없어서
+            # (예시는 128k), 32k급이어도 토큰 한도에 닿기 전에 압축이 돌게
+            # 트리거를 낮게 둔다. 오디오가 초당 ~25토큰이라 target 16k는 최근
+            # ~10분을 원문으로 지킨다 — 잘려 나가는 것은 더 오래된 대화의
+            # 세부인데, 질문은 풀에서 오고 평가는 저장된 전사로 하므로 영향은
+            # "10분 전 답변을 파고드는 꼬리질문"의 정밀도뿐이다.
+            context_window_compression=types.ContextWindowCompressionConfig(
+                trigger_tokens=24_000,
+                sliding_window=types.SlidingWindow(target_tokens=16_000),
+            ),
             # 전사 힌트. 언어를 못 박고, 그날 나올 낱말을 미리 준다. 입력
             # (지원자) 쪽은 이름·용어가 깨져서고("박지원"→"박지훈", "Jetson AGX
             # Orin"→"Jeston Ajax 올인"), 출력(면접관) 쪽은 기본값(빈 설정 =

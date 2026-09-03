@@ -29,6 +29,7 @@ from typing import Any
 
 from authlib.integrations.starlette_client import OAuth, OAuthError
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, Field
 from fastapi.responses import RedirectResponse
 
 from .accounts import Accounts
@@ -175,6 +176,13 @@ def _profile_from(token: dict[str, Any], provider: str) -> dict[str, Any]:
     }
 
 
+class OnboardBody(BaseModel):
+    """온보딩 제출. 모듈 레벨인 이유: `from __future__ import annotations` 아래라
+    클로저 안 클래스는 FastAPI가 힌트를 못 풀어 422가 났다(실측)."""
+
+    name: str = Field(min_length=1, max_length=64)
+
+
 def create_auth_router(accounts: Accounts, store: InterviewStore) -> APIRouter:
     """로그인·로그아웃·내 정보 라우터.
 
@@ -225,6 +233,22 @@ def create_auth_router(accounts: Accounts, store: InterviewStore) -> APIRouter:
         user_id = accounts.upsert(**_profile_from(token, provider))
         request.session[SESSION_USER_KEY] = user_id
         return RedirectResponse(_after_login(), status_code=302)
+
+    @router.post("/onboard")
+    def onboard(body: OnboardBody, request: Request) -> dict[str, Any]:
+        """온보딩 제출 — 이름 확정 + 약관·개인정보 동의 시각 기록.
+
+        화면이 동의 체크 없이는 부르지 못하게 한다. 서버가 남기는 것은
+        "무엇에 언제 동의했는가"다(`users.onboarded_at`).
+        """
+        user_id = accounts.current_user_id(request)
+        try:
+            profile = accounts.complete_onboarding(user_id, body.name)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        if profile is None:
+            raise HTTPException(status_code=401, detail="로그인이 필요합니다")
+        return profile
 
     @router.post("/logout")
     def logout(request: Request) -> dict[str, bool]:

@@ -117,7 +117,9 @@ class InterviewEvaluation:
             data = self._store.load(record.application_id)
             if data is None:
                 raise ValueError(f"준비 데이터가 없습니다: {record.application_id}")
-            transcript = record.transcript or {}
+            transcript = _repair_transcript(
+                record.transcript or {}, data.questions or []
+            )
 
             payload: dict[str, Any] = {
                 "durationS": transcript.get("durationS", 0.0),
@@ -213,6 +215,38 @@ class InterviewEvaluation:
         except Exception:
             logger.exception("피드백 생성 실패 (session=%s)", session_id)
             state.phase = "failed"
+
+
+def _repair_transcript(
+    transcript: dict[str, Any], questions: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """전사가 앞토막에서 끊긴 뼈대질문을 원문으로 채운다.
+
+    Live의 출력 전사 스트림은 오디오가 멀쩡해도 중간에 죽을 때가 있다 —
+    실측(21.7분 면접): 면접관이 질문을 끝까지 읽었는데 기록에는 "성균관대
+    졸업작품을"만 남아, 코칭이 반토막 질문을 채점 입력으로 받았다. 뼈대질문은
+    서버가 원문을 아니 기록을 고칠 수 있다. **꼬리질문은 못 고친다** — 원문을
+    모른다. 디스크의 원본 전사는 그대로 두고 읽는 시점에만 고친다.
+    """
+    texts = [
+        (question.get("text") or "").strip()
+        for question in questions
+        if question.get("text")
+    ]
+    if not texts:
+        return transcript
+    utterances = []
+    for utterance in transcript.get("utterances", []):
+        said = (utterance.get("text") or "").strip()
+        # 6자 미만은 안 건드린다 — "네," 같은 짧은 말이 아무 질문의 머리와
+        # 우연히 겹칠 수 있다.
+        if utterance.get("speaker") == "interviewer" and len(said) >= 6:
+            for text in texts:
+                if text.startswith(said) and len(said) <= len(text) * 0.7:
+                    utterance = {**utterance, "text": text}
+                    break
+        utterances.append(utterance)
+    return {**transcript, "utterances": utterances}
 
 
 def _voice_payload(metrics: Any) -> dict[str, Any]:

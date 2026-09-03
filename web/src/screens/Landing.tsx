@@ -68,6 +68,11 @@ export function Landing() {
       <p className="mt-[22px] mb-0 text-[12px] leading-[1.7] text-faintest">
         면접 중 음성이 녹음되고, 답변 분석에 쓰입니다.
       </p>
+    <p className="mt-[28px] mb-0 text-[12px] text-faintest">
+        <a href="/terms" className="text-faint hover:text-muted">이용약관</a>
+        <span className="mx-[7px]">·</span>
+        <a href="/privacy" className="text-faint hover:text-muted">개인정보처리방침</a>
+      </p>
     </main>
   )
 }

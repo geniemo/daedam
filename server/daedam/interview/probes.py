@@ -89,6 +89,7 @@ def extract_probes(
     question: str,
     answer: str,
     experiences: list[str] | None = None,
+    covered: list[str] | None = None,
     client: Any | None = None,
 ) -> Extraction:
     """답변에서 파볼 곳을 뽑는다. 실패하면 빈 결과.
@@ -98,6 +99,10 @@ def extract_probes(
         answer: 지원자의 답변 전문. 여러 조각이면 이어 붙여서.
         experiences: 이어갈 경험 후보 — 아직 안 물은 뼈대질문이 딛고 선 경험마다
             대표 문장 하나. 주면 답변이 어느 경험을 비중 있게 말했는지 같이 고른다.
+        covered: 앞선 답변들에서 이미 확인한 파볼 곳 — "주제 — 근거 한 줄" 꼴.
+            추출은 (질문, 답변)만 보므로 이것 없이는 면접 전체의 기억이 없다.
+            실측(13분 면접): 직무 단계에서 확인한 TensorRT 최적화·제어 연동을
+            인성 단계의 같은 경험에서 다시 팠다 — 지원자가 중복을 느꼈다.
         client: OpenAI 호환 클라이언트. 기본값은 GOOGLE_API_KEY로 만든 실제
             클라이언트고, 테스트는 대역을 주입한다.
 
@@ -116,7 +121,10 @@ def extract_probes(
                 {
                     "role": "user",
                     "content": probe_prompt(
-                        question=question, answer=answer, experiences=experiences
+                        question=question,
+                        answer=answer,
+                        experiences=experiences,
+                        covered=covered,
                     ),
                 }
             ],
@@ -143,9 +151,23 @@ def extract_probes(
 
 
 def probe_prompt(
-    *, question: str, answer: str, experiences: list[str] | None = None
+    *,
+    question: str,
+    answer: str,
+    experiences: list[str] | None = None,
+    covered: list[str] | None = None,
 ) -> str:
     """추출 지시문. 정적 규칙을 앞에, 질문·답변을 뒤에 둔다."""
+    done = ""
+    if covered:
+        listed = "\n".join(f"- {c}" for c in covered)
+        done = f"""
+
+[이미 확인한 것]
+앞선 답변들에서 아래 주제는 이미 확인했습니다. 같은 주제나 같은 기술 지점을 다시
+고르지 마십시오. 같은 경험이라도 아직 안 다룬 각도만 고르고, 새 각도가 없으면
+비우십시오.
+{listed}"""
     candidates = ""
     if experiences:
         listed = "\n".join(f"- {e}" for e in experiences)
@@ -180,4 +202,4 @@ def probe_prompt(
 {question}
 
 [답변]
-{answer}{candidates}"""
+{answer}{done}{candidates}"""
