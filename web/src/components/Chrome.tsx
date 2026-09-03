@@ -21,7 +21,7 @@ export function Chrome() {
       {!hidden && (
         <header
           className="sticky top-0 z-40 h-16 border-b border-line"
-          style={{ background: 'rgba(244,245,247,.92)', backdropFilter: 'blur(8px)' }}
+          style={{ background: 'var(--header-bg)', backdropFilter: 'blur(8px)' }}
         >
           <div className="mx-auto flex h-full max-w-(--container-home) items-center gap-8 px-8">
             <Link to="/" className="flex items-center gap-[9px]">

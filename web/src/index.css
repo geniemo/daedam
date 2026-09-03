@@ -58,6 +58,34 @@
 
   --color-listening: #4e9e7e;
 
+  /* 무대 요소 — README §8 아바타 영역의 값. 면접 화면(Interview.tsx)과 랜딩의
+     데모 창(Landing.tsx)이 같은 아바타를 그리므로 한 곳에 둔다. 앞서는
+     Interview.tsx 안에 인라인으로만 있었다. */
+  --color-talk-ring: rgba(181, 127, 28, 0.34);
+  --color-hear-ring: rgba(78, 158, 126, 0.9);
+  --color-avatar-inner-ring: rgba(232, 236, 243, 0.22);
+  --color-avatar-core: rgba(181, 127, 28, 0.85);
+  --gradient-talk-glow: radial-gradient(circle, rgba(181, 127, 28, 0.5), transparent 68%);
+  --gradient-avatar: linear-gradient(160deg, #233047, #16223a);
+  --gradient-avatar-highlight: radial-gradient(
+    circle at 34% 28%,
+    rgba(255, 255, 255, 0.07),
+    transparent 58%
+  );
+  /* 무대의 중심. 없으면 어두운 판 위에 원이 떠 있기만 한다. */
+  --gradient-stage-vignette: radial-gradient(
+    58% 44% at 50% 42%,
+    rgba(35, 48, 71, 0.6),
+    transparent 70%
+  );
+
+  /* 로그인 제공자 지정색 — 카카오가 규정한 노랑과 글자색. 제품 팔레트 밖이다. */
+  --color-kakao: #fee500;
+  --color-kakao-ink: #191600;
+
+  /* 공통 헤더 배경 — 바탕색 92%에 blur. Chrome.tsx와 랜딩 헤더가 같이 쓴다. */
+  --header-bg: rgba(244, 245, 247, 0.92);
+
   /* §Border radius */
   --radius-card: 4px;
   --radius-control: 3px;
