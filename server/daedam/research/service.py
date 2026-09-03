@@ -54,7 +54,12 @@ class ResearchStatus:
 
 
 class ResearchService(Protocol):
-    """라우트가 기대하는 리서치 백엔드 인터페이스."""
+    """라우트가 기대하는 리서치 백엔드 인터페이스.
+
+    `start`의 `task_id`는 호출자가 미리 정한 id다. 등록은 유료 작업을 시작하기
+    **전에** 이 id를 근거로 크레딧을 차감해야 하므로 id가 먼저 있어야 한다.
+    없으면 백엔드가 만든다.
+    """
 
     def start(
         self,
@@ -62,6 +67,8 @@ class ResearchService(Protocol):
         role: str,
         application: list[dict[str, Any]],
         posting: str = "",
+        *,
+        task_id: str | None = None,
     ) -> str: ...
 
     def status(self, task_id: str) -> ResearchStatus | None: ...
@@ -98,8 +105,10 @@ class FixtureResearch:
         role: str,
         application: list[dict[str, Any]],
         posting: str = "",
+        *,
+        task_id: str | None = None,
     ) -> str:
-        task_id = uuid.uuid4().hex
+        task_id = task_id or uuid.uuid4().hex
         self._tasks[task_id] = _FixtureTask(company, role, self._clock())
         return task_id
 
@@ -182,6 +191,8 @@ class LiveResearch:
         role: str,
         application: list[dict[str, Any]],
         posting: str = "",
+        *,
+        task_id: str | None = None,
     ) -> str:
         # 백그라운드 작업은 서버가 잡아 두므로 커넥션·프로세스와 무관하게
         # 진행된다 — 사용자가 창을 닫아도 계속된다는 요구가 이걸로 성립한다.
@@ -197,7 +208,7 @@ class LiveResearch:
             background=True,
             store=True,
         )
-        task_id = uuid.uuid4().hex
+        task_id = task_id or uuid.uuid4().hex
         self._tasks[task_id] = _LiveTask(interaction.id, self._clock())
         # 인터랙션이 만들어진 직후 남긴다. 여기서 죽으면 돌고 있는 작업을
         # 되찾을 방법이 없다.

@@ -42,6 +42,7 @@ def _preparation(
     duration_s: float = 0.01,
     generate=_stub_generate,
     extract_vocabulary=_stub_vocabulary,
+    on_failed=None,
 ) -> tuple[InterviewPreparation, InterviewStore, str]:
     store, _, user_id = make_store(tmp_path / "data")
     preparation = InterviewPreparation(
@@ -50,6 +51,8 @@ def _preparation(
         generate=generate,
         extract_vocabulary=extract_vocabulary,
         poll_interval_s=0.01,
+        generation_retry_s=(0.01,),
+        on_failed=on_failed,
     )
     return preparation, store, user_id
 
@@ -159,8 +162,8 @@ class _FlakyResearch:
         self._fail_at = fail_at
         self._calls = 0
 
-    def start(self, company, role, application, posting="") -> str:  # noqa: ANN001
-        return "itx"
+    def start(self, company, role, application, posting="", *, task_id=None) -> str:  # noqa: ANN001
+        return task_id or "itx"
 
     def status(self, task_id: str):  # noqa: ANN201
         self._calls += 1
@@ -196,3 +199,61 @@ def test_조회가_계속_실패하면_결국_실패로_끝난다(tmp_path) -> N
     task_id = preparation.start("컬리", "서비스기획", [], user_id=user_id)
     _wait_until(lambda: preparation.status(task_id).state == "failed")
     assert preparation.status(task_id).state == "failed"
+
+
+# ── 크레딧은 리서치가 실패했을 때만 돌아간다 ─────────────────────────────
+
+
+def test_리서치_실패는_되돌리고_생성_실패는_되돌리지_않는다(tmp_path: Path) -> None:
+    """생성 실패마다 리서치 값을 돌려주면, 지원서를 일부러 크게 넣어 생성을
+    깨뜨리는 것만으로 리서치($1~7)를 공짜로 받는 길이 된다."""
+    refunded: list[str] = []
+    on_failed = lambda user_id, task_id: refunded.append(task_id)  # noqa: E731
+
+    # 리서치 실패 → 환불
+    store, _, user_id = make_store(tmp_path / "a")
+    preparation = InterviewPreparation(
+        research=_FlakyResearch(fail_at=set(range(1, 40))),
+        store=store,
+        generate=lambda **_: [],
+        poll_interval_s=0.001,
+        on_failed=on_failed,
+    )
+    task_id = preparation.start("A", "B", [], user_id=user_id, task_id="research-broke")
+    _wait_until(lambda: preparation.status(task_id).state == "failed")
+    assert refunded == ["research-broke"]
+
+    # 생성 실패 → 환불 없음, 리포트는 남는다
+    def broken_generate(**kwargs):
+        raise RuntimeError("생성 실패")
+
+    preparation, store, user_id = _preparation(
+        tmp_path / "b", generate=broken_generate, on_failed=on_failed
+    )
+    task_id = preparation.start("A", "B", [], user_id=user_id, task_id="generation-broke")
+    _wait_until(lambda: preparation.status(task_id).state == "failed")
+    assert refunded == ["research-broke"]
+    assert store.load(task_id).report  # 리서치 산출물은 저장돼 있다
+
+
+def test_생성이_한_번_실패해도_다시_해서_완주한다(tmp_path: Path) -> None:
+    """LLM 호출 실패는 대개 일시적이다 — 한 번에 실패로 못 박지 않는다."""
+    calls = {"n": 0}
+
+    def flaky_generate(**kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("일시 오류")
+        return QUESTIONS
+
+    preparation, store, user_id = _preparation(tmp_path, generate=flaky_generate)
+    task_id = preparation.start("A", "B", [], user_id=user_id)
+    _wait_until(lambda: (s := preparation.status(task_id)) and s.state == "done")
+    assert calls["n"] == 2 and store.load(task_id).questions == QUESTIONS
+
+
+def test_미리_정한_id로_준비가_열린다(tmp_path: Path) -> None:
+    """라우트가 차감의 근거로 쓴 id가 곧 카드 id여야 환불이 같은 건을 가리킨다."""
+    preparation, store, user_id = _preparation(tmp_path)
+    assert preparation.start("A", "B", [], user_id=user_id, task_id="chosen") == "chosen"
+    assert store.load("chosen") is not None

@@ -113,10 +113,9 @@ class Credits:
     def ensure(self, user_id: str, amount: int) -> None:
         """잔액이 되는지만 본다. 모자라면 `InsufficientCredits`.
 
-        차감할 대상 id를 아직 모를 때 쓴다 — 리서치는 시작해야 task_id가
-        나오는데, 시작하면 취소할 수 없는 유료 작업이라 그 전에 막아야 한다.
-        확인과 차감 사이에 잔액이 바뀔 수 있지만, 그 창은 한 사용자가 두 탭에서
-        동시에 등록하는 경우뿐이고 실제 차감은 `charge`가 다시 확인한다.
+        확인과 차감 사이에 잔액이 바뀔 수 있으므로 유료 작업의 문지기로는 쓰지
+        않는다 — 등록도 이제 id를 미리 만들어 `charge`를 먼저 한다. 화면 안내처럼
+        "될까"만 볼 때 쓴다.
         """
         balance = self.balance(user_id)
         if balance < amount:
