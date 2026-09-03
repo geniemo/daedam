@@ -23,17 +23,15 @@ src/
 public/worklets/  pcm-recorder.js (16kHz 캡처) · pcm-player.js (24kHz 재생)
 ```
 
-## 지금 상태
+## 백엔드
 
-`VITE_VOICE_BACKEND`가 꺼져 있어 면접 화면은 프로토타입 타이밍(질문당 14초)으로
-돕니다. 파형과 아바타 링은 이미 진폭 구동이라, 백엔드를 켜면 그대로 실제 오디오에
-반응합니다.
-
-## 백엔드를 붙일 때
+면접 화면은 늘 실제 세션(`/ws/interview`)에 붙습니다. 앞서 있던 목업 타이밍
+스위치(`VITE_VOICE_BACKEND`)는 없앴습니다 — 빌드 시점에 굳는 값이 gitignore된
+`.env.local`에만 있어서, 서버에서 새로 빌드하면 가짜 면접이 나갔습니다.
 
 1. ADK/FastAPI를 `localhost:8000`에 띄웁니다 (`vite.config.ts`의 proxy가 잡아줍니다).
-2. `.env.local`에 `VITE_VOICE_BACKEND=1`.
-3. `/ws/interview` 프로토콜은 `src/audio/voiceSession.ts` 상단 주석에 적어뒀습니다.
+2. `/ws/interview` 프로토콜은 `src/audio/voiceSession.ts` 상단 주석에 적어뒀습니다.
+3. 백엔드 없이 화면만 확인하려면 `npm run smoke` — 10개 화면을 렌더만 합니다.
 
 오디오 규격은 협상 대상이 아닙니다 — ADK는 포맷 변환을 하지 않습니다.
 

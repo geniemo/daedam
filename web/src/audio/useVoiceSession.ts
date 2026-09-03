@@ -1,21 +1,16 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { VoiceSession } from './voiceSession'
 import { useInterviewStore } from '@/store/interview'
-import { questions } from '@/data/mock'
 
 /**
- * Drives the interview screen.
+ * 면접 화면과 음성 세션을 잇는 훅.
  *
- * Until the ADK backend is up, `VITE_VOICE_BACKEND` is unset and this runs the
- * prototype's scripted timing (§타이머와 인터벌: 한 질문당 14초 사이클 —
- * 발화 5초 → 청취 9초). Set VITE_VOICE_BACKEND=1 to talk to the real session
- * instead; nothing else in the UI changes.
+ * 앞서는 `VITE_VOICE_BACKEND`가 꺼져 있으면 프로토타입 타이밍(질문당 14초)으로
+ * 도는 목업 경로가 있었다. 그 스위치는 빌드 시점에 굳고, 켜는 값은 gitignore된
+ * `.env.local`에만 있어서 서버에서 새로 빌드하면 가짜 면접이 그대로 나갔다.
+ * 지금은 늘 실제 세션(/ws/interview)에 붙는다. 백엔드 없이 화면 렌더만 보는
+ * 것은 smoke(scripts/smoke.mjs)가 맡는다 — 이 훅의 effect는 SSR에서 돌지 않는다.
  */
-const USE_BACKEND = import.meta.env.VITE_VOICE_BACKEND === '1'
-
-const SPEAK_SEC = 5
-const LISTEN_SEC = 9
-const CYCLE = SPEAK_SEC + LISTEN_SEC
 
 export interface Levels {
   input: number
@@ -55,64 +50,32 @@ export function useVoiceSession(
     finished.current = false
     reset()
 
-    if (USE_BACKEND) {
-      const s = new VoiceSession({
-        cardId,
-        handlers: {
-          onConnection: setConnection,
-          onSession: applySession,
-          onPhase: setPhase,
-          onQuestion: setQuestion,
-          onCaption: appendCaption,
-          onResumeToken: setResumeToken,
-          onEnded: finish,
-          onError: (e) => console.error('[voice]', e),
-        },
-      })
-      session.current = s
-      s.start().catch((e) => {
-        console.error('[voice] start failed', e)
-        setConnection('ended')
-      })
-    } else {
-      setConnection('live')
-    }
+    const s = new VoiceSession({
+      cardId,
+      handlers: {
+        onConnection: setConnection,
+        onSession: applySession,
+        onPhase: setPhase,
+        onQuestion: setQuestion,
+        onCaption: appendCaption,
+        onResumeToken: setResumeToken,
+        onEnded: finish,
+        onError: (e) => console.error('[voice]', e),
+      },
+    })
+    session.current = s
+    s.start().catch((e) => {
+      console.error('[voice] start failed', e)
+      setConnection('ended')
+    })
 
     // 1초 간격 타이머 — 화면의 경과 시간을 움직입니다.
-    const clock = setInterval(() => {
-      const before = useInterviewStore.getState()
-      tick()
+    const clock = setInterval(tick, 1000)
 
-      if (!USE_BACKEND) {
-        const e = before.elapsed + 1
-        const q = Math.floor(e / CYCLE)
-        if (q >= questions.length) {
-          finish()
-          return
-        }
-        // 백엔드가 없을 때의 대역 데이터. 실제 세션에서는 서버가 자막·단계를
-        // 내려주므로, 목업을 읽는 곳은 여기 하나로 끝납니다.
-        if (q !== before.askedCount - 1) {
-          setQuestion(q)
-          appendCaption(questions[q].q, true)
-        }
-        setPhase(e % CYCLE < SPEAK_SEC ? 'speaking' : 'listening')
-      }
-    }, 1000)
-
-    // Mock amplitude so the waveform and avatar rings are alive before the
-    // backend exists. With the backend on, real analyser peaks replace this.
+    // 파형과 아바타 링이 읽는 진폭. 60fps라 React state를 거치지 않는다.
     let raf = 0
     const loop = () => {
-      const st = useInterviewStore.getState()
-      if (USE_BACKEND && session.current) {
-        levels.current = session.current.levels()
-      } else {
-        const t = performance.now() / 1000
-        const wobble = (0.55 + 0.45 * Math.sin(t * 7.3)) * (0.7 + 0.3 * Math.sin(t * 2.1))
-        levels.current =
-          st.phase === 'speaking' ? { input: 0, output: wobble } : { input: wobble, output: 0 }
-      }
+      if (session.current) levels.current = session.current.levels()
       raf = requestAnimationFrame(loop)
     }
     raf = requestAnimationFrame(loop)
