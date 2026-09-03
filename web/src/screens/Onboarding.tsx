@@ -51,8 +51,8 @@ export function Onboarding() {
         시작하기 전에
       </h1>
       <p className="mt-[14px] mb-0 text-[14.5px] leading-[1.75] text-body-2">
-        면접관이 부를 이름을 확인하고, 면접 기록이 어떻게 다뤄지는지에 동의해
-        주세요. 한 번만 묻습니다.
+        면접관이 부를 이름을 확인하고, 면접 기록이 어떻게 다뤄지는지 동의해
+        주세요.
       </p>
 
       <div className="mt-[30px] flex flex-col gap-[8px]">
@@ -66,10 +66,6 @@ export function Onboarding() {
           placeholder="예: 박지원"
           autoFocus
         />
-        <p className="m-0 text-[12.5px] leading-[1.6] text-muted">
-          면접관이 이 이름으로 부르고, 음성 인식이 이 표기를 힌트로 씁니다.
-          실제 면접처럼 한글 실명을 권합니다.
-        </p>
       </div>
 
       <div className="mt-[22px] flex flex-col gap-[10px]">
@@ -99,8 +95,8 @@ export function Onboarding() {
           </div>
         ))}
         <p className="m-0 text-[12px] leading-[1.6] text-faint">
-          면접 중 음성·웹캠 영상과 얼굴 스틸이 기록되고, 분석을 위해 Google
-          Gemini로 처리됩니다. 자세한 내용은 개인정보처리방침에 있습니다.
+          면접 중 음성과 웹캠 영상이 기록되고, 분석을 위해 Google Gemini로
+          처리됩니다.
         </p>
       </div>
 
