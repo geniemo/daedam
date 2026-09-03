@@ -640,13 +640,14 @@ function formatAt(seconds: number): string {
  * 잴 수 없는 값(`value === null`)은 판정하지 않습니다 — 0으로 채우면
  * "바로 대답했다"는 거짓말이 됩니다.
  */
-function Metric({
+export function Metric({
   label,
   value,
   unit,
   low,
   high,
   range,
+  compact = false,
 }: {
   label: string
   value: number | null
@@ -654,14 +655,27 @@ function Metric({
   low?: number
   high?: number
   range: string
+  /** 반 폭 카드 안에 셋을 나란히 둘 때(랜딩의 리포트 조각). 글자와 여백만 줄고 판정은 같다. */
+  compact?: boolean
 }) {
+  // 크기 두 벌. 판정·막대는 공통이라 갈라지는 것은 글자 크기와 여백뿐이다.
+  const box = compact
+    ? 'flex flex-col gap-[5px] rounded-card border border-line bg-surface-2 p-3'
+    : 'flex flex-col gap-[7px] rounded-card border border-line bg-surface p-4'
+  const labelClass = compact ? 'text-[11px] whitespace-nowrap text-muted' : 'text-[12.5px] text-muted'
+  const valueClass = compact
+    ? 'num text-[19px] leading-none font-bold tracking-[-.03em]'
+    : 'num text-[23px] font-bold tracking-[-.03em]'
+  const unitClass = compact ? 'text-[10.5px] text-faint' : 'text-[12px] text-faint'
+  const noteClass = compact ? 'text-[10.5px]' : 'text-[11.5px]'
+
   if (value === null) {
     return (
-      <div className="flex flex-col gap-[7px] rounded-card border border-line bg-surface p-4">
-        <span className="text-[12.5px] text-muted">{label}</span>
-        <span className="num text-[23px] font-bold tracking-[-.03em] text-faintest">—</span>
+      <div className={box}>
+        <span className={labelClass}>{label}</span>
+        <span className={`${valueClass} text-faintest`}>—</span>
         <div className="bg-line-3" style={{ height: 3 }} />
-        <span className="text-[11.5px] text-faintest">이 면접에서는 재지 못했습니다</span>
+        <span className={`${noteClass} text-faintest`}>이 면접에서는 재지 못했습니다</span>
       </div>
     )
   }
@@ -676,20 +690,21 @@ function Metric({
   const filled = Math.min(100, Math.max(4, (value / ceiling) * 100))
 
   return (
-    <div className="flex flex-col gap-[7px] rounded-card border border-line bg-surface p-4">
-      <span className="text-[12.5px] text-muted">{label}</span>
-      <div className="flex items-baseline gap-[4px]">
-        <span className="num text-[23px] font-bold tracking-[-.03em]">{value}</span>
-        {unit && <span className="text-[12px] text-faint">{unit}</span>}
+    <div className={box}>
+      <span className={labelClass}>{label}</span>
+      <div className={`flex items-baseline ${compact ? 'gap-[3px]' : 'gap-[4px]'}`}>
+        <span className={valueClass}>{value}</span>
+        {unit && <span className={unitClass}>{unit}</span>}
       </div>
       <div className="bg-line-3" style={{ height: 3 }}>
         <div className="h-full" style={{ width: `${filled}%`, background: color }} />
       </div>
-      <div className="flex items-center gap-[6px]">
-        <span className="text-[11.5px] font-semibold" style={{ color }}>
+      {/* 판정과 범위는 낱말 중간에서 끊기지 않는다 — 좁으면 줄을 바꾼다. */}
+      <div className="flex flex-wrap items-center gap-x-[6px] gap-y-[2px]">
+        <span className={`${noteClass} font-semibold whitespace-nowrap`} style={{ color }}>
           {verdict}
         </span>
-        <span className="text-[11.5px] text-faintest">{range}</span>
+        <span className={`${noteClass} whitespace-nowrap text-faintest`}>{range}</span>
       </div>
     </div>
   )
