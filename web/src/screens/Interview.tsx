@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useActiveCard, useAppStore } from '@/store/app'
 import { formatClock, useInterviewStore } from '@/store/interview'
-import { useVoiceSession, type Levels } from '@/audio/useVoiceSession'
+import { useVoiceSession } from '@/audio/useVoiceSession'
 import { fill } from '@/data/mock'
 import { useCamera } from '@/video/useCamera'
 import { SelfView } from '@/video/SelfView'
@@ -10,6 +10,7 @@ import { useRecorder } from '@/video/useRecorder'
 import { useSnapshots } from '@/video/useSnapshots'
 import { useFaceTracking } from '@/video/useFaceTracking'
 import { useGazeLog } from '@/video/useGazeLog'
+import { Avatar, Waveform } from '@/components/Stage'
 
 /** README §8. 면접 진행 — 화면이 시선을 뺏지 않는 것이 목표입니다. */
 export function Interview({ showCaption = true }: { showCaption?: boolean }) {
@@ -128,13 +129,10 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
         <span className="num text-[13px] text-stage-ink">{formatClock(elapsed)}</span>
       </div>
 
-      {/* 무대의 중심. 없으면 어두운 판 위에 원이 떠 있기만 한다. */}
+      {/* 무대의 중심 — 랜딩의 데모 창과 같은 비네트(index.css). */}
       <div
         className="pointer-events-none absolute inset-0"
-        style={{
-          background:
-            'radial-gradient(58% 44% at 50% 42%, rgba(35,48,71,.6), transparent 70%)',
-        }}
+        style={{ background: 'var(--gradient-stage-vignette)' }}
       />
 
       {/* 아바타 영역 */}
@@ -187,167 +185,6 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
         </div>
       </div>
 
-    </div>
-  )
-}
-
-/**
- * 아바타 + 발화 링.
- *
- * README §Assets는 링을 순수 CSS 애니메이션으로 정의하지만, 여기서는 실제
- * 오디오 진폭으로 구동합니다. 값이 60fps로 바뀌므로 React state를 거치지 않고
- * ref → style에 직접 씁니다.
- *
- * **말할 때와 들을 때 둘 다 살아 있어야 합니다.** 앞서는 링이 speaking일 때만
- * 붙어서, 지원자가 답하는 동안(면접 시간의 절반) 아바타가 정지한 검은 원이
- * 됐습니다. 지금은 링 두 벌이 늘 붙어 있고 rAF 루프가 불투명도로 건넵니다 —
- * 마운트를 여닫으면 전환할 때 툭 끊깁니다.
- *
- * 색이 갈립니다: 면접관이 말할 때는 강조색(머스터드), 지원자가 말할 때는
- * 듣는 색(초록)입니다. 내 목소리가 면접관에게 가 닿는 것이 보여야 대화가 됩니다.
- *
- * `data-avatar-slot="true"` 컨테이너 내부만 교체하면 실제 아바타로 대체됩니다.
- * 링·자막·컨트롤은 이 컨테이너 바깥에 있습니다.
- */
-function Avatar({ levels, speaking }: { levels: React.RefObject<Levels>; speaking: boolean }) {
-  const talkGlow = useRef<HTMLDivElement>(null)
-  const talkRing = useRef<HTMLDivElement>(null)
-  const hearRing = useRef<HTMLDivElement>(null)
-  const core = useRef<HTMLDivElement>(null)
-  // 루프가 phase마다 다시 붙지 않도록 ref로 읽는다.
-  const isSpeaking = useRef(speaking)
-  isSpeaking.current = speaking
-
-  useEffect(() => {
-    let raf = 0
-    const loop = () => {
-      const talking = isSpeaking.current
-      const out = levels.current.output
-      const inp = levels.current.input
-
-      if (talkGlow.current) {
-        talkGlow.current.style.transform = `scale(${1 + out * 0.26})`
-        talkGlow.current.style.opacity = String(talking ? 0.06 + out * 0.26 : 0)
-      }
-      if (talkRing.current) {
-        talkRing.current.style.transform = `scale(${1 + out * 0.14})`
-        talkRing.current.style.opacity = String(talking ? 0.14 + out * 0.36 : 0)
-      }
-      // 듣는 링은 지원자 목소리를 받는다. 조용해도 완전히 꺼지지 않는다 —
-      // 꺼두면 "듣고 있다"가 화면에서 사라진다.
-      if (hearRing.current) {
-        hearRing.current.style.transform = `scale(${1 + inp * 0.1})`
-        hearRing.current.style.opacity = String(talking ? 0 : 0.28 + inp * 0.62)
-      }
-      // 가운데 표식이 말차례를 쥔다. 면접관이 말하면 부풀고, 들을 때는 잦아든다.
-      if (core.current) {
-        const level = talking ? out : inp * 0.4
-        core.current.style.transform = `scale(${(talking ? 1 : 0.82) + level * 0.22})`
-      }
-      raf = requestAnimationFrame(loop)
-    }
-    raf = requestAnimationFrame(loop)
-    return () => cancelAnimationFrame(raf)
-  }, [levels])
-
-  return (
-    <div className="relative flex items-center justify-center" style={{ width: 340, height: 340 }}>
-      <div
-        ref={talkGlow}
-        className="absolute rounded-full"
-        style={{
-          width: 340,
-          height: 340,
-          background: 'radial-gradient(circle, rgba(181,127,28,.5), transparent 68%)',
-          opacity: 0,
-        }}
-      />
-      <div
-        ref={talkRing}
-        className="absolute rounded-full"
-        style={{ width: 270, height: 270, border: '1px solid rgba(181,127,28,.34)', opacity: 0 }}
-      />
-      <div
-        ref={hearRing}
-        className="absolute rounded-full"
-        style={{ width: 246, height: 246, border: '1.5px solid rgba(78,158,126,.9)', opacity: 0 }}
-      />
-
-      <div
-        data-avatar-slot="true"
-        className="relative flex animate-dm-breathe items-center justify-center overflow-hidden rounded-full"
-        style={{
-          width: 206,
-          height: 206,
-          background: 'linear-gradient(160deg, #233047, #16223A)',
-          border: '1px solid #2E3F5C',
-        }}
-      >
-        <div
-          className="absolute inset-0"
-          style={{
-            background: 'radial-gradient(circle at 34% 28%, rgba(255,255,255,.07), transparent 58%)',
-          }}
-        />
-        <div
-          className="flex items-center justify-center rounded-full"
-          style={{ width: 96, height: 96, border: '1px solid rgba(232,236,243,.22)' }}
-        >
-          <div
-            ref={core}
-            className="rounded-full"
-            style={{
-              width: 44,
-              height: 44,
-              background: 'rgba(181,127,28,.85)',
-              transition: 'background .4s ease',
-            }}
-          />
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/**
- * 마이크 입력 파형 — 3px 폭 막대 16개, 높이 38px.
- * 진폭은 입력 AnalyserNode에서 옵니다. 막대별 위상차로 파도 모양을 만듭니다.
- */
-const BAR_COUNT = 16
-
-function Waveform({ levels }: { levels: React.RefObject<Levels> }) {
-  const bars = useRef<(HTMLDivElement | null)[]>([])
-
-  useEffect(() => {
-    let raf = 0
-    const loop = () => {
-      const level = levels.current.input
-      const t = performance.now() / 1000
-      for (let i = 0; i < BAR_COUNT; i++) {
-        const el = bars.current[i]
-        if (!el) continue
-        const phase = Math.sin(t * 6 + i * 0.7) * 0.5 + 0.5
-        const scale = 0.22 + level * (0.35 + 0.65 * phase) * 0.78
-        el.style.transform = `scaleY(${Math.min(1, scale)})`
-      }
-      raf = requestAnimationFrame(loop)
-    }
-    raf = requestAnimationFrame(loop)
-    return () => cancelAnimationFrame(raf)
-  }, [levels])
-
-  return (
-    <div className="flex items-center" style={{ gap: 3, height: 38 }}>
-      {Array.from({ length: BAR_COUNT }, (_, i) => (
-        <div
-          key={i}
-          ref={(el) => {
-            bars.current[i] = el
-          }}
-          className="bg-accent"
-          style={{ width: 3, height: 38, transformOrigin: 'center', transform: 'scaleY(0.22)' }}
-        />
-      ))}
     </div>
   )
 }

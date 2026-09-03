@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { completeOnboarding, logout } from '@/api/auth'
-import { CheckDot, EmptyDot, PrimaryButton, TextField } from '@/components/ui'
+import { CheckDot, EmptyDot } from '@/components/ui'
 
 /**
  * 첫 로그인 뒤 한 번 — 이름 확정과 약관·개인정보 동의.
@@ -14,18 +14,25 @@ import { CheckDot, EmptyDot, PrimaryButton, TextField } from '@/components/ui'
  * **동의를 라우트가 아니라 게이트(App.tsx)에서 거는 이유**: 주소를 쳐서
  * 건너뛸 수 있으면 동의가 아니다. 음성·영상·얼굴 스틸을 AI로 처리하는
  * 서비스라 동의 없이 면접이 시작되면 안 된다.
+ *
+ * **화면 하나에 질문 하나** (design_handoff_daedam/HANDOFF-landing-onboarding.md
+ * §2 "3c 두 단계"): 이름 → 동의. 한 기둥에 입력·동의 2건·안내·버튼을 다 몰면
+ * 빈 공간이 공백으로 읽히고, 나누면 여백으로 읽힌다. 단계는 state 하나다 —
+ * 라우트로 나누면 주소로 동의 단계를 건너뛸 수 있게 된다.
  */
 export function Onboarding() {
   const queryClient = useQueryClient()
+  const [step, setStep] = useState<0 | 1>(0)
   const [name, setName] = useState('')
   const [terms, setTerms] = useState(false)
   const [privacy, setPrivacy] = useState(false)
   const [error, setError] = useState('')
   const [sending, setSending] = useState(false)
-  const ready = name.trim().length > 0 && terms && privacy
+  const named = name.trim().length > 0
+  const agreed = terms && privacy
 
   const submit = async () => {
-    if (!ready || sending) return
+    if (!named || !agreed || sending) return
     setSending(true)
     setError('')
     try {
@@ -38,87 +45,175 @@ export function Onboarding() {
     }
   }
 
+  const switchAccount = async () => {
+    await logout()
+    window.location.href = '/'
+  }
+
   return (
-    <main className="mx-auto flex min-h-dvh max-w-[560px] flex-col justify-center px-8 py-16 animate-dm-fade">
-      <div className="flex items-center gap-[10px]">
-        <span className="flex h-[26px] w-[26px] items-center justify-center border-[1.5px] border-ink">
-          <span className="h-[10px] w-[10px] bg-accent" />
-        </span>
-        <span className="text-[20px] font-bold tracking-[-.02em] text-ink">대담</span>
+    <main className="flex min-h-dvh flex-col break-keep">
+      {/* 상단 바 — 로고와 진행 막대 두 개. 지금 단계까지가 진하다. */}
+      <div className="flex items-center px-8 py-[26px]">
+        <div className="flex items-center gap-[10px]">
+          <span className="flex h-[26px] w-[26px] items-center justify-center border-[1.5px] border-ink">
+            <span className="h-[10px] w-[10px] bg-accent" />
+          </span>
+          <span className="text-[20px] font-bold tracking-[-.02em] text-ink">대담</span>
+        </div>
+        <div className="flex-1" />
+        <div className="flex gap-[5px]">
+          {[0, 1].map((i) => (
+            <span
+              key={i}
+              className={`h-[2.5px] w-[22px] transition-colors duration-300 ${
+                i <= step ? 'bg-ink' : 'bg-field-2'
+              }`}
+            />
+          ))}
+        </div>
       </div>
 
-      <h1 className="mt-[26px] mb-0 text-[28px] leading-[1.35] font-bold tracking-[-.03em] text-ink">
-        시작하기 전에
-      </h1>
-      <p className="mt-[14px] mb-0 text-[14.5px] leading-[1.75] text-body-2">
-        면접관이 부를 이름을 확인하고, 면접 기록이 어떻게 다뤄지는지 동의해
-        주세요.
-      </p>
-
-      <div className="mt-[30px] flex flex-col gap-[8px]">
-        <label className="text-[13px] font-semibold text-ink" htmlFor="onboard-name">
-          이름
-        </label>
-        <TextField
-          id="onboard-name"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="예: 박지원"
-          autoFocus
-        />
-      </div>
-
-      <div className="mt-[22px] flex flex-col gap-[10px]">
-        {[
-          ['이용약관에 동의합니다', '/terms', terms, () => setTerms((v) => !v)] as const,
-          ['개인정보 수집·이용에 동의합니다', '/privacy', privacy, () => setPrivacy((v) => !v)] as const,
-        ].map(([label, href, checked, toggle]) => (
-          <div key={href} className="flex items-center gap-[10px]">
-            <button
-              type="button"
-              onClick={toggle}
-              aria-pressed={checked}
-              className="flex items-center gap-[10px] text-left text-[13.5px] text-ink"
-            >
-              {checked ? <CheckDot size={16} /> : <EmptyDot size={16} />}
-              {label}
-            </button>
-            <div className="flex-1" />
-            <a
-              href={href}
-              target="_blank"
-              rel="noreferrer"
-              className="text-[12.5px] text-faint underline hover:text-muted"
-            >
-              전문 보기
-            </a>
+      {/* key로 리마운트해서 단계마다 fade가 다시 돈다. */}
+      <div className="flex flex-1 items-center justify-center px-8 pb-[96px]">
+        {step === 0 ? (
+          <div key="name" className="w-[460px] max-w-full animate-dm-fade">
+            <StepMark>1 / 2</StepMark>
+            <h1 className="mt-[10px] mb-0 text-[30px] leading-[1.3] font-bold tracking-[-.035em] text-ink">
+              면접관이 어떻게
+              <br />
+              부르면 좋을까요
+            </h1>
+            <p className="mt-[14px] mb-[32px] text-[14.5px] leading-[1.7] text-body-2">
+              실명으로 적어 주세요.
+            </p>
+            {/* 밑줄형 입력. 화면에 이 칸 하나뿐이라 상자가 필요 없다. */}
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && named) setStep(1)
+              }}
+              placeholder="예: 박지원"
+              aria-label="이름"
+              autoFocus
+              className="w-full border-0 border-b-2 border-field bg-transparent py-[10px] text-[22px] font-semibold tracking-[-.02em] text-ink transition-colors duration-200 focus:border-ink"
+            />
+            <div className="mt-[36px] flex items-center">
+              <button
+                type="button"
+                onClick={switchAccount}
+                className="text-[12.5px] text-faint hover:text-muted"
+              >
+                다른 계정으로 로그인
+              </button>
+              <div className="flex-1" />
+              <StepButton disabled={!named} onClick={() => setStep(1)}>
+                다음
+              </StepButton>
+            </div>
           </div>
-        ))}
-        <p className="m-0 text-[12px] leading-[1.6] text-faint">
-          면접 중 음성과 웹캠 영상이 기록되고, 분석을 위해 Google Gemini로
-          처리됩니다.
-        </p>
+        ) : (
+          <div key="consent" className="w-[460px] max-w-full animate-dm-fade">
+            <StepMark>2 / 2</StepMark>
+            <h1 className="mt-[10px] mb-0 text-[30px] leading-[1.3] font-bold tracking-[-.035em] text-ink">
+              {givenName(name)} 님, 시작하기 전에
+              <br />
+              한 가지만 확인해 주세요
+            </h1>
+            <p className="mt-[14px] mb-[28px] text-[14.5px] leading-[1.7] text-body-2">
+              면접 중 음성과 웹캠 영상이 기록되고, 분석을 위해 Google Gemini로 처리됩니다.
+            </p>
+
+            <div className="flex flex-col border-t border-line">
+              {[
+                ['이용약관에 동의합니다', '/terms', terms, () => setTerms((v) => !v)] as const,
+                ['개인정보 수집·이용에 동의합니다', '/privacy', privacy, () => setPrivacy((v) => !v)] as const,
+              ].map(([label, href, checked, toggle]) => (
+                <div key={href} className="flex items-center gap-[12px] border-b border-line py-[16px]">
+                  <button
+                    type="button"
+                    onClick={toggle}
+                    aria-pressed={checked}
+                    className="flex items-center gap-[12px] text-left text-[14.5px] text-ink"
+                  >
+                    {checked ? <CheckDot size={16} /> : <EmptyDot size={16} />}
+                    {label}
+                  </button>
+                  <div className="flex-1" />
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[12.5px] text-faint underline hover:text-muted"
+                  >
+                    전문 보기
+                  </a>
+                </div>
+              ))}
+            </div>
+
+            {error && <p className="mt-[18px] mb-0 text-[13px] text-accent">{error}</p>}
+
+            <div className="mt-[32px] flex items-center">
+              <button
+                type="button"
+                onClick={() => setStep(0)}
+                className="text-[13px] text-muted hover:text-ink"
+              >
+                ← 이름 고치기
+              </button>
+              <div className="flex-1" />
+              <StepButton disabled={!agreed || sending} onClick={submit}>
+                {sending ? '저장 중…' : '동의하고 시작하기'}
+              </StepButton>
+            </div>
+          </div>
+        )}
       </div>
-
-      {error && <p className="mt-[14px] mb-0 text-[13px] text-accent">{error}</p>}
-
-      <PrimaryButton
-        onClick={submit}
-        className={`mt-[26px] h-[50px] text-[14.5px] ${ready && !sending ? '' : 'cursor-default opacity-40'}`}
-      >
-        {sending ? '저장 중…' : '동의하고 시작하기'}
-      </PrimaryButton>
-
-      <button
-        type="button"
-        onClick={async () => {
-          await logout()
-          window.location.href = '/'
-        }}
-        className="mt-[16px] self-start text-[12.5px] text-faint hover:text-muted"
-      >
-        다른 계정으로 로그인
-      </button>
     </main>
   )
+}
+
+/** "1 / 2" — 몇 번째 질문인지. 상단 막대와 같은 정보를 글자로 한 번 더. */
+function StepMark({ children }: { children: string }) {
+  return (
+    <span className="num text-[12px] font-semibold tracking-[.05em] text-accent">{children}</span>
+  )
+}
+
+/** 단계를 넘기는 버튼. 조건이 안 찼으면 흐린 채로 눌리지 않는다. */
+function StepButton({
+  disabled,
+  onClick,
+  children,
+}: {
+  disabled: boolean
+  onClick: () => void
+  children: string
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`h-[46px] rounded-control px-[28px] text-[14px] font-semibold text-white transition-colors duration-300 ${
+        disabled ? 'cursor-default bg-faintest' : 'bg-ink'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
+/**
+ * 호칭용 이름 — 성을 뺀 것. "박지원 님"이 아니라 "지원 님".
+ *
+ * 핸드오프 규칙은 "3자 이상이면 마지막 두 글자"(Chrome.tsx가 이니셜을
+ * slice(-2, -1)로 잡는 것과 같은 방향)인데, 한글 이름에만 적용한다 —
+ * "Jiweon Park"에서 두 글자를 떼면 "rk 님"이 된다. 로마자·띄어쓴 이름은
+ * 그대로 부른다.
+ */
+function givenName(name: string): string {
+  const trimmed = name.trim()
+  return /^[가-힣]{3,}$/.test(trimmed) ? trimmed.slice(-2) : trimmed
 }
