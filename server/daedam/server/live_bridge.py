@@ -370,6 +370,15 @@ def create_live_router(
         # disconnect를 받아 자기 정리를 시작한다.
         previous = active.get(card)
         if previous is not None:
+            # 옛 탭에는 "다른 곳에서 이어졌다"를 먼저 알린다. 안 그러면 그쪽
+            # 프론트가 사고로 끊긴 줄 알고 재접속해 이 커넥션을 다시 끊는다 —
+            # 두 탭이 서로를 0.5초마다 쫓아내며 Live 연결을 계속 새로 여는
+            # 핑퐁이 된다. 프론트는 이 이유(또는 4000 코드)를 받으면 재접속하지
+            # 않고 홈으로 간다.
+            try:
+                await previous.send_json({"type": "ended", "reason": "replaced"})
+            except Exception:  # noqa: BLE001 — 이미 닫힌 소켓이면 그만
+                pass
             try:
                 await previous.close(code=4000, reason="새 커넥션으로 대체")
             except Exception:  # noqa: BLE001 — 이미 닫힌 소켓이면 그만
@@ -605,13 +614,21 @@ def create_live_router(
                     queue.send_realtime(types.Blob(mime_type=_INPUT_MIME, data=data))
                     recording.write_audio(data)
                 elif text := message.get("text"):
-                    control = json.loads(text).get("type")
+                    parsed = json.loads(text)
+                    # dict가 아닌 JSON(`[]`, `"x"`)에 .get을 부르면 이 커넥션이
+                    # 예외로 죽는다. 모르는 모양은 그냥 넘긴다.
+                    control = parsed.get("type") if isinstance(parsed, dict) else None
                     if control == "playbackEnd":
                         # 면접관의 말이 브라우저에서 끝났다. 지원자가 질문을
                         # 다 들은 순간이라 "답변까지 걸린 시간"의 기준선이다.
                         recording.mark_question_end()
                         continue
                     if control == "end":
+                        if active.get(card) is not websocket:
+                            # 새 커넥션에 자리를 내준 옛 탭이 정리하며 보낸 end다.
+                            # 판은 이제 그쪽 것이라 여기서 닫으면 안 된다.
+                            logger.info("대체된 커넥션의 종료 요청 무시 (card=%s)", card)
+                            return
                         # 지원자가 끝냈다 — 면접이 끝나는 유일한 경로다. 큐를 닫아
                         # 봐야 ADK는 Gemini 소켓이 끊어진 것으로 보고 재개 핸들로
                         # 다시 붙으므로(base_llm_flow.run_live의 ConnectionClosed
@@ -693,26 +710,52 @@ def create_live_router(
                         await websocket.send_json(payload)
             await notify_ended()
 
-        # 두 펌프를 나란히 돌리고, 어느 한쪽이 먼저 끝나면 전체를 정리한다.
-        # 종료는 두 갈래다:
-        #   지원자가 끝냄(end 컨트롤) 또는 클라가 끊음 → 위 펌프 리턴 → 아래 펌프 취소
-        #   모델이 끊음(run_live 종료) → 아래 펌프 리턴 → 위 펌프 취소
-        # 서버가 시계로 끝내는 경로는 없다 — 면접을 끝내는 것은 지원자다.
+        async def hard_cap_timer() -> None:
+            """하드캡을 시계로 건다.
+
+            이벤트 루프 안의 검사(`over_hard_cap`)는 모델 이벤트가 올 때만
+            돌아서, 아무 말 없이 켜 둔 커넥션은 걸리지 않았다 — 마이크만 흘려
+            보내면 Live 입력 오디오가 벽시계로 계속 과금됐다. 여기는 이벤트와
+            무관하게 예산의 2배가 지나면 끊는다. 재접속이면 이미 흐른 시간만큼
+            남은 시간이 짧다.
+            """
+            remaining = flow.hard_cap_s - _elapsed_s(session.state)
+            await asyncio.sleep(max(0.0, remaining))
+            logger.warning(
+                "하드캡 도달 — 시계로 끊는다 (session=%s, 경과 %.0f초)",
+                session_id,
+                _elapsed_s(session.state),
+            )
+            await notify_ended()
+
+        # 펌프 둘과 타이머를 나란히 돌리고, 어느 하나가 먼저 끝나면 전체를
+        # 정리한다. 종료는 세 갈래다:
+        #   지원자가 끝냄(end 컨트롤) 또는 클라가 끊음 → 위 펌프 리턴 → 나머지 취소
+        #   모델이 끊음(run_live 종료·실패) → 아래 펌프 리턴 → 나머지 취소
+        #   하드캡 → 타이머 리턴 → 나머지 취소
+        # 면접을 끝내는 것은 지원자다. 타이머는 잊힌 면접의 돈을 막는 백스톱이다.
         tasks = [
             asyncio.create_task(pump_client_to_agent()),
             asyncio.create_task(pump_agent_to_client()),
+            asyncio.create_task(hard_cap_timer()),
         ]
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         for task in pending:
             task.cancel()
         queue.close()
+        failed = False
         try:
             for task in done:
                 task.result()
         except WebSocketDisconnect:
             logger.info("면접 소켓 끊김 (card=%s)", card)
         except Exception:
+            # run_live가 예외로 끝났다(Live 연결 거부·쿼터·재접속 포기). 앞서는
+            # 여기서 그냥 나가 소켓이 비정상 종료됐고, 프론트는 사고로 끊긴 줄
+            # 알고 재접속해 같은 판을 다시 열었다 — 실패가 반복되는 동안
+            # 판은 닫히지 않고 크레딧도 돌아가지 않았다.
             logger.exception("음성 브리지 오류 (card=%s)", card)
+            failed = True
         finally:
             fillers.unregister(session_id, filler_connection)
             # 커넥션이 끝날 때마다 저장한다. 재접속이면 다음 커넥션이 이어
@@ -726,6 +769,18 @@ def create_live_router(
             # 전사 전문을 면접 기록으로 올린다. 커넥션이 끊길 때마다 덮으므로
             # 마지막 커넥션의 것이 최종본이 된다.
             store.save_transcript(session_id, recording.transcript_payload())
+            if failed and not ended_notified:
+                # 재접속으로 될 일이 아니라는 것을 프론트에 알린다 — 4000번대는
+                # 프론트가 재접속하지 않고 홈으로 가는 코드다. 답변 전이면 판을
+                # 닫아 아래 종료 경로가 크레딧을 되돌리게 하고, 답변이 있으면
+                # 판을 남긴다 — 한 시간 안에 다시 시작하면 이어진다.
+                try:
+                    await websocket.send_json({"type": "ended", "reason": "failed"})
+                    await websocket.close(code=4005, reason="면접 서버 연결 실패")
+                except Exception:  # noqa: BLE001 — 이미 닫힌 소켓이면 그만
+                    pass
+                if not has_answer(recording.transcript_payload()):
+                    ended_notified = True
             if ended_notified:
                 # 면접이 끝났다. 이 판을 닫아야 다음 접속이 새 면접으로
                 # 시작한다 — 열어 두면 브리지가 재접속으로 보아 시간 예산과

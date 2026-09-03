@@ -19,7 +19,9 @@ from google.adk.events.event_actions import EventActions
 from google.adk.sessions.in_memory_session_service import InMemorySessionService
 from google.genai import types
 
+from daedam.interview.stages import PROFILES, Profile
 from daedam.server import live_bridge
+from daedam.server.credits import COST_INTERVIEW
 from daedam.server.live_bridge import _client_messages_from, create_live_router
 from conftest import make_store
 
@@ -298,14 +300,21 @@ def test_재접속에는_개시_신호가_없다(tmp_path) -> None:
 
 
 def test_같은_카드의_새_접속이_이전_커넥션을_닫는다(tmp_path) -> None:
-    """이중 마운트·중복 탭이 만드는 '두 목소리'를 서버가 차단한다."""
-    client = _client(_FakeRunner(), _seeded_store(tmp_path, "dup"))
+    """이중 마운트·중복 탭이 만드는 '두 목소리'를 서버가 차단한다.
+
+    옛 탭에는 이유를 먼저 알린다 — 안 그러면 그쪽이 사고로 끊긴 줄 알고
+    재접속해 새 탭을 다시 끊는 핑퐁이 된다. 판은 닫지 않는다: 새 탭이 같은
+    판을 이어간다."""
+    store = _seeded_store(tmp_path, "dup")
+    client = _client(_FakeRunner(), store)
     with client.websocket_connect("/ws/interview?card=dup") as first:
-        _handshake(first)
+        session_id = _handshake(first)["sessionId"]
         with client.websocket_connect("/ws/interview?card=dup") as second:
-            _handshake(second)
+            assert _handshake(second)["sessionId"] == session_id
+            assert first.receive_json() == {"type": "ended", "reason": "replaced"}
             with pytest.raises(WebSocketDisconnect):
                 first.receive_bytes()
+            assert store.load_session(session_id).ended_at is None
             # 새 커넥션은 정상 동작한다.
             second.send_bytes(b"\x00")
             assert second.receive_bytes() == b"\x01\x02"
@@ -527,3 +536,75 @@ def test_사용량이_없으면_집계도_비어_있다() -> None:
     usage.add(types.GenerateContentResponseUsageMetadata())
     assert usage.turns == 1 and usage.prompt == 0
     assert usage.prompt_by_modality == {}
+
+
+# ── 종료 경로: 하드캡 타이머 · 러너 실패 ─────────────────────────────────
+
+
+def test_하드캡은_모델이_조용해도_시계로_끊는다(tmp_path, monkeypatch) -> None:
+    """이벤트 루프의 검사는 모델 이벤트가 올 때만 돌아서, 아무 말 없이 켜 둔
+    커넥션은 걸리지 않았다. 타이머는 이벤트와 무관하다."""
+    monkeypatch.setitem(PROFILES, "blink", Profile("blink", (0.02, 0.02, 0.02, 0.02)))
+    store = _seeded_store(tmp_path, "cap")
+    client = _client(_EndlessRunner(), store, profile="blink")
+    with client.websocket_connect("/ws/interview?card=cap") as websocket:
+        session_id = _handshake(websocket)["sessionId"]
+        assert websocket.receive_bytes() == b"\x01\x02"
+        assert websocket.receive_json() == {"type": "ended"}
+    assert store.load_session(session_id).ended_at is not None
+
+
+class _CrashingRunner(_FakeRunner):
+    """첫 연결부터 죽는 대역 — Live 연결 거부·쿼터 초과가 이렇게 보인다."""
+
+    async def run_live(self, *, session, live_request_queue, run_config):
+        raise RuntimeError("live connect refused")
+        yield  # noqa: B901 — async generator로 만들기 위한 도달 불가 yield
+
+
+def test_러너가_죽으면_실패를_알리고_답변_전이면_판을_닫고_되돌린다(tmp_path) -> None:
+    """앞서는 소켓이 비정상 종료되기만 해서 프론트가 재접속으로 같은 판을 다시
+    열었고, 판도 크레딧도 그대로였다."""
+    store = _seeded_store(tmp_path, "crash")
+    credits = store.accounts.credits
+    user_id = store.accounts.default_user_id()
+    before = credits.balance(user_id)
+    client = _client(_CrashingRunner(), store)
+    with client.websocket_connect("/ws/interview?card=crash") as websocket:
+        session_id = _handshake(websocket)["sessionId"]
+        assert websocket.receive_json() == {"type": "ended", "reason": "failed"}
+        with pytest.raises(WebSocketDisconnect):
+            websocket.receive_bytes()
+    assert store.load_session(session_id).ended_at is not None
+    assert credits.balance(user_id) == before
+
+
+class _CrashAfterAnswerRunner(_FakeRunner):
+    """지원자가 한 마디 한 뒤에 죽는 대역."""
+
+    async def run_live(self, *, session, live_request_queue, run_config):
+        while True:
+            request = await live_request_queue.get()
+            if request.blob is not None:
+                break
+        yield Event(
+            author="user",
+            input_transcription=types.Transcription(text="네, 저는", finished=True),
+        )
+        raise RuntimeError("stream died")
+
+
+def test_러너가_죽어도_답변이_있으면_판과_크레딧을_남긴다(tmp_path) -> None:
+    """한 시간 안에 다시 시작하면 이어진다 — 답변까지 한 면접을 실패로 닫고
+    되돌리면 그 답변이 사라진다."""
+    store = _seeded_store(tmp_path, "crash2")
+    credits = store.accounts.credits
+    user_id = store.accounts.default_user_id()
+    before = credits.balance(user_id)
+    client = _client(_CrashAfterAnswerRunner(), store)
+    with client.websocket_connect("/ws/interview?card=crash2") as websocket:
+        session_id = _handshake(websocket)["sessionId"]
+        websocket.send_bytes(b"\x00")
+        assert websocket.receive_json() == {"type": "ended", "reason": "failed"}
+    assert store.load_session(session_id).ended_at is None
+    assert credits.balance(user_id) == before - COST_INTERVIEW
