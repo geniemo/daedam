@@ -37,6 +37,7 @@ from daedam.research.service import FixtureResearch, LiveResearch, ResearchServi
 from daedam.settings import SERVER_DIR
 from daedam.settings import data_root as default_data_root
 
+from . import preflight
 from .accounts import Accounts
 from .auth import configured_providers, create_auth_router
 from .credit_routes import create_credit_router
@@ -161,6 +162,10 @@ def create_app() -> FastAPI:
     )
     for package in ("daedam", "interviewer"):
         logging.getLogger(package).setLevel(logging.INFO)
+
+    # 운영이면 설정이 갖춰졌는지 **먼저** 본다 — 빠졌으면 여기서 끝난다. 임베더
+    # 준비나 마이그레이션보다 앞이어야 잘못 뜬 서버가 아무것도 건드리지 않는다.
+    preflight.enforce()
 
     # 임베더를 기동 시점에 준비한다 — 첫 검색이 면접 한가운데서 준비 비용을
     # 물면 안 된다. 기본(Gemini API)은 클라이언트 하나라 즉시 끝나고,
