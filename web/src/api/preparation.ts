@@ -44,6 +44,31 @@ const toServerParts = (parts: ApplicationPart[]) =>
     items: part.items.map(({ title, body }) => ({ title, body })),
   }))
 
+/**
+ * 지원서 PDF → 파트·항목. 서버가 Gemini로 읽어 등록 화면의 모양으로 돌려준다.
+ * 저장은 하지 않는다 — 받은 것을 폼에 채우고 사용자가 검토한 뒤 등록으로 낸다.
+ */
+export async function importApplication(file: File): Promise<ApplicationPart[]> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch('/api/preparation/import', { method: 'POST', body: form })
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { detail?: string } | null
+    throw new Error(body?.detail || `PDF를 읽지 못했습니다 (${res.status})`)
+  }
+  const body = (await res.json()) as {
+    parts: { part: string; items: { title: string; body: string }[] }[]
+  }
+  return body.parts.map((part) => ({
+    name: part.part,
+    items: part.items.map((item) => ({
+      title: item.title,
+      body: item.body,
+      len: item.body ? `${item.body.length}자` : '작성 필요',
+    })),
+  }))
+}
+
 /** §서버 연동 1 — 회사 등록 + 리서치 시작. task_id를 돌려준다. */
 export async function startPreparation(
   company: string,

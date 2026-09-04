@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import { startPreparation } from '@/api/preparation'
+import { importApplication, startPreparation } from '@/api/preparation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getMe } from '@/api/auth'
 import { getCredits } from '@/api/credits'
@@ -193,6 +193,35 @@ function Step2() {
   const [confirmPart, setConfirmPart] = useState<number | null>(null)
   // "?"가 여는 작성 가이드. 입력은 그대로 둔 채 위에 덮는다.
   const [guideOpen, setGuideOpen] = useState(false)
+
+  // PDF 불러오기. 서버가 Gemini로 읽어 파트·항목을 돌려주면 폼에 채운다 —
+  // 사용자는 옮겨 적는 대신 확인만 한다. 이미 쓴 것이 있으면 뒤에 붙인다.
+  const fileInput = useRef<HTMLInputElement>(null)
+  const [importing, setImporting] = useState(false)
+  const [importNote, setImportNote] = useState<string | null>(null)
+  const importPdf = async (file: File | undefined) => {
+    if (!file) return
+    setImporting(true)
+    setImportNote(null)
+    try {
+      const imported = await importApplication(file)
+      const count = imported.reduce((n, part) => n + part.items.length, 0)
+      if (count === 0) {
+        setImportNote('PDF에서 문항을 찾지 못했습니다. 직접 입력해 주세요.')
+        return
+      }
+      const untouched = parts.every((part) => part.items.every((item) => !item.body))
+      setParts(untouched ? imported : [...parts, ...imported])
+      setOpenPart(untouched ? 0 : parts.length)
+      setOpenItem(untouched ? '0-0' : `${parts.length}-0`)
+      setImportNote('내용을 확인해 주세요.')
+    } catch (cause) {
+      setImportNote(cause instanceof Error ? cause.message : 'PDF를 읽지 못했습니다')
+    } finally {
+      setImporting(false)
+      if (fileInput.current) fileInput.current.value = ''
+    }
+  }
   const takeFocus = (key: string) => (el: HTMLInputElement | null) => {
     if (!el || focusOn !== key) return
     el.focus()
@@ -264,6 +293,28 @@ function Step2() {
         onHelp={() => setGuideOpen(true)}
       />
       {guideOpen && <ApplicationGuide onClose={() => setGuideOpen(false)} />}
+
+      <div className="mb-[14px] flex flex-wrap items-center gap-[10px]">
+        <button
+          type="button"
+          onClick={() => fileInput.current?.click()}
+          disabled={importing}
+          className={`rounded-control border border-field bg-surface px-[14px] py-[8px] text-[13px] font-semibold text-ink ${
+            importing ? 'cursor-default opacity-60' : ''
+          }`}
+        >
+          {importing ? 'PDF 읽는 중…' : 'PDF로 불러오기'}
+        </button>
+        {/* 안내 문구는 두지 않는다 — 버튼 이름이 곧 설명이다. 결과와 오류만 옆에 적는다. */}
+        {importNote && <span className="text-[12.5px] text-body-2">{importNote}</span>}
+        <input
+          ref={fileInput}
+          type="file"
+          accept="application/pdf"
+          className="hidden"
+          onChange={(event) => void importPdf(event.target.files?.[0])}
+        />
+      </div>
 
       <div className="flex flex-col gap-[14px]">
         {parts.map((part, pi) => {

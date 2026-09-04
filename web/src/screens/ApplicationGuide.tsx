@@ -86,6 +86,10 @@ export function ApplicationGuide({ onClose }: { onClose?: () => void }) {
               꼬리질문을 하기 때문에 요약하지 말고{' '}
               <b className="font-semibold text-ink">제출한 그대로</b> 붙여넣는 것이 좋습니다.
             </p>
+            <p className="m-0 text-[14px] leading-[1.75] text-body">
+              지원서 PDF가 있으면 <b className="font-semibold text-ink">PDF로 불러오기</b>로 문항을
+              채운 뒤 확인만 하면 됩니다. 인적사항·학력 같은 부분은 빼고 가져옵니다.
+            </p>
           </section>
 
           <section className="flex flex-col gap-[10px]">
