@@ -23,15 +23,12 @@ import type { Camera } from './useCamera'
 export function SelfView({
   camera,
   visible,
-  measuring,
   onHide,
   onStop,
 }: {
   camera: Camera
   /** 화면에 보일지. 꺼도 촬영은 계속됩니다. */
   visible: boolean
-  /** 시선·표정을 재고 있는가. 정면 기준을 잡았을 때만 참입니다. */
-  measuring: boolean
   onHide: () => void
   onStop: () => void
 }) {
@@ -71,20 +68,14 @@ export function SelfView({
         )}
       </div>
 
-      {/* 재고 있는지 눈에 보이게 둔다. 정면 기준이 없으면 시선·표정은 조용히
-          기록되지 않는데, 그걸 리포트에 가서야 아는 것은 늦다. */}
+      {/* 기록 중이라는 사실을 눈에 보이게 둔다 — 카메라가 켜져 있으면 3초마다
+          스냅샷이 올라가 리포트의 시선·표정이 된다(useSnapshots). */}
       <div className="mt-[7px] flex items-center justify-end gap-[6px]">
         <span
           className="inline-block rounded-full"
-          style={{
-            width: 5,
-            height: 5,
-            background: measuring ? 'var(--color-listening)' : 'var(--color-stage-line)',
-          }}
+          style={{ width: 5, height: 5, background: 'var(--color-listening)' }}
         />
-        <span className="text-[11px] text-stage-muted-3">
-          {measuring ? '시선·표정 기록 중' : '정면 기준이 없어 기록하지 않습니다'}
-        </span>
+        <span className="text-[11px] text-stage-muted-3">시선·표정 기록 중</span>
       </div>
 
       <div className="mt-[5px] flex items-center justify-end gap-[9px] whitespace-nowrap">

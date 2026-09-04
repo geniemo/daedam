@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import type { ApplicationPart, Card } from '@/data/types'
-import type { Baseline } from '@/video/gaze'
 import { initialParts } from '@/data/mock'
 
 // README §State Management, minus the fields that became routes
@@ -29,14 +28,6 @@ interface AppState {
   cameraReady: boolean
 
   /**
-   * 정면의 기준선. 없으면 시선 분석을 하지 않습니다.
-   *
-   * 앉은 자리와 사람에 따라 원점·흔들림이 달라서 면접마다 다시 잡습니다 —
-   * 지난번 값을 재사용하면 조용히 틀린 숫자가 나옵니다.
-   */
-  baseline: Baseline | null
-
-  /**
    * 홈에 한 번 띄울 안내. 면접 화면이 결과 없이 홈으로 돌려보낼 때(다른 탭이
    * 이어받음·연결 실패·크레딧 부족) 이유를 여기 남긴다 — 말없이 홈에 떨어지면
    * 무슨 일이 있었는지 알 길이 없다.
@@ -45,7 +36,6 @@ interface AppState {
 
   setNotice: (text: string | null) => void
   setCameraReady: (v: boolean) => void
-  setBaseline: (b: Baseline | null) => void
   setActiveCard: (id: string) => void
   /** 서버 목록으로 카드를 갈아끼운다. 홈이 마운트될 때 한 번 — 파일이 진실이다. */
   setCards: (cards: Card[]) => void
@@ -62,7 +52,6 @@ interface AppState {
 
 export const useAppStore = create<AppState>((set, get) => ({
   cameraReady: false,
-  baseline: null,
   notice: null,
   setNotice: (notice) => set({ notice }),
   // 목록은 서버 파일에서 채운다. 목업으로 시작하면 실제로는 없는 면접이 잠깐
@@ -76,7 +65,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   parts: initialParts,
 
   setCameraReady: (cameraReady) => set({ cameraReady }),
-  setBaseline: (baseline) => set({ baseline }),
   setActiveCard: (id) => set({ activeCardId: id }),
 
   // 활성 카드가 새 목록에 없으면 첫 카드로 옮긴다 — 없는 카드를 가리킨 채로

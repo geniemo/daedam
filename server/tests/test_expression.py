@@ -220,7 +220,7 @@ def test_접기는_시선_방향을_격자로_접는다() -> None:
 
 
 def test_방향이_없는_옛_판독이면_시선_블록이_없다() -> None:
-    """gaze 필드가 생기기 전의 vlm.json도 접혀야 한다 — 그때는 홍채 기록이 남는다."""
+    """gaze 필드가 생기기 전의 vlm.json도 접혀야 한다 — 그 판은 시선 없이 표정만 나간다."""
     judgement = {
         "frames": [
             {"at": 1.0, "confident": 0, "focused": 100, "tense": 0, "flustered": 0}
