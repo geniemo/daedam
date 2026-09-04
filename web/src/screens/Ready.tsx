@@ -4,8 +4,6 @@ import { getCredits } from '@/api/credits'
 import { useNavigate } from 'react-router'
 import { useActiveCard, useAppStore } from '@/store/app'
 import { useCamera } from '@/video/useCamera'
-import { useFaceTracking } from '@/video/useFaceTracking'
-import { GazeBaseline } from '@/video/GazeBaseline'
 import { AccentDot, CheckDot, EmptyDot, OutlineButton, SectionLabel } from '@/components/ui'
 import { STAGE_NAMES } from '@/data/mock'
 
@@ -46,23 +44,6 @@ function Preflight({ onReady }: { onReady: (ready: boolean) => void }) {
     el.srcObject = camera.stream
     if (camera.stream) void el.play().catch(() => {})
   }, [camera.stream])
-
-  // 얼굴 인식이 이 기기에서 실시간으로 도는지 여기서 확인된다. 안 돌면 시선·표정
-  // 분석 전체가 무의미하므로, 보정을 붙이기 전에 이 숫자부터 봐야 한다.
-  const face = useFaceTracking(camera.stream, camera.state === 'on')
-  const baseline = useAppStore((s) => s.baseline)
-  const setBaseline = useAppStore((s) => s.setBaseline)
-  const [baselining, setBaselining] = useState(false)
-  // 카메라를 끄면 기준선도 버린다 — 다시 켜면 자리가 달라져 있을 수 있다.
-  //
-  // **켜짐 → 꺼짐 전환일 때만** 지운다. "지금 켜져 있지 않으면 지운다"로 두면
-  // 첫 렌더('idle')와 잠깐의 상태 변화에서도 돌아서, 방금 잡은 기준선을
-  // 조용히 날린다. 실측에서 면접 화면까지 기준선이 안 넘어갔다.
-  const wasOn = useRef(false)
-  useEffect(() => {
-    if (wasOn.current && camera.state !== 'on') setBaseline(null)
-    wasOn.current = camera.state === 'on'
-  }, [camera.state, setBaseline])
 
   // 화면을 벗어나면 마이크를 반드시 놓는다 — 안 놓으면 면접 화면이 마이크를
   // 다시 잡을 때 브라우저 표시가 둘이 되고, 탭이 계속 녹음 중으로 남는다.
@@ -122,16 +103,6 @@ function Preflight({ onReady }: { onReady: (ready: boolean) => void }) {
 
   return (
     <div className="mb-[26px] flex flex-col gap-3 rounded-card border border-line bg-surface p-5">
-      {baselining && (
-        <GazeBaseline
-          latest={face.latest}
-          onDone={(b) => {
-            setBaseline(b)
-            setBaselining(false)
-          }}
-          onCancel={() => setBaselining(false)}
-        />
-      )}
       <SectionLabel>시작 전 확인</SectionLabel>
       <div className="flex flex-col gap-[10px]">
         <div className="flex items-center gap-[9px]">
@@ -197,45 +168,6 @@ function Preflight({ onReady }: { onReady: (ready: boolean) => void }) {
             <span className="text-[12px] text-faint">
               얼굴이 가운데에 오고 밝은지 확인해 주세요
             </span>
-            {/* 시선 분석은 보정이 있어야만 성립한다 — 없으면 그럴듯한 헛숫자가
-                나오므로, 건너뛰면 그 지표 자체를 만들지 않는다. */}
-            {face.state === 'loading' && (
-              <span className="text-[12px] text-faintest">얼굴 인식을 준비하고 있습니다</span>
-            )}
-            {face.state === 'failed' && (
-              <span className="text-[12px] text-faintest">
-                얼굴 인식을 시작하지 못했습니다 · 영상은 그대로 녹화됩니다
-              </span>
-            )}
-            {face.state === 'running' && (
-              <div className="flex items-center gap-[10px]">
-                {baseline ? (
-                  <>
-                    <CheckDot size={15} />
-                    <span className="text-[13px] text-ink">정면 기준을 잡았습니다</span>
-                    <button
-                      onClick={() => setBaselining(true)}
-                      className="border-b border-field text-[12.5px] text-muted"
-                    >
-                      다시 하기
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <EmptyDot size={15} />
-                    <span className="text-[13px] text-muted">
-                      정면을 한 번 잡아 두면 면접 중 시선이 얼마나 흔들렸는지 알려 드립니다
-                    </span>
-                    <button
-                      onClick={() => setBaselining(true)}
-                      className="border-b border-field text-[12.5px] text-muted"
-                    >
-                      정면 잡기
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
           </div>
         )}
 

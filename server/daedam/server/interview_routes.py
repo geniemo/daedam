@@ -48,13 +48,6 @@ _VIDEO_NAME = "cam.webm"
 #: 생사를 같이하게 하려는 것이다 — 영상을 지우면 이것도 같이 지워진다.
 _VIDEO_START_NAME = "cam.start"
 
-#: 시선·표정 타임라인. 초당 한 줄이라 20분이 1,200줄뿐이고, 영상과 달리
-#: 통째로 덮어쓴다 — 조각을 이어 붙이는 것이 아니라서 순서 문제가 없다.
-_GAZE_NAME = "gaze.json"
-
-#: 타임라인 상한. 초당 한 줄이면 20분이 100KB 안팎이라 1MB면 넉넉하다.
-_GAZE_MAX = 1024 * 1024
-
 #: 스냅샷 디렉터리 이름은 판독하는 쪽(eval/expression.py)이 소유한다 —
 #: 올리는 곳과 읽는 곳이 서로 다른 이름을 보게 되면 판독이 조용히 빈다.
 _FRAMES_DIR = expression.FRAMES_DIR
@@ -301,40 +294,6 @@ def create_interviews_router(
         # 재접속으로 뒤늦게 온 첫 조각이 앞의 값을 밀어내면 안 된다.
         if startS is not None and written == 0:
             (path.parent / _VIDEO_START_NAME).write_text(f"{startS:.2f}")
-
-    @router.put("/{interview_id}/gaze", status_code=204)
-    async def put_gaze(
-        interview_id: str,
-        request: Request,
-        session: str | None = None,
-        user_id: str = Depends(accounts.current_user_id),
-    ) -> None:
-        """시선·표정 타임라인을 저장한다. 면접 중 주기적으로 덮어쓴다.
-
-        영상과 달리 **통째로 교체한다.** 초당 한 줄이라 20분이 100KB 안팎이고,
-        이어 붙이지 않으니 순서가 어긋날 일도 중간이 빌 일도 없다. 창을 닫아도
-        마지막으로 올린 데까지는 남는다.
-
-        답변별로 쪼개는 것은 서버가 나중에 한다 — 답변 구간은 면접이 끝난 뒤
-        오디오를 분석해야 알 수 있어서, 화면은 시각이 붙은 타임라인만 보낸다.
-        """
-        owned(interview_id, user_id)
-        session_id = resolve_session(interview_id, session)
-        body = await request.body()
-        if len(body) > _GAZE_MAX:
-            raise HTTPException(status_code=413, detail="타임라인이 너무 깁니다")
-        try:
-            payload = json.loads(body)
-        except ValueError as error:
-            raise HTTPException(status_code=400, detail="JSON이 아닙니다") from error
-        if not isinstance(payload, dict) or not isinstance(payload.get("seconds"), list):
-            raise HTTPException(status_code=400, detail="타임라인 형식이 아닙니다")
-
-        directory = store.session_directory(interview_id, session_id)
-        directory.mkdir(parents=True, exist_ok=True)
-        (directory / _GAZE_NAME).write_text(
-            json.dumps(payload, ensure_ascii=False), encoding="utf-8"
-        )
 
     @router.post("/{interview_id}/frames", status_code=204)
     async def append_frame(

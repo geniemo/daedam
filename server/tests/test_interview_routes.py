@@ -324,51 +324,6 @@ def test_남의_면접에는_녹화를_올릴_수_없다(tmp_path) -> None:
     assert not (store.session_directory("bbb", other) / "cam.webm").exists()
 
 
-def test_시선_타임라인은_통째로_덮어쓴다(tmp_path) -> None:
-    """영상과 달리 이어 붙이지 않는다 — 순서도 구멍도 걱정할 것이 없다."""
-    import json
-
-    bundle = _store(tmp_path, ("aaa", True))
-    store, _ = bundle
-    session_id = store.start_session("aaa")
-    client = _client(bundle)
-    url = f"/api/interviews/aaa/gaze?session={session_id}"
-
-    first = {"baseline": {"center": {"x": 0, "y": 0}, "noise": 0.01},
-             "seconds": [{"at": 1.0, "cell": 4, "impression": "focused", "ratio": 1.0}]}
-    assert client.put(url, json=first).status_code == 204
-
-    second = {**first, "seconds": first["seconds"] + [
-        {"at": 2.0, "cell": 7, "impression": "tense", "ratio": 4.2}]}
-    assert client.put(url, json=second).status_code == 204
-
-    saved = json.loads((store.session_directory("aaa", session_id) / "gaze.json").read_text())
-    assert len(saved["seconds"]) == 2  # 덧붙지 않고 교체됐다
-
-
-def test_타임라인이_아닌_것은_거절한다(tmp_path) -> None:
-    bundle = _store(tmp_path, ("aaa", True))
-    store, _ = bundle
-    session_id = store.start_session("aaa")
-    client = _client(bundle)
-    url = f"/api/interviews/aaa/gaze?session={session_id}"
-
-    assert client.put(url, content=b"not json").status_code == 400
-    assert client.put(url, json={"seconds": "문자열"}).status_code == 400
-    assert not (store.session_directory("aaa", session_id) / "gaze.json").exists()
-
-
-def test_남의_면접에는_타임라인을_올릴_수_없다(tmp_path) -> None:
-    bundle = _store(tmp_path, ("aaa", True), ("bbb", True))
-    store, _ = bundle
-    other = store.start_session("bbb")
-    r = _client(bundle).put(
-        f"/api/interviews/aaa/gaze?session={other}",
-        json={"seconds": []},
-    )
-    assert r.status_code == 404
-    assert not (store.session_directory("bbb", other) / "gaze.json").exists()
-
 
 def test_남의_면접_기록은_고를_수_없다(tmp_path) -> None:
     bundle = _store(tmp_path, ("aaa", True), ("bbb", True))

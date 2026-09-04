@@ -342,11 +342,10 @@ def _gaze_fold(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
         return None
     return {
         # 3초당 한 장이므로 장수 × 3이 관찰된 시간의 근사다 — 화면의
-        # "얼굴이 보인 시간" 경고가 홍채 기록과 같은 눈금으로 걸린다.
+        # "얼굴이 보인 시간" 경고가 이 눈금으로 걸린다.
         "seconds": counted * 3,
         "cells": [round(c / counted, 4) for c in cells],
         "steady": round(cells[4] / counted, 4),
-        "wander": 0.0,
         "source": "vlm",
     }
 
@@ -357,8 +356,8 @@ def fold(
 ) -> dict[str, Any]:
     """판독 원값을 리포트가 그릴 형태로 접는다 — 전체 평균 + 답변별.
 
-    답변 경계로 자르는 일을 서버가 하는 이유는 시선(eval/gaze.py)과 같다:
-    그 경계가 면접이 끝난 뒤 오디오 분석에서야 나온다.
+    답변 경계로 자르는 일을 서버가 하는 이유: 그 경계가 면접이 끝난 뒤 오디오
+    분석에서야 나온다 — 화면은 면접이 도는 동안 그 경계를 모른다.
     """
     rows = judgement.get("frames") or []
     shares = [share for row in rows if (share := _shares(row)) is not None]
@@ -375,7 +374,7 @@ def fold(
             )
             gaze["answers"].append(
                 _gaze_fold(inside)
-                or {"seconds": 0, "cells": [0.0] * 9, "steady": 0.0, "wander": 0.0}
+                or {"seconds": 0, "cells": [0.0] * 9, "steady": 0.0}
             )
     payload: dict[str, Any] = {
         "gaze": gaze,

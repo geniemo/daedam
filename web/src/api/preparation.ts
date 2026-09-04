@@ -142,8 +142,6 @@ export interface GazeReport {
   cells: number[]
   /** 정면에 머문 비율. */
   steady: number
-  /** 정면에서 벗어난 정도의 평균. */
-  wander: number
   /** 답변마다 같은 모양으로 하나씩. 음성 지표의 답변과 순서가 같습니다. */
   answers: Omit<GazeReport, 'answers'>[]
 }

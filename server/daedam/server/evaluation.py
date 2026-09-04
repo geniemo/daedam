@@ -17,7 +17,6 @@ LLM 호출이라 실패할 수 있다. 하나로 묶으면 코칭이 실패했�
 
 from __future__ import annotations
 
-import json
 import logging
 import threading
 from dataclasses import dataclass
@@ -25,7 +24,6 @@ from typing import Any, Callable, Literal
 
 from daedam.eval.coaching import evaluate
 from daedam.eval import expression
-from daedam.eval.gaze import analyze as analyze_gaze
 from daedam.eval.voice import analyze
 
 from .store import InterviewStore, has_answer
@@ -136,28 +134,9 @@ class InterviewEvaluation:
             else:
                 logger.warning("녹음이 없어 음성 지표를 건너뜁니다 (%s)", session_id)
 
-            # 시선·표정은 화면이 초당 한 줄로 올려 둔 것을 접는다. 답변 구간은
-            # 방금 위에서 나왔으므로 여기서만 자를 수 있다 — 화면은 면접이 도는
-            # 동안 그 경계를 모른다.
-            gaze_path = (
-                self._store.session_directory(record.application_id, session_id)
-                / "gaze.json"
-            )
-            if gaze_path.exists():
-                try:
-                    timeline = json.loads(gaze_path.read_text(encoding="utf-8"))
-                    gaze = analyze_gaze(
-                        timeline, (payload.get("voice") or {}).get("answers")
-                    )
-                    if gaze is not None:
-                        payload["gaze"] = gaze
-                except (OSError, ValueError):
-                    # 시선은 곁가지다. 못 읽어도 코칭과 음성 지표는 나가야 한다.
-                    logger.warning("시선 기록을 읽지 못했습니다 (%s)", session_id, exc_info=True)
-
-            # 표정은 스냅샷을 VLM으로 읽는다(eval/expression.py의 왜 참고).
-            # 시선과 별도 필드인 이유: 계기가 다르다 — 시선은 홍채 기하,
-            # 표정은 판독이라 한쪽만 실패할 수 있고 실제로 그렇게 다룬다.
+            # 시선·표정은 스냅샷을 VLM으로 읽는다(eval/expression.py의 왜 참고).
+            # 리포트에서는 별도 필드다 — 화면이 따로 그리고, 시선은 방향이
+            # 읽힌 프레임이 하나도 없으면 빠질 수 있다.
             frames_dir = (
                 self._store.session_directory(record.application_id, session_id)
                 / expression.FRAMES_DIR
@@ -169,11 +148,11 @@ class InterviewEvaluation:
                         folded = expression.fold(
                             judgement, (payload.get("voice") or {}).get("answers")
                         )
-                        # 시선은 판독이 있으면 판독을 쓴다. 홍채 기하는 방향
-                        # 라벨이 카메라 시점이라 지원자 기준과 좌우가 뒤집혔고
-                        # (실측: 오른쪽 셀프뷰를 보는데 "왼쪽 58.7%"), 벗어남
-                        # 문턱도 화면을 훑는 정상 시선을 이탈로 셌다. 판독이
-                        # 없는 지난 판만 홍채 기록으로 남는다.
+                        # 시선은 판독에서 온다. 앞서 있던 브라우저 홍채 추적은
+                        # 방향 라벨이 카메라 시점이라 지원자 기준과 좌우가
+                        # 뒤집혔고(실측: 오른쪽 셀프뷰를 보는데 "왼쪽 58.7%"),
+                        # 벗어남 문턱도 화면을 훑는 정상 시선을 이탈로 셌다 —
+                        # 그래서 걷어냈다.
                         vlm_gaze = folded.pop("gaze", None)
                         if vlm_gaze is not None:
                             payload["gaze"] = vlm_gaze

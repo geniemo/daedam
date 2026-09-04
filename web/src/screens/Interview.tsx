@@ -8,8 +8,6 @@ import { useCamera } from '@/video/useCamera'
 import { SelfView } from '@/video/SelfView'
 import { useRecorder } from '@/video/useRecorder'
 import { useSnapshots } from '@/video/useSnapshots'
-import { useFaceTracking } from '@/video/useFaceTracking'
-import { useGazeLog } from '@/video/useGazeLog'
 import { Avatar, Waveform } from '@/components/Stage'
 
 /** 결과 없이 홈으로 돌아갈 때 홈에 남기는 한 줄. 키는 서버의 ended.reason. */
@@ -84,44 +82,15 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
     elapsedNow,
   )
 
-  // 시선·표정은 정면 기준을 잡은 경우에만 잰다. 기준이 없으면 "벗어났다"의
-  // 원점이 없어서 그럴듯한 헛숫자가 나온다.
-  const baseline = useAppStore((s) => s.baseline)
-  const face = useFaceTracking(camera.stream, camera.state === 'on' && baseline !== null)
-  const gaze = useGazeLog(face.latest, baseline, elapsedNow)
-
-  // 표정 판독용 스냅샷. 녹화와 별개로 3초마다 한 장 — 서버가 영상 디코더 없이
-  // Gemini로 판독하도록 화면이 프레임을 직접 보낸다. 시선과 달리 기준선이
-  // 필요 없어서 카메라만 켜져 있으면 찍는다.
+  // 시선·표정 판독용 스냅샷. 녹화와 별개로 3초마다 한 장 — 서버가 영상
+  // 디코더 없이 Gemini로 판독하도록 화면이 프레임을 직접 보낸다. 카메라만
+  // 켜져 있으면 찍는다. 앞서 있던 브라우저 안 얼굴 추적과 정면 기준선은
+  // 걷어냈다 — 판독이 지원자 기준으로 방향을 읽어 기준선이 필요 없다.
   useSnapshots(
     camera.stream,
     sessionId ? `/api/interviews/${card.id}/frames?session=${sessionId}` : null,
-    face.latest,
     elapsedNow,
   )
-
-  // 주기적으로 통째로 덮어쓴다. 영상과 달리 이어 붙이는 것이 아니라 순서를
-  // 걱정할 필요가 없고, 창을 닫아도 마지막으로 올린 데까지는 남는다.
-  useEffect(() => {
-    if (!sessionId || !baseline) return
-    const url = `/api/interviews/${card.id}/gaze?session=${sessionId}`
-    const put = () => {
-      const log = gaze.snapshot()
-      if (!log) return
-      void fetch(url, {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(log),
-      }).catch(() => {
-        // 실패해도 다음 주기에 통째로 다시 보낸다 — 놓친 조각이라는 개념이 없다.
-      })
-    }
-    const timer = window.setInterval(put, 30_000)
-    return () => {
-      window.clearInterval(timer)
-      put() // 면접이 끝나는 순간의 마지막 한 번
-    }
-  }, [card.id, sessionId, baseline, gaze])
 
   return (
     <div className="fixed inset-0 z-60 flex flex-col bg-stage">
@@ -159,7 +128,6 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
         <SelfView
           camera={camera}
           visible={selfVisible}
-          measuring={baseline !== null}
           onHide={() => setSelfVisible((v) => !v)}
           onStop={camera.stop}
         />
