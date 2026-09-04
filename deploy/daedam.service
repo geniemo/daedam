@@ -5,8 +5,8 @@
 #   sudo systemctl enable --now daedam
 #   sudo journalctl -u daedam -f        # 로그
 #
-# User·경로는 실제 배포에 맞게 고칠 것. 아래는 ubuntu 사용자의 홈에
-# 리포지토리를 둔 경우다.
+# User·경로는 실제 VM(skku-coaching-4315, 사용자 student)의 것이다. 다른
+# 곳에 올리면 셋을 같이 고친다.
 
 [Unit]
 Description=대담 (Daedam) — AI 음성 모의면접
@@ -15,8 +15,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=ubuntu
-WorkingDirectory=/home/ubuntu/daedam/server
+User=student
+WorkingDirectory=/home/student/daedam/server
 
 # 운영 모드. .env가 아니라 여기서 준다 — .env가 통째로 안 읽히는 사고에서도
 # 운영으로 판정돼, 로그인 없는 서버로 뜨는 대신 기동을 거부한다
@@ -24,7 +24,7 @@ WorkingDirectory=/home/ubuntu/daedam/server
 Environment=DAEDAM_ENV=production
 
 # uv가 .venv를 찾고 .env는 앱이 직접 읽는다(daedam/server/app.py).
-ExecStart=/home/ubuntu/.local/bin/uv run uvicorn daedam.server.app:app \
+ExecStart=/home/student/.local/bin/uv run uvicorn daedam.server.app:app \
     --host 127.0.0.1 --port 8000
 
 # 워커를 늘리지 않는다. 지금 구조는 프로세스 하나를 전제한다 — 필러 커넥션

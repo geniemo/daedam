@@ -45,7 +45,7 @@ cd ../web && npm ci && npm run build  # dist/ 를 서버가 서빙한다
 > 결과는 같다.
 
 ```bash
-SERVER_BASE_URL=https://{도메인}     # OAuth 콜백이 여기에 /api/auth/... 를 붙인다
+SERVER_BASE_URL=https://daedam.app  # OAuth 콜백이 여기에 /api/auth/... 를 붙인다
 APP_BASE_URL=                        # 비운다 — 프론트가 같은 오리진이다
 COOKIE_SECURE=1                      # HTTPS이므로
 SESSION_SECRET=<고정값>              # 비우면 재시작마다 전원 로그아웃
@@ -67,7 +67,7 @@ cd ~/daedam/server && uv run python -c "import secrets; print(secrets.token_urls
 **추가**한다(로컬 것은 지우지 말 것 — 여러 개 등록된다).
 
 ```
-https://{도메인}/api/auth/kakao/callback
+https://daedam.app/api/auth/kakao/callback
 ```
 
 ## 5. 서비스 등록
@@ -90,7 +90,7 @@ INFO  daedam.server.app: 프론트를 같은 오리진에서 서빙합니다
 
 ## 6. HTTPS
 
-`deploy/Caddyfile`의 `{도메인}`을 바꿔 넣고:
+`deploy/Caddyfile`은 `daedam.app`으로 돼 있다:
 
 ```bash
 sudo cp ~/daedam/deploy/Caddyfile /etc/caddy/Caddyfile
@@ -116,7 +116,7 @@ WebSocket이 끊긴다. 프론트가 재접속하므로 복구는 되지만 몇 
 
 | | 명령 | 왜 |
 |---|---|---|
-| 상태 | `curl -s https://{도메인}/api/health` | `{"status":"ok"}`가 아니면 DB나 디스크 문제. 외부 감시는 이 주소를 본다 — `/`는 늘 200이다 |
+| 상태 | `curl -s https://daedam.app/api/health` | `{"status":"ok"}`가 아니면 DB나 디스크 문제. 외부 감시는 이 주소를 본다 — `/`는 늘 200이다 |
 | 디스크 | `du -sh ~/daedam/server/data` | 20분 면접 한 판이 약 120 MB(wav 38 · 영상 56~80 · 스틸 6). 51 GB면 약 400판. `RECORDING_RETENTION_DAYS`가 오래된 판의 미디어를 지운다 |
 | 메모리 | `systemctl status daedam` | 정상 약 180 MB. 크게 늘면 새는 것이다 |
 | 면접 원가 | `journalctl -u daedam \| grep '토큰 사용'` | 크레딧 가격을 확정할 근거 |

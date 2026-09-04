@@ -24,7 +24,8 @@ logger = logging.getLogger(__name__)
 def create_health_router(db: Database, data_root: Path) -> APIRouter:
     router = APIRouter()
 
-    @router.get("/api/health")
+    # 감시 도구는 HEAD를 쓰기도 한다 — get만 두면 405가 나 "죽었다"로 읽힌다.
+    @router.api_route("/api/health", methods=["GET", "HEAD"])
     def health() -> JSONResponse:
         try:
             with db.session() as session:

@@ -161,7 +161,9 @@ def _mount_frontend(app: FastAPI) -> None:
     # ETag가 있어 바뀌지 않았으면 304로 끝난다.
     revalidate = {"Cache-Control": "no-cache"}
 
-    @app.get("/{full_path:path}", include_in_schema=False)
+    # HEAD도 받는다 — 감시 도구와 링크 미리보기가 HEAD를 쓴다. FastAPI의 get은
+    # HEAD를 자동으로 붙이지 않아서 405가 났다(실측: 배포 직후 curl -I).
+    @app.api_route("/{full_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
     def spa(full_path: str) -> FileResponse:
         # 파일이 실제로 있으면 그것을(favicon 등), 없으면 SPA 진입점을.
         candidate = (dist / full_path).resolve()

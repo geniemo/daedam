@@ -26,3 +26,8 @@ def test_데이터_디렉터리에_못_쓰면_503(tmp_path) -> None:
     blocked.write_text("파일이라 그 아래에 쓸 수 없다")
     response = _client(tmp_path, data_root=blocked).get("/api/health")
     assert response.status_code == 503 and response.json()["status"] == "fail"
+
+
+def test_HEAD도_받는다(tmp_path) -> None:
+    """감시 도구가 HEAD로 두드린다. get만 두면 405가 나 죽은 것으로 읽힌다."""
+    assert _client(tmp_path).head("/api/health").status_code == 200
