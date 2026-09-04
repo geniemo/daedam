@@ -8,6 +8,7 @@ import type { Insufficient } from '@/api/credits'
 import { InsufficientCreditsError } from '@/api/preparation'
 import { useAppStore } from '@/store/app'
 import { Label, TextArea, TextField } from '@/components/ui'
+import { ApplicationGuide } from '@/screens/ApplicationGuide'
 
 /** README §2·§3. 등록 STEP 1·2 */
 export function Register() {
@@ -47,13 +48,37 @@ function TopBar({ step }: { step: 1 | 2 }) {
   )
 }
 
-function StepHeading({ step, title, desc }: { step: number; title: string; desc: string }) {
+function StepHeading({
+  step,
+  title,
+  desc,
+  onHelp,
+}: {
+  step: number
+  title: string
+  desc: string
+  /** 제목 옆 "?" — 있으면 그린다. 처음 온 사람이 멈추는 화면에만 둔다. */
+  onHelp?: () => void
+}) {
   return (
     <>
       <div className="mb-[10px] text-[12px] font-semibold tracking-[.05em] text-accent">
         STEP {step}
       </div>
-      <h1 className="m-0 text-[25px] font-bold tracking-[-.03em]">{title}</h1>
+      <div className="flex items-center gap-[10px]">
+        <h1 className="m-0 text-[25px] font-bold tracking-[-.03em]">{title}</h1>
+        {onHelp && (
+          <button
+            type="button"
+            onClick={onHelp}
+            aria-label="작성 가이드 보기"
+            title="작성 가이드"
+            className="flex h-[22px] w-[22px] items-center justify-center rounded-full border border-field text-[12.5px] font-semibold text-muted hover:border-ink hover:text-ink"
+          >
+            ?
+          </button>
+        )}
+      </div>
       <p className="mt-[10px] mb-8 text-[14px] leading-[1.6] text-muted">{desc}</p>
     </>
   )
@@ -166,6 +191,8 @@ function Step2() {
   const [focusOn, setFocusOn] = useState<string | null>(null)
   // 삭제를 물어보는 중인 파트. 지원서는 다시 쓰기 번거로워 되돌릴 수단이 없다.
   const [confirmPart, setConfirmPart] = useState<number | null>(null)
+  // "?"가 여는 작성 가이드. 입력은 그대로 둔 채 위에 덮는다.
+  const [guideOpen, setGuideOpen] = useState(false)
   const takeFocus = (key: string) => (el: HTMLInputElement | null) => {
     if (!el || focusOn !== key) return
     el.focus()
@@ -233,8 +260,10 @@ function Step2() {
       <StepHeading
         step={2}
         title="지원서를 넣어 주세요"
-        desc="회사 양식 그대로 파트를 만들고 그 안에 항목을 나눠 넣으면, 항목 하나하나를 파고드는 질문이 만들어집니다."
+        desc="파트와 항목을 추가하고 내용을 입력해 주세요."
+        onHelp={() => setGuideOpen(true)}
       />
+      {guideOpen && <ApplicationGuide onClose={() => setGuideOpen(false)} />}
 
       <div className="flex flex-col gap-[14px]">
         {parts.map((part, pi) => {
