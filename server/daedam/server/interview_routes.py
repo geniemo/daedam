@@ -22,7 +22,8 @@
 
 from __future__ import annotations
 
-import json
+import asyncio
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -99,6 +100,11 @@ def _history(store: InterviewStore, application_id: str) -> list[dict[str, Any]]
         for item in store.list_sessions(application_id)
         if item.has_answer
     ]
+
+
+def _append_bytes(path: Path, chunk: bytes) -> None:
+    with path.open("ab") as handle:
+        handle.write(chunk)
 
 
 def create_interviews_router(
@@ -287,8 +293,9 @@ def create_interviews_router(
         written = path.stat().st_size if path.exists() else 0
         if written + len(chunk) > _VIDEO_MAX:
             raise HTTPException(status_code=413, detail="녹화가 너무 깁니다")
-        with path.open("ab") as handle:
-            handle.write(chunk)
+        # 디스크 쓰기는 스레드로. 이 라우트는 async라 여기서 막히면 그 시간만큼
+        # 모든 면접의 오디오가 멈춘다(워커 하나 = 루프 하나).
+        await asyncio.to_thread(_append_bytes, path, chunk)
 
         # 원점은 첫 조각에만 실려 온다. 이미 적혀 있으면 덮지 않는다 —
         # 재접속으로 뒤늦게 온 첫 조각이 앞의 값을 밀어내면 안 된다.
@@ -330,7 +337,7 @@ def create_interviews_router(
         if len(list(directory.glob("*.jpg"))) >= _FRAMES_COUNT_MAX:
             raise HTTPException(status_code=413, detail="스냅샷이 너무 많습니다")
         # 07.1f: 1200.0초(20분)까지 자릿수가 같아 이름 정렬이 곧 시간 정렬이다.
-        (directory / f"f{at:07.1f}.jpg").write_bytes(body)
+        await asyncio.to_thread((directory / f"f{at:07.1f}.jpg").write_bytes, body)
 
     @router.get("/{interview_id}/video")
     def get_video(
