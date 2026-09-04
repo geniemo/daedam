@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 import threading
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable, Literal
 
 from daedam.eval.coaching import evaluate
@@ -69,6 +70,7 @@ class InterviewEvaluation:
         self._coach = coach
         self._judge = judge
         self._states: dict[str, _State] = {}
+        self._recover()
 
     def start(self, session_id: str) -> bool:
         """피드백 생성을 시작한다. 이미 돌고 있으면 아무것도 하지 않는다.
@@ -88,6 +90,19 @@ class InterviewEvaluation:
         self._states[session_id] = _State(phase="running")
         threading.Thread(target=self._run, args=(session_id,), daemon=True).start()
         return True
+
+    def _recover(self) -> None:
+        """끝났는데 피드백이 없는 판 — 재시작으로 끊긴 생성을 이어서 한다.
+
+        준비 파이프라인(`preparation._recover`)과 같은 이유다. 이 스레드는
+        데몬이라 서버가 내려가면 그대로 죽는데, 앞서는 그 판의 리포트가 영영
+        만들어지지 않았다(화면은 "분석 결과를 만들지 못했습니다"). 완료의
+        증거가 저장된 피드백이므로 여기서 다시 깨우면 된다 — 코칭은 다시
+        불러도 같은 값이고, 판독은 원값(vlm.json)이 있으면 그것을 쓴다.
+        """
+        for record in self._store.unevaluated_sessions():
+            logger.info("끊긴 피드백 생성을 이어받습니다 (session=%s)", record.id)
+            self.start(record.id)
 
     def status(self, session_id: str) -> FeedbackStatus:
         """완료의 증거는 저장된 피드백이다 — 재시작해도 done이 복원된다."""
@@ -184,6 +199,9 @@ class InterviewEvaluation:
                     pass
 
             self._store.save_feedback(session_id, payload)
+            _drop_raw_audio(
+                self._store.session_directory(record.application_id, session_id)
+            )
             del self._states[session_id]  # 완료 — 이제부터 저장된 것이 진실이다
             logger.info(
                 "피드백 저장 (session=%s): 점수 %s · 답변 %d개",
@@ -194,6 +212,23 @@ class InterviewEvaluation:
         except Exception:
             logger.exception("피드백 생성 실패 (session=%s)", session_id)
             state.phase = "failed"
+
+
+def _drop_raw_audio(directory: Path) -> None:
+    """재생용 wav가 있으면 원본 pcm을 지운다.
+
+    wav는 pcm에 헤더만 붙인 것이라(recording.py) 같은 바이트가 두 벌이었다 —
+    20분 면접의 음성 76MB 중 절반. 지표와 재생은 wav를 읽고, 피드백이 저장된
+    뒤에는 이 판에 오디오가 더 붙지 않는다(끝난 판은 이어받지 않는다).
+    """
+    pcm = directory / "mic.pcm"
+    wav = directory / "mic.wav"
+    if not (wav.exists() and pcm.exists()):
+        return
+    try:
+        pcm.unlink()
+    except OSError:
+        logger.warning("원본 pcm을 지우지 못했습니다 (%s)", pcm, exc_info=True)
 
 
 def _repair_transcript(

@@ -52,6 +52,8 @@ SESSION_SECRET=<고정값>              # 비우면 재시작마다 전원 로�
 INTERVIEW_PROFILE=full               # 제품 길이. 시연용은 demo
 RESEARCH_MODE=live
 SEARCH_EMBEDDINGS=gemini
+CREDITS_SIGNUP_CAP=300               # 가입 선물 총량(명). 예산으로 정한다
+RECORDING_RETENTION_DAYS=90          # 녹음 보관 기간. 개인정보처리방침과 같은 값
 ```
 
 `SESSION_SECRET` 생성:
@@ -114,7 +116,8 @@ WebSocket이 끊긴다. 프론트가 재접속하므로 복구는 되지만 몇 
 
 | | 명령 | 왜 |
 |---|---|---|
-| 디스크 | `du -sh ~/daedam/server/data` | 20분 면접 한 판이 73 MB(pcm+wav). 51 GB면 약 700판 |
+| 상태 | `curl -s https://{도메인}/api/health` | `{"status":"ok"}`가 아니면 DB나 디스크 문제. 외부 감시는 이 주소를 본다 — `/`는 늘 200이다 |
+| 디스크 | `du -sh ~/daedam/server/data` | 20분 면접 한 판이 약 120 MB(wav 38 · 영상 56~80 · 스틸 6). 51 GB면 약 400판. `RECORDING_RETENTION_DAYS`가 오래된 판의 미디어를 지운다 |
 | 메모리 | `systemctl status daedam` | 정상 약 180 MB. 크게 늘면 새는 것이다 |
 | 면접 원가 | `journalctl -u daedam \| grep '토큰 사용'` | 크레딧 가격을 확정할 근거 |
 | 크레딧 | `journalctl -u daedam \| grep 크레딧` | 지급·차감·환불이 의도대로 도는지 |
@@ -124,6 +127,4 @@ WebSocket이 끊긴다. 프론트가 재접속하므로 복구는 되지만 몇 
 - **PostgreSQL** — 동시 면접이 늘어 SQLite 쓰기 경합이 보이면 `DATABASE_URL`만
   바꾼다. 드라이버(`asyncpg`)는 이미 들어 있다
 - **워커 다중화** — 위의 프로세스 메모리 상태를 밖으로 빼야 가능하다
-- **녹음 보관 정책** — 지금은 무한히 쌓인다. `mic.pcm`은 `mic.wav`를 만든 뒤
-  지워도 되고(절반), 오래된 녹음을 정리하는 기준도 필요하다
 - **백업** — `data/` 하나만 챙기면 된다(DB 파일과 녹음이 다 그 안에 있다)

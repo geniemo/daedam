@@ -22,7 +22,7 @@ from starlette.websockets import WebSocket
 
 from daedam.db import Database, User
 
-from .credits import SIGNUP_GRANT, Credits
+from .credits import Credits
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +124,7 @@ class Accounts:
             session.flush()
             user_id = found.id
         if created and self._credits is not None:
-            self._credits.grant(user_id, SIGNUP_GRANT, "signup_grant")
+            self._credits.grant_signup(user_id)
         return user_id
 
     def complete_onboarding(self, user_id: str, name: str) -> dict[str, Any] | None:
