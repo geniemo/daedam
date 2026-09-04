@@ -235,6 +235,14 @@ class _Usage:
         )
 
 
+def _last_said(recording: InterviewRecording, speaker: str) -> str:
+    """이 판에서 `speaker`가 마지막으로 한 말. 없으면 빈 문자열."""
+    for utterance in reversed(recording.utterances):
+        if utterance.speaker == speaker:
+            return utterance.text
+    return ""
+
+
 def _elapsed_s(state: Mapping[str, Any]) -> float:
     """면접이 시작된 뒤 흐른 초. 시작 시각이 없으면 0으로 본다."""
     started_at = state.get(STATE_STARTED_AT)
@@ -505,6 +513,11 @@ def create_live_router(
                 "sessionId": session_id,
                 "elapsedSeconds": int(_elapsed_s(session.state)),
                 "asked": len(session.state.get(STATE_ASKED, [])),
+                # 재접속(다른 탭 포함)이면 면접관이 마지막으로 한 말. 새 탭은
+                # 자막이 비어 있어서 지금 무슨 질문에 답하던 중인지 알 길이
+                # 없었다 — 실측에서 지원자가 면접관에게 되물었다. 새 판이면 빈
+                # 문자열이고 프론트가 무시한다.
+                "caption": _last_said(recording, "interviewer"),
             }
         )
 

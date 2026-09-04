@@ -608,3 +608,32 @@ def test_러너가_죽어도_답변이_있으면_판과_크레딧을_남긴다(t
         assert websocket.receive_json() == {"type": "ended", "reason": "failed"}
     assert store.load_session(session_id).ended_at is None
     assert credits.balance(user_id) == before - COST_INTERVIEW
+
+
+# ── 재접속 자막 ──────────────────────────────────────────────────────────
+
+
+class _TalkingRunner(_FakeRunner):
+    """질문 하나를 말한 뒤 살아 있는 대역 — 커넥션이 끊겨도 판은 이어진다."""
+
+    async def run_live(self, *, session, live_request_queue, run_config):
+        yield Event(
+            author="interviewer",
+            output_transcription=types.Transcription(
+                text="자기소개 부탁드립니다.", finished=True
+            ),
+        )
+        while True:
+            self.heard.append(await live_request_queue.get())
+
+
+def test_재접속_첫_메시지에_면접관의_마지막_말이_실린다(tmp_path) -> None:
+    """다른 탭으로 옮기면 자막이 비어 지금 무슨 질문인지 알 수 없었다 —
+    실측에서 지원자가 면접관에게 되물었다."""
+    client = _client(_TalkingRunner(), _seeded_store(tmp_path, "again"))
+    with client.websocket_connect("/ws/interview?card=again") as first:
+        assert _handshake(first)["caption"] == ""  # 새 판 — 아직 아무 말도 없다
+        while first.receive_json().get("final") is not True:
+            pass
+    with client.websocket_connect("/ws/interview?card=again") as second:
+        assert _handshake(second)["caption"] == "자기소개 부탁드립니다."

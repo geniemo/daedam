@@ -15,7 +15,7 @@ import { Avatar, Waveform } from '@/components/Stage'
 /** 결과 없이 홈으로 돌아갈 때 홈에 남기는 한 줄. 키는 서버의 ended.reason. */
 const FINISH_NOTICE: Record<string, string> = {
   credits: '크레딧이 부족해 면접을 시작하지 못했습니다.',
-  replaced: '다른 탭에서 같은 면접이 열려 이 탭은 닫았습니다. 면접은 그쪽에서 이어집니다.',
+  replaced: '다른 탭에서 같은 면접이 열렸습니다. 새 탭에서 계속 진행해 주세요.',
   failed:
     '면접 서버에 연결하지 못했습니다. 잠시 뒤 다시 시작해 주세요. 답변 전이었다면 크레딧은 돌려드렸고, 답변이 있었다면 한 시간 안에 다시 시작하면 이어집니다.',
   rejected: '이 면접을 시작할 수 없습니다. 준비가 끝났는지 확인해 주세요.',
