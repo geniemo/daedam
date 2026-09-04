@@ -296,3 +296,45 @@ def test_온전한_질문_전사는_보정하지_않는다() -> None:
     }
     repaired = _repair_transcript(transcript, questions)
     assert repaired["utterances"][0]["text"] == "지원 이유는 무엇인가요?"
+
+
+# ── 재기동 복구 · 원본 pcm 정리 ──────────────────────────────────────────
+
+
+def test_끝났는데_피드백이_없는_판은_재기동_때_이어서_만든다(tmp_path) -> None:
+    """생성 스레드는 데몬이라 재시작에 죽는다 — 앞서는 그 판의 리포트가 영영
+    없었다. 완료의 증거가 저장된 피드백이니 다시 깨우면 된다."""
+    store, session_id = _store(tmp_path)
+    _record(store, session_id)
+    store.end_session(session_id)
+    # 답변이 없는 판은 이어받지 않는다 — 만들 것이 없다.
+    silent = store.start_session("itv")
+    store.save_transcript(silent, {"durationS": 1.0, "utterances": [
+        {"speaker": "interviewer", "text": "안녕하세요", "at": 0.5}]})
+    store.end_session(silent)
+
+    calls: list[str] = []
+
+    def coach(**kwargs):
+        calls.append("coach")
+        return _coaching()
+
+    evaluation = InterviewEvaluation(store, coach=coach)  # 생성자가 복구를 돈다
+    _wait(lambda: evaluation.status(session_id).state == "done")
+    assert calls == ["coach"]
+    assert evaluation.status(silent).state == "silent"
+
+
+def test_피드백을_저장하면_원본_pcm을_지운다(tmp_path) -> None:
+    """wav는 pcm에 헤더만 붙인 것이라 같은 바이트가 두 벌이었다."""
+    store, session_id = _store(tmp_path)
+    _record(store, session_id)
+    directory = store.session_directory("itv", session_id)
+    (directory / "mic.pcm").write_bytes(b"\x00" * 64)
+    store.end_session(session_id)
+
+    evaluation = InterviewEvaluation(store, coach=lambda **_: _coaching())
+    evaluation.start(session_id)
+    _wait(lambda: evaluation.status(session_id).state == "done")
+    assert (directory / "mic.wav").exists()
+    assert not (directory / "mic.pcm").exists()

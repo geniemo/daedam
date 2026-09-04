@@ -363,3 +363,21 @@ def test_동시에_두_번_차감해도_한_번만_나간다(tmp_path) -> None:
 
     assert sorted(results) == ["막힘", "통과"], results
     assert credits.balance(user_id) == 0
+
+
+# ── 가입 선물 총량 상한 ──────────────────────────────────────────────────
+
+
+def test_가입_선물은_총량_상한에_닿으면_끊긴다(tmp_path, monkeypatch) -> None:
+    """소셜 계정은 무한히 만들 수 있다 — 무료 지급 총량에 천장이 없으면 가입
+    폭주 하나가 그대로 청구서가 된다."""
+    from daedam.server import credits as credits_module
+
+    _, accounts, _ = make_store(tmp_path / "data")
+    credits = accounts.credits
+    already = credits.signup_grants_given()  # 기본(local) 사용자가 이미 받았다
+    monkeypatch.setattr(credits_module, "SIGNUP_CAP", already + 2)
+    ids = [accounts.upsert(provider="kakao", provider_user_id=f"u{i}", name=f"u{i}") for i in range(3)]
+    balances = [credits.balance(user_id) for user_id in ids]
+    assert balances[:2] == [SIGNUP_GRANT, SIGNUP_GRANT] and balances[2] == 0
+    assert credits.signup_grants_given() == already + 2

@@ -43,10 +43,12 @@ from .auth import configured_providers, create_auth_router
 from .credit_routes import create_credit_router
 from .credits import Credits
 from .evaluation import InterviewEvaluation
+from .health import create_health_router
 from .interview_routes import create_interviews_router
 from .live_bridge import create_live_router
 from .preparation import InterviewPreparation
 from .preparation_routes import create_preparation_router
+from .retention import start_retention_timer
 from .store import InterviewStore
 
 # uvicorn은 .env를 스스로 읽지 않는다 — 명시적으로 읽지 않으면 GOOGLE_API_KEY가
@@ -109,6 +111,24 @@ def _interview_profile() -> str:
     return os.environ.get("INTERVIEW_PROFILE", DEFAULT_PROFILE)
 
 
+class _ImmutableAssets(StaticFiles):
+    """해시가 붙은 빌드 자산(`/assets/index-XXXX.js`) — 1년 캐시.
+
+    파일 이름에 내용 해시가 들어 있어 같은 이름이면 같은 내용이다. 캐시 헤더가
+    없으면 브라우저 휴리스틱에 맡겨지는데, 재배포로 옛 해시가 사라진 뒤에도
+    캐시된 index.html이 옛 자산을 찾다 404 → 흰 화면이 된다. 자산은 영원히,
+    index.html은 매번 확인(`_mount_frontend`의 no-cache)이 정답이다.
+
+    확인 경로: starlette 1.4.1 staticfiles.py:175 `file_response(...)`가
+    FileResponse를 만들어 돌려준다 — 그 헤더에 얹는다.
+    """
+
+    def file_response(self, *args, **kwargs):  # type: ignore[override]
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
+
 def _mount_frontend(app: FastAPI) -> None:
     """빌드된 프론트(`web/dist/`)를 같은 오리진에서 서빙한다.
 
@@ -135,15 +155,19 @@ def _mount_frontend(app: FastAPI) -> None:
 
     assets = dist / "assets"
     if assets.is_dir():
-        app.mount("/assets", StaticFiles(directory=assets), name="assets")
+        app.mount("/assets", _ImmutableAssets(directory=assets), name="assets")
+
+    # 해시 없는 파일(index.html · worklets · favicon)은 매번 서버에 확인한다.
+    # ETag가 있어 바뀌지 않았으면 304로 끝난다.
+    revalidate = {"Cache-Control": "no-cache"}
 
     @app.get("/{full_path:path}", include_in_schema=False)
     def spa(full_path: str) -> FileResponse:
         # 파일이 실제로 있으면 그것을(favicon 등), 없으면 SPA 진입점을.
         candidate = (dist / full_path).resolve()
         if full_path and candidate.is_file() and candidate.is_relative_to(dist.resolve()):
-            return FileResponse(candidate)
-        return FileResponse(index)
+            return FileResponse(candidate, headers=revalidate)
+        return FileResponse(index, headers=revalidate)
 
     logger.info("프론트를 같은 오리진에서 서빙합니다 (%s)", dist)
 
@@ -275,6 +299,15 @@ def create_app() -> FastAPI:
             evaluation=evaluation,
         )
     )
+    # 감시용. catch-all보다 앞에 있어야 한다 — 뒤에 두면 index.html이 200으로 답한다.
+    app.include_router(create_health_router(db, data_root))
+
+    # 녹음 보관 기한. 비우면 지우지 않는다 — 기한은 개인정보처리방침의 값이다.
+    retention_days = int(os.environ.get("RECORDING_RETENTION_DAYS") or 0)
+    if retention_days > 0:
+        start_retention_timer(store, retention_days)
+        logger.info("녹음 보관 기한 %d일 — 하루 한 번 정리합니다", retention_days)
+
     _mount_frontend(app)
     return app
 

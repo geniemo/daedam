@@ -37,6 +37,11 @@ logger = logging.getLogger(__name__)
 #: 주면 1인당 4,665원이라 유입을 예측할 수 없는 상황에서는 위험하다.
 SIGNUP_GRANT = int(os.environ.get("CREDITS_SIGNUP_GRANT", "4"))
 
+#: 가입 선물을 몇 명까지 주는가. 0이면 무제한(개발 기본). 홍보 뒤 유입은
+#: 예측할 수 없고 소셜 계정은 무한히 만들 수 있다 — 무료 지급 총량에 천장이
+#: 없으면 가입 폭주 하나가 그대로 청구서가 된다(docs/specs 크레딧 정책의 권고).
+SIGNUP_CAP = int(os.environ.get("CREDITS_SIGNUP_CAP", "0"))
+
 #: 회사 등록 한 건 — 원가 약 2,800원. 95%가 Deep Research이고 변동폭도 거기서
 #: 온다($1~3). 실원가가 오르면 이 숫자만 올리면 되고 결제 상품은 그대로다.
 COST_RESEARCH = int(os.environ.get("CREDITS_PER_RESEARCH", "6"))
@@ -134,6 +139,35 @@ class Credits:
                 )
             )
         logger.info("크레딧 %+d (%s, user=%s)", amount, reason, user_id)
+
+    def grant_signup(self, user_id: str) -> bool:
+        """가입 선물. 총량 상한(`CREDITS_SIGNUP_CAP`)에 닿았으면 주지 않는다.
+
+        상한은 "지급된 사람 수"다. 세는 것과 주는 것 사이에 창이 있어 동시 가입
+        둘이 상한을 하나 넘길 수 있다 — 청구서 관점에서 오차다.
+
+        Returns:
+            줬으면 True.
+        """
+        if SIGNUP_CAP > 0 and self.signup_grants_given() >= SIGNUP_CAP:
+            logger.warning(
+                "가입 선물 총량 상한(%d명)에 닿아 주지 않습니다 (user=%s)", SIGNUP_CAP, user_id
+            )
+            return False
+        self.grant(user_id, SIGNUP_GRANT, "signup_grant")
+        return True
+
+    def signup_grants_given(self) -> int:
+        """지금까지 가입 선물을 받은 사람 수."""
+        with self._db.session() as session:
+            return int(
+                session.scalar(
+                    select(func.count(CreditEntry.id)).where(
+                        CreditEntry.reason == "signup_grant"
+                    )
+                )
+                or 0
+            )
 
     def charge(self, user_id: str, amount: int, reason: str, ref_id: str) -> None:
         """크레딧을 쓴다. 모자라면 `InsufficientCredits`.

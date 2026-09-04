@@ -147,6 +147,16 @@ def _to_data(row: Application) -> InterviewData:
     )
 
 
+def _to_session_record(row: InterviewSession) -> SessionRecord:
+    return SessionRecord(
+        id=row.id,
+        application_id=row.application_id,
+        transcript=row.transcript,
+        feedback=row.feedback,
+        ended_at=_as_utc(row.ended_at),
+    )
+
+
 def _to_session_summary(row: InterviewSession) -> SessionSummary:
     return SessionSummary(
         id=row.id,
@@ -348,13 +358,7 @@ class InterviewStore:
             row = session.get(InterviewSession, session_id)
             if row is None:
                 return None
-            return SessionRecord(
-                id=row.id,
-                application_id=row.application_id,
-                transcript=row.transcript,
-                feedback=row.feedback,
-                ended_at=_as_utc(row.ended_at),
-            )
+            return _to_session_record(row)
 
     def latest_session(self, application_id: str) -> SessionSummary | None:
         """이 준비 데이터로 본 가장 최근 면접. 한 번도 안 봤으면 None."""
@@ -380,6 +384,36 @@ class InterviewStore:
                 .order_by(InterviewSession.started_at.desc())
             ).all()
             return [_to_session_summary(row) for row in rows]
+
+    def unevaluated_sessions(self) -> list[SessionRecord]:
+        """끝났는데 피드백이 없는 판들 — 재기동 복구가 이어서 만든다.
+
+        답변이 없는 판은 뺀다. 그건 만들 것이 없어서 없는 것이다(`has_answer`).
+        """
+        with self._db.session() as session:
+            rows = session.scalars(
+                select(InterviewSession).where(
+                    InterviewSession.ended_at.is_not(None),
+                    InterviewSession.feedback.is_(None),
+                )
+            ).all()
+            return [_to_session_record(row) for row in rows if has_answer(row.transcript)]
+
+    def sessions_ended_before(self, cutoff: datetime) -> list[SessionRecord]:
+        """`cutoff` 전에 끝난 판들. 보관 정책이 녹음을 지울 대상을 고른다.
+
+        비교는 파이썬에서 한다 — SQLite의 시각 저장 형식은 시간대를 버려서
+        SQL 비교가 조용히 어긋날 수 있다. 판 수가 많아야 수천이라 충분하다.
+        """
+        with self._db.session() as session:
+            rows = session.scalars(
+                select(InterviewSession).where(InterviewSession.ended_at.is_not(None))
+            ).all()
+            return [
+                _to_session_record(row)
+                for row in rows
+                if _as_utc(row.ended_at) is not None and _as_utc(row.ended_at) < cutoff
+            ]
 
     # ── 파일 ─────────────────────────────────────────────────────────────
 
