@@ -20,6 +20,8 @@ export function Home() {
   const setActiveCard = useAppStore((s) => s.setActiveCard)
   const setCards = useAppStore((s) => s.setCards)
   const resetRegister = useAppStore((s) => s.resetRegister)
+  const notice = useAppStore((s) => s.notice)
+  const setNotice = useAppStore((s) => s.setNotice)
 
   // 등록 폼은 스토어에 남는다. 새로 등록하러 들어갈 때 비우지 않으면 앞 회사의
   // 회사명·직무·채용공고·지원서가 그대로 떠 있다.
@@ -78,6 +80,17 @@ export function Home() {
           회사 등록하기
         </button>
       </div>
+
+      {/* 면접 화면이 결과 없이 돌려보낸 이유. 닫을 때까지 남는다 — 새로고침에는
+          사라지는데, 그건 이미 읽었다는 뜻으로 본다. */}
+      {notice && (
+        <div className="mb-[18px] flex items-start gap-3 rounded-control border border-accent-line bg-accent-bg px-[14px] py-[11px] text-[13px] leading-[1.6] text-accent">
+          <span className="flex-1">{notice}</span>
+          <button type="button" onClick={() => setNotice(null)} className="text-[12px] font-semibold text-accent">
+            닫기
+          </button>
+        </div>
+      )}
 
       <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))' }}>
         {cards.map((c) => (

@@ -70,6 +70,11 @@ class SessionFlow:
         """모든 단계 예산의 합 — 이 면접이 원래 걸려야 하는 길이."""
         return sum(self.profile.budgets)
 
+    @property
+    def hard_cap_s(self) -> float:
+        """서버가 끊는 지점(초). 예산의 2배 — `over_hard_cap` 참고."""
+        return self.total_budget_s * _HARD_CAP_MULTIPLIER
+
     def over_hard_cap(self, elapsed_s: float) -> bool:
         """예산을 크게 넘겼는가 — 서버가 끊어야 하는 지점.
 
@@ -84,7 +89,7 @@ class SessionFlow:
         예산의 2배로 잡은 것은 정상 면접을 절대 건드리지 않기 위해서다 —
         full 프로필(17분)이면 34분, demo(5분)면 10분이다.
         """
-        return elapsed_s > self.total_budget_s * _HARD_CAP_MULTIPLIER
+        return elapsed_s > self.hard_cap_s
 
     def stage_index_at(self, elapsed_s: float) -> int:
         """경과 시간이 속한 단계. 마지막 단계 예산을 넘어도 마지막 단계를 유지한다."""

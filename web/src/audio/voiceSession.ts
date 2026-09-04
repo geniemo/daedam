@@ -28,9 +28,9 @@ export interface VoiceSessionHandlers {
   onCaption?: (text: string, final: boolean) => void
   onResumeToken?: (token: string) => void
   /**
-   * 면접이 끝났다. `reason`은 정상 종료가 아닐 때만 실린다 — 지금은
-   * 'credits'(크레딧 부족으로 시작조차 못 함) 하나다. 화면은 이때
-   * 결과가 아니라 홈으로 가야 한다.
+   * 면접이 끝났다. `reason`은 정상 종료가 아닐 때만 실린다 — 'credits'(크레딧
+   * 부족), 'replaced'(다른 탭이 이어받음), 'failed'(면접 서버 연결 실패),
+   * 'rejected'(권한·준비 데이터 없음). 화면은 이때 결과가 아니라 홈으로 간다.
    */
   onEnded?: (reason?: string) => void
   onError?: (err: Error) => void
@@ -45,6 +45,19 @@ export interface VoiceSessionOptions {
 const INPUT_RATE = 16_000
 const OUTPUT_RATE = 24_000
 const MAX_BACKOFF_MS = 8_000
+
+/**
+ * 서버가 뜻을 담아 닫는 코드(4000번대). 재접속으로 될 일이 아니라 홈으로 간다.
+ * 보통 같은 뜻의 `ended` 프레임이 먼저 와서 closing이 이미 참이지만, 그 프레임이
+ * 유실돼도 여기서 끝낸다. 코드의 출처는 server/daedam/server/live_bridge.py.
+ */
+const REASON_BY_CLOSE_CODE: Record<number, string> = {
+  4000: 'replaced', // 다른 탭이 같은 면접을 이어받았다
+  4002: 'credits', // 크레딧 부족
+  4003: 'rejected', // 권한 없음
+  4004: 'rejected', // 준비 데이터 없음
+  4005: 'failed', // 면접 서버(Live) 연결 실패
+}
 
 export class VoiceSession {
   private opts: VoiceSessionOptions
@@ -70,6 +83,11 @@ export class VoiceSession {
   private resumeToken: string | null = null
   private retries = 0
   private closing = false
+  /**
+   * 서버가 끝냈다고 알린 뒤인가. 그러면 stop()이 `end`를 보내지 않는다 — 다른
+   * 탭이 이어받은 판에 옛 탭의 `end`가 닿으면 그 판이 닫힌다.
+   */
+  private endedByServer = false
 
   constructor(opts: VoiceSessionOptions) {
     this.opts = opts
@@ -82,6 +100,7 @@ export class VoiceSession {
    */
   async start(): Promise<void> {
     this.closing = false
+    this.endedByServer = false
     this.opts.handlers.onConnection?.('connecting')
 
     // Echo cancellation matters more than usual here: the model's own voice
@@ -219,6 +238,7 @@ export class VoiceSession {
           break
         case 'ended':
           this.closing = true
+          this.endedByServer = true
           this.opts.handlers.onEnded?.(msg.reason as string | undefined)
           break
       }
@@ -242,6 +262,17 @@ export class VoiceSession {
         this.closing = true
         this.opts.handlers.onConnection?.('ended')
         this.opts.handlers.onEnded?.()
+        return
+      }
+      // 서버가 이유를 담아 닫은 것도 끝이다. 앞서는 1000이 아니면 무조건
+      // 재접속해서, 다른 탭에 자리를 내준 탭이 되돌아와 그 탭을 다시 끊는
+      // 핑퐁이 됐다.
+      const reason = REASON_BY_CLOSE_CODE[event.code]
+      if (reason) {
+        this.closing = true
+        this.endedByServer = true
+        this.opts.handlers.onConnection?.('ended')
+        this.opts.handlers.onEnded?.(reason)
         return
       }
       this.reconnect()
@@ -276,7 +307,9 @@ export class VoiceSession {
 
   async stop(): Promise<void> {
     this.closing = true
-    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'end' }))
+    if (!this.endedByServer && this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'end' }))
+    }
     this.ws?.close()
     this.ws = null
     this.recorder?.disconnect()

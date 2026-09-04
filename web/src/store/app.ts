@@ -36,6 +36,14 @@ interface AppState {
    */
   baseline: Baseline | null
 
+  /**
+   * 홈에 한 번 띄울 안내. 면접 화면이 결과 없이 홈으로 돌려보낼 때(다른 탭이
+   * 이어받음·연결 실패·크레딧 부족) 이유를 여기 남긴다 — 말없이 홈에 떨어지면
+   * 무슨 일이 있었는지 알 길이 없다.
+   */
+  notice: string | null
+
+  setNotice: (text: string | null) => void
   setCameraReady: (v: boolean) => void
   setBaseline: (b: Baseline | null) => void
   setActiveCard: (id: string) => void
@@ -55,6 +63,8 @@ interface AppState {
 export const useAppStore = create<AppState>((set, get) => ({
   cameraReady: false,
   baseline: null,
+  notice: null,
+  setNotice: (notice) => set({ notice }),
   // 목록은 서버 파일에서 채운다. 목업으로 시작하면 실제로는 없는 면접이 잠깐
   // 보였다 사라지고, 그 사이에 카드를 누르면 준비 데이터가 없는 면접이 열린다.
   cards: [],

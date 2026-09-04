@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import logging
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -16,6 +18,8 @@ from pydantic import BaseModel, Field
 from .accounts import Accounts
 from .credits import COST_RESEARCH, Credits, InsufficientCredits
 from .preparation import InterviewPreparation
+
+logger = logging.getLogger(__name__)
 
 
 class PreparationRequest(BaseModel):
@@ -51,10 +55,18 @@ def create_preparation_router(
         request: PreparationRequest,
         user_id: str = Depends(accounts.current_user_id),
     ) -> dict[str, str]:
-        # 잔액을 **먼저** 본다. Deep Research는 시작하면 취소할 수 없는 유료
-        # 작업이라, 시작한 뒤에 막으면 돈은 이미 나간 뒤다.
+        # 유료 작업을 열기 **전에** 차감한다. Deep Research는 시작하면 취소할 수
+        # 없어서, 앞서처럼 잔액만 보고 시작한 뒤 차감하면 그 사이에 같은
+        # 사용자의 다른 요청이 잔액을 써 버린 경우 리서치는 돌고 요금은 안
+        # 물리는 건이 생긴다(두 탭 동시 등록으로 재현). 차감은 원자적이라
+        # (`Credits.charge`) 먼저 하면 그 창이 없다.
+        #
+        # id를 여기서 만든다 — 차감의 근거(ref_id)가 있어야 실패 시 같은 id로
+        # 되돌릴 수 있고(`InterviewPreparation`의 on_failed), 파이프라인은 그
+        # id로 리서치를 연다.
+        task_id = uuid.uuid4().hex
         try:
-            credits.ensure(user_id, COST_RESEARCH)
+            credits.charge(user_id, COST_RESEARCH, "research", task_id)
         except InsufficientCredits as insufficient:
             raise HTTPException(
                 status_code=402,
@@ -64,17 +76,24 @@ def create_preparation_router(
                     "balance": insufficient.balance,
                 },
             ) from insufficient
-        task_id = preparation.start(
-            request.company,
-            request.role,
-            request.application,
-            request.posting,
-            request.name,
-            user_id=user_id,
-        )
-        # 차감의 근거는 이 작업이다. 실패하면 같은 ref_id로 되돌린다
-        # (`InterviewPreparation`의 on_failed).
-        credits.charge(user_id, COST_RESEARCH, "research", task_id)
+        try:
+            preparation.start(
+                request.company,
+                request.role,
+                request.application,
+                request.posting,
+                request.name,
+                user_id=user_id,
+                task_id=task_id,
+            )
+        except Exception as exc:
+            # 시작 자체가 실패했다 — 유료 작업은 열리지 않았다. 차감을 되돌린다.
+            logger.exception("준비 시작 실패 (interview=%s) — 크레딧을 되돌립니다", task_id)
+            credits.refund(user_id, "research", task_id)
+            raise HTTPException(
+                status_code=503,
+                detail="리서치를 시작하지 못했습니다. 크레딧은 돌려드렸습니다. 잠시 뒤 다시 시도해 주세요",
+            ) from exc
         return {"task_id": task_id}
 
     @router.get("/{task_id}")

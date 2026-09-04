@@ -38,6 +38,12 @@ cd ../web && npm ci && npm run build  # dist/ 를 서버가 서빙한다
 
 `server/.env`를 만든다(`.env.example`이 원본). 로컬과 다른 값만:
 
+> 유닛 파일이 `DAEDAM_ENV=production`을 준다. 운영 모드에서는 아래 값이 하나라도
+> 빠지면 서버가 **기동을 거부**하고 빠진 항목을 `운영 설정 누락: …` 로그로
+> 남긴다(`daedam/server/preflight.py`). 유닛 없이 손으로 띄울 때는
+> `DAEDAM_ENV=production`을 직접 export한다 — 안 주면 기본이 production이라
+> 결과는 같다.
+
 ```bash
 SERVER_BASE_URL=https://{도메인}     # OAuth 콜백이 여기에 /api/auth/... 를 붙인다
 APP_BASE_URL=                        # 비운다 — 프론트가 같은 오리진이다
@@ -78,7 +84,7 @@ INFO  daedam.server.app: 로그인: kakao
 INFO  daedam.server.app: 프론트를 같은 오리진에서 서빙합니다
 ```
 
-"로그인 설정이 없어 인증 없이 돕니다"가 뜨면 `.env`가 안 읽힌 것이다.
+`.env`가 안 읽혔거나 값이 빠졌으면 뜨지 않는다 — `운영 설정 누락: …` 줄이 이유다.
 
 ## 6. HTTPS
 

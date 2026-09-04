@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Mapping
 from typing import Any
 
 from authlib.integrations.starlette_client import OAuth, OAuthError
@@ -122,16 +123,22 @@ def _after_login() -> str:
     return os.environ.get("APP_BASE_URL") or "/"
 
 
-def _provider_config(provider: str) -> tuple[str, str] | None:
+def _provider_config(
+    provider: str, env: Mapping[str, str] = os.environ
+) -> tuple[str, str] | None:
     """이 제공자의 client id·secret. 둘 다 있어야 등록한다."""
-    client_id = os.environ.get(f"{provider.upper()}_CLIENT_ID")
-    secret = os.environ.get(f"{provider.upper()}_CLIENT_SECRET")
+    client_id = env.get(f"{provider.upper()}_CLIENT_ID")
+    secret = env.get(f"{provider.upper()}_CLIENT_SECRET")
     return (client_id, secret) if client_id and secret else None
 
 
-def configured_providers() -> list[str]:
-    """설정이 갖춰진 제공자들. 비어 있으면 로그인 없이 도는 모드다."""
-    return [p for p in ("kakao", "google") if _provider_config(p) is not None]
+def configured_providers(env: Mapping[str, str] = os.environ) -> list[str]:
+    """설정이 갖춰진 제공자들. 비어 있으면 로그인 없이 도는 모드다.
+
+    `env`를 받는 이유: 기동 전 점검(preflight)이 같은 기준으로 판정해야 하고,
+    그 점검은 dict로 시험한다.
+    """
+    return [p for p in ("kakao", "google") if _provider_config(p, env) is not None]
 
 
 def create_oauth() -> OAuth:

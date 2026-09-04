@@ -18,6 +18,11 @@ Type=simple
 User=ubuntu
 WorkingDirectory=/home/ubuntu/daedam/server
 
+# 운영 모드. .env가 아니라 여기서 준다 — .env가 통째로 안 읽히는 사고에서도
+# 운영으로 판정돼, 로그인 없는 서버로 뜨는 대신 기동을 거부한다
+# (daedam/server/preflight.py).
+Environment=DAEDAM_ENV=production
+
 # uv가 .venv를 찾고 .env는 앱이 직접 읽는다(daedam/server/app.py).
 ExecStart=/home/ubuntu/.local/bin/uv run uvicorn daedam.server.app:app \
     --host 127.0.0.1 --port 8000

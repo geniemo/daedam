@@ -31,6 +31,8 @@ export interface SessionInfo {
   sessionId: string
   elapsedSeconds: number
   asked: number
+  /** 재접속이면 면접관이 마지막으로 한 말. 새 판이면 빈 문자열. */
+  caption?: string
 }
 
 interface InterviewState {
@@ -89,8 +91,15 @@ export const useInterviewStore = create<InterviewState>((set) => ({
       captionDone: final,
     })),
 
+  // 재접속(다른 탭 포함)이면 서버가 면접관의 마지막 말을 실어 준다. 그걸
+  // 자막으로 세워야 지금 무슨 질문에 답하던 중인지 보인다.
   applySession: (info) =>
-    set({ elapsed: info.elapsedSeconds, askedCount: info.asked, sessionId: info.sessionId }),
+    set({
+      elapsed: info.elapsedSeconds,
+      askedCount: info.asked,
+      sessionId: info.sessionId,
+      ...(info.caption ? { caption: info.caption, captionDone: true } : {}),
+    }),
 
   setResumeToken: (resumeToken) => set({ resumeToken }),
 

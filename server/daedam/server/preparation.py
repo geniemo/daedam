@@ -8,6 +8,12 @@ pct는 백엔드가 진행률을 아는 경우에만 흐른다. fixture는 총 �
 0~90(서비스 pct의 0.9배) → 95 → 100으로 가지만, live는 Deep Research가
 진행률을 주지 않아 끝까지 None이다 — 그때 화면은 단계와 경과 시간만 보여준다.
 
+크레딧은 리서치가 실패했을 때만 되돌린다. 리서치가 끝나 리포트가 저장된 뒤의
+질문 생성은 몇 번 다시 해 보고, 그래도 안 되면 실패로 남기되 크레딧은 두는다 —
+비싼 쪽(Deep Research)은 이미 돈이 나갔고 결과도 손에 있으며, 재기동 복원이
+생성만 이어서 한다. 생성 실패마다 리서치 값을 돌려주면 지원서 본문을 일부러
+크게 넣어 생성을 깨뜨리는 것만으로 리서치를 공짜로 받는 길이 된다.
+
 완료의 증거는 메모리가 아니라 파일 저장소다 — 서버가 재시작돼도 저장된
 면접은 done으로 복원되고, 생성 도중 끊겼다면 부팅 복원이 생성만 이어서
 한다. 진행 중이던 리서치도 넘어간다: live 백엔드가 인터랙션 id를 파일에
@@ -35,6 +41,11 @@ logger = logging.getLogger(__name__)
 #: 연속 조회 실패를 몇 번까지 견디는가. live 폴링 간격이 30초이므로 10번이면
 #: 5분이다 — 그보다 오래 응답이 없으면 일시적인 문제가 아니다.
 _POLL_STRIKES = 10
+
+#: 질문 생성이 실패했을 때 다시 해 보기까지의 간격들. 길이가 곧 재시도 횟수다.
+#: LLM 호출 실패는 대개 일시적이라 두 번이면 넘어가고, 생성 원가(수십 원)는
+#: 리서치($1~7)에 비해 없는 셈이라 아끼지 않는다.
+_GENERATION_RETRY_S: tuple[float, ...] = (5.0, 20.0)
 
 
 @dataclass
@@ -66,6 +77,7 @@ class InterviewPreparation:
         extract_vocabulary: Callable[..., list[str]] = generate_vocabulary,
         poll_interval_s: float = 1.0,
         on_failed: Callable[[str, str], None] | None = None,
+        generation_retry_s: tuple[float, ...] = _GENERATION_RETRY_S,
     ) -> None:
         """
         Args:
@@ -75,9 +87,12 @@ class InterviewPreparation:
             extract_vocabulary: 전사 어휘 추출 함수. 테스트가 대역을 주입한다.
             poll_interval_s: 워커가 리서치 완료를 확인하는 간격. live에서는
                 30초쯤으로 늘려 폴링 API 낭비를 없앤다.
-            on_failed: 준비가 실패했을 때 `(user_id, 준비 id)`로 불린다.
+            on_failed: **리서치가** 실패했을 때 `(user_id, 준비 id)`로 불린다.
                 크레딧을 되돌리는 자리 — 실패한 작업에 요금을 물리면 다시
                 시도할 수도 없다. 파이프라인이 크레딧을 직접 알지는 않는다.
+                리서치가 끝난 뒤의 생성 실패에는 불리지 않는다(모듈 설명 참고).
+            generation_retry_s: 생성 실패 뒤 다시 해 보기까지의 간격들.
+                테스트가 짧게 준다.
         """
         self._research = research
         self._store = store
@@ -85,6 +100,7 @@ class InterviewPreparation:
         self._extract_vocabulary = extract_vocabulary
         self._poll_interval_s = poll_interval_s
         self._on_failed = on_failed
+        self._generation_retry_s = generation_retry_s
         self._states: dict[str, _PipelineState] = {}
         self._recover()
 
@@ -97,10 +113,18 @@ class InterviewPreparation:
         name: str = "",
         *,
         user_id: str,
+        task_id: str | None = None,
     ) -> str:
+        """준비를 시작한다. 돌려주는 것은 준비 id(= 카드 id).
+
+        `task_id`는 라우트가 미리 만들어 준다 — 유료 리서치를 열기 **전에** 그
+        id를 근거로 크레딧을 차감하기 위해서다. 없으면 백엔드가 만든다(테스트).
+        """
         # posting은 여기서만 쓰인다 — 리서치 프롬프트에 실려 나가고, 이후
         # 재개·재생성 경로는 이미 만들어진 인터랙션을 따라가므로 필요 없다.
-        task_id = self._research.start(company, role, application, posting)
+        task_id = self._research.start(
+            company, role, application, posting, task_id=task_id
+        )
         # 등록되는 순간 파일에 남긴다. 리서치가 끝나야 저장하면 그동안 홈 목록에
         # 이 면접이 없어서, 방금 등록한 카드가 새로고침에 사라진다. 리포트는
         # 아직 비어 있고, 그 비어 있음이 "리서치 진행 중"의 표시다.
@@ -213,7 +237,7 @@ class InterviewPreparation:
                 strikes = 0
 
                 if research is None or research.state == "failed":
-                    self._fail(state, task_id, user_id)
+                    self._fail(state, task_id, user_id, refund=True)
                     return
                 if research.state == "done":
                     break
@@ -238,20 +262,50 @@ class InterviewPreparation:
                 name=name,
             )
 
-            # ③ 질문 생성 — 화면의 "질문 준비" 단계가 실제로 이 구간이다.
-            self._run_generation(task_id, self._store.load(task_id))
         except Exception:
-            logger.exception("면접 준비 실패 (interview=%s)", task_id)
-            self._fail(state, task_id, user_id)
+            logger.exception("면접 준비 실패 — 리서치 단계 (interview=%s)", task_id)
+            self._fail(state, task_id, user_id, refund=True)
+            return
 
-    def _fail(self, state: _PipelineState, task_id: str, user_id: str) -> None:
-        """준비가 실패했다. 상태를 남기고 크레딧을 되돌린다."""
+        # ③ 질문 생성 — 화면의 "질문 준비" 단계가 실제로 이 구간이다. 리서치는
+        # 이미 저장됐으므로 여기서 실패해도 크레딧은 두는다(모듈 설명 참고).
+        self._generate_with_retry(task_id, self._store.load(task_id))
+
+    def _fail(
+        self, state: _PipelineState, task_id: str, user_id: str, *, refund: bool
+    ) -> None:
+        """준비가 실패했다. 상태를 남기고, 리서치 실패면 크레딧을 되돌린다."""
         state.phase = "failed"
-        if self._on_failed is not None and user_id:
+        if refund and self._on_failed is not None and user_id:
             try:
                 self._on_failed(user_id, task_id)
             except Exception:
                 logger.exception("준비 실패 뒤처리 중 오류 (interview=%s)", task_id)
+
+    def _generate_with_retry(self, task_id: str, data: InterviewData) -> None:
+        """질문 생성을 몇 번 해 본다. 끝내 안 되면 실패로 남기되 크레딧은 두는다.
+
+        리포트는 저장돼 있으므로 다음 기동의 `_recover`가 생성만 이어서 한다.
+        """
+        delays = (0.0, *self._generation_retry_s)
+        for attempt, delay in enumerate(delays, start=1):
+            if delay:
+                time.sleep(delay)
+            try:
+                self._run_generation(task_id, data)
+                return
+            except Exception:
+                logger.exception(
+                    "질문 생성 실패 %d/%d (interview=%s)", attempt, len(delays), task_id
+                )
+        state = self._states.get(task_id)
+        if state is not None:
+            state.phase = "failed"
+        logger.error(
+            "질문 생성을 포기합니다 (interview=%s) — 리포트는 저장돼 있어 재기동 시 "
+            "이어서 생성합니다. 리서치 크레딧은 돌려주지 않습니다",
+            task_id,
+        )
 
     def _run_generation(self, task_id: str, data: InterviewData) -> None:
         state = self._states[task_id]
@@ -346,8 +400,4 @@ class InterviewPreparation:
             ).start()
 
     def _recover_generation(self, interview_id: str, data: InterviewData) -> None:
-        try:
-            self._run_generation(interview_id, data)
-        except Exception:
-            logger.exception("질문 생성 복원 실패 (interview=%s)", interview_id)
-            self._states[interview_id].phase = "failed"
+        self._generate_with_retry(interview_id, data)

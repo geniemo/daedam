@@ -137,9 +137,9 @@ def test_크레딧이_없으면_등록이_402(tmp_path) -> None:
     started: list[str] = []
 
     class _Research:
-        def start(self, company, role, application, posting=""):  # noqa: ANN001
+        def start(self, company, role, application, posting="", *, task_id=None):  # noqa: ANN001
             started.append(company)
-            return "task-1"
+            return task_id or "task-1"
 
         def status(self, task_id):  # noqa: ANN001
             return None

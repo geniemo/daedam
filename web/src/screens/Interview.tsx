@@ -12,6 +12,15 @@ import { useFaceTracking } from '@/video/useFaceTracking'
 import { useGazeLog } from '@/video/useGazeLog'
 import { Avatar, Waveform } from '@/components/Stage'
 
+/** 결과 없이 홈으로 돌아갈 때 홈에 남기는 한 줄. 키는 서버의 ended.reason. */
+const FINISH_NOTICE: Record<string, string> = {
+  credits: '크레딧이 부족해 면접을 시작하지 못했습니다.',
+  replaced: '다른 탭에서 같은 면접이 열렸습니다. 새 탭에서 계속 진행해 주세요.',
+  failed:
+    '면접 서버에 연결하지 못했습니다. 잠시 뒤 다시 시작해 주세요. 답변 전이었다면 크레딧은 돌려드렸고, 답변이 있었다면 한 시간 안에 다시 시작하면 이어집니다.',
+  rejected: '이 면접을 시작할 수 없습니다. 준비가 끝났는지 확인해 주세요.',
+}
+
 /** README §8. 면접 진행 — 화면이 시선을 뺏지 않는 것이 목표입니다. */
 export function Interview({ showCaption = true }: { showCaption?: boolean }) {
   const nav = useNavigate()
@@ -33,11 +42,20 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
   const elapsed = useInterviewStore((s) => s.elapsed)
   const connection = useInterviewStore((s) => s.connection)
 
-  // 크레딧이 없어 면접이 열리지도 않은 경우는 분석할 것이 없다 — 홈으로
-  // 돌려보낸다. 그 밖에는 정상 종료라 결과를 기다린다.
+  // 이유 없이 끝났으면 정상 종료라 결과를 기다린다. 이유가 있으면(크레딧
+  // 부족·다른 탭이 이어받음·연결 실패·거절) 분석할 것이 없거나 판이 아직
+  // 살아 있는 것이라 홈으로 돌려보내고, 왜 돌아왔는지를 홈에 남긴다.
+  const setNotice = useAppStore((s) => s.setNotice)
   const onFinished = useCallback(
-    (reason?: string) => nav(reason === 'credits' ? '/' : '/analyzing'),
-    [nav],
+    (reason?: string) => {
+      if (!reason) {
+        nav('/analyzing')
+        return
+      }
+      setNotice(FINISH_NOTICE[reason] ?? FINISH_NOTICE.rejected)
+      nav('/')
+    },
+    [nav, setNotice],
   )
   const { levels, end, micStream } = useVoiceSession(card.id, onFinished)
 
