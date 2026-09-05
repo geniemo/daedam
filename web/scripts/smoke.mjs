@@ -20,6 +20,8 @@ const screens = [
   ['/', '/', '/src/screens/Home.tsx', 'Home'],
   ['/register/1', '/register/:step', '/src/screens/Register.tsx', 'Register'],
   ['/register/2', '/register/:step', '/src/screens/Register.tsx', 'Register'],
+  // 등록 2단계의 "?"가 여는 가이드. 라우트가 아니라 덮는 창이지만 렌더는 봐야 한다.
+  ['/register/guide', '/register/guide', '/src/screens/ApplicationGuide.tsx', 'ApplicationGuide'],
   ['/research', '/research', '/src/screens/Research.tsx', 'Research'],
   ['/ready', '/ready', '/src/screens/Ready.tsx', 'Ready'],
   ['/review', '/review', '/src/screens/Review.tsx', 'Review'],

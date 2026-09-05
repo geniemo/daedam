@@ -134,3 +134,86 @@ def test_시작이_실패하면_차감을_되돌리고_503(tmp_path: Path) -> No
     response = TestClient(app).post("/api/preparation", json={"company": "A", "role": "B"})
     assert response.status_code == 503
     assert credits.balance(user_id) == before
+
+
+# ── PDF 가져오기 ───────────────────────────────────────────────────────────
+
+
+def _import_client(tmp_path: Path, extractor=None, posting=None) -> TestClient:  # noqa: ANN001
+    store, accounts, _ = make_store(tmp_path / "data")
+    preparation = InterviewPreparation(
+        research=FixtureResearch(duration_s=10), store=store, generate=lambda **_: []
+    )
+    app = FastAPI()
+    app.include_router(
+        create_preparation_router(
+            preparation,
+            accounts,
+            accounts.credits,
+            import_application=extractor or (lambda d: []),
+            import_posting=posting or (lambda d: ""),
+        )
+    )
+    return TestClient(app)
+
+
+def test_PDF에서_파트와_항목을_돌려준다(tmp_path: Path) -> None:
+    seen: list[bytes] = []
+
+    def extractor(data: bytes):
+        seen.append(data)
+        return [{"part": "자기소개서", "items": [{"title": "1. 동기", "body": "본문"}]}]
+
+    response = _import_client(tmp_path, extractor).post(
+        "/api/preparation/import",
+        files={"file": ("지원서.pdf", b"%PDF-1.4 fake", "application/pdf")},
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "parts": [{"part": "자기소개서", "items": [{"title": "1. 동기", "body": "본문"}]}]
+    }
+    assert seen == [b"%PDF-1.4 fake"]
+
+
+def test_PDF가_아니면_400(tmp_path: Path) -> None:
+    called = []
+    response = _import_client(tmp_path, lambda d: called.append(d)).post(
+        "/api/preparation/import",
+        files={"file": ("a.txt", b"hello", "text/plain")},
+    )
+    assert response.status_code == 400 and called == []
+
+
+def test_너무_크면_413(tmp_path: Path) -> None:
+    from daedam.interview.application_import import MAX_PDF_BYTES
+
+    big = b"%PDF" + b"0" * MAX_PDF_BYTES
+    response = _import_client(tmp_path, lambda d: []).post(
+        "/api/preparation/import", files={"file": ("big.pdf", big, "application/pdf")}
+    )
+    assert response.status_code == 413
+
+
+def test_읽기_실패는_502로_말한다(tmp_path: Path) -> None:
+    def broken(data: bytes):
+        raise RuntimeError("모델 오류")
+
+    response = _import_client(tmp_path, broken).post(
+        "/api/preparation/import", files={"file": ("a.pdf", b"%PDF-1.4", "application/pdf")}
+    )
+    assert response.status_code == 502
+
+
+def test_채용공고_파일은_본문_텍스트를_돌려준다(tmp_path: Path) -> None:
+    response = _import_client(tmp_path, posting=lambda d: "담당 업무\n- 분석").post(
+        "/api/preparation/import-posting",
+        files={"file": ("jd.png", b"\x89PNG....", "image/png")},
+    )
+    assert response.status_code == 200 and response.json() == {"text": "담당 업무\n- 분석"}
+
+
+def test_채용공고_파일이_받는_종류가_아니면_400(tmp_path: Path) -> None:
+    response = _import_client(tmp_path).post(
+        "/api/preparation/import-posting", files={"file": ("jd.gif", b"GIF89a", "image/gif")}
+    )
+    assert response.status_code == 400

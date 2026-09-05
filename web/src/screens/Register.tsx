@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import { startPreparation } from '@/api/preparation'
+import { importApplication, importPosting, startPreparation } from '@/api/preparation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getMe } from '@/api/auth'
 import { getCredits } from '@/api/credits'
@@ -8,6 +8,7 @@ import type { Insufficient } from '@/api/credits'
 import { InsufficientCreditsError } from '@/api/preparation'
 import { useAppStore } from '@/store/app'
 import { Label, TextArea, TextField } from '@/components/ui'
+import { ApplicationGuide } from '@/screens/ApplicationGuide'
 
 /** README §2·§3. 등록 STEP 1·2 */
 export function Register() {
@@ -47,13 +48,37 @@ function TopBar({ step }: { step: 1 | 2 }) {
   )
 }
 
-function StepHeading({ step, title, desc }: { step: number; title: string; desc: string }) {
+function StepHeading({
+  step,
+  title,
+  desc,
+  onHelp,
+}: {
+  step: number
+  title: string
+  desc: string
+  /** 제목 옆 "?" — 있으면 그린다. 처음 온 사람이 멈추는 화면에만 둔다. */
+  onHelp?: () => void
+}) {
   return (
     <>
       <div className="mb-[10px] text-[12px] font-semibold tracking-[.05em] text-accent">
         STEP {step}
       </div>
-      <h1 className="m-0 text-[25px] font-bold tracking-[-.03em]">{title}</h1>
+      <div className="flex items-center gap-[10px]">
+        <h1 className="m-0 text-[25px] font-bold tracking-[-.03em]">{title}</h1>
+        {onHelp && (
+          <button
+            type="button"
+            onClick={onHelp}
+            aria-label="작성 가이드 보기"
+            title="작성 가이드"
+            className="flex h-[22px] w-[22px] items-center justify-center rounded-full border border-field text-[12.5px] font-semibold text-muted hover:border-ink hover:text-ink"
+          >
+            ?
+          </button>
+        )}
+      </div>
       <p className="mt-[10px] mb-8 text-[14px] leading-[1.6] text-muted">{desc}</p>
     </>
   )
@@ -65,6 +90,27 @@ function Step1() {
   // 회사명과 직무는 리서치 프롬프트의 첫 줄이 됩니다. 비어 있으면 조사할
   // 대상이 없는데, live에서 등록은 20~60분짜리 유료 작업입니다.
   const ready = company.trim() !== '' && role.trim() !== ''
+
+  // 채용공고를 파일로. PDF나 캡처 이미지를 서버가 Gemini로 읽어 본문을 돌려주면
+  // 입력란에 채운다 — 이미 적은 것이 있으면 뒤에 붙인다. 사용자가 확인한다.
+  const postingFile = useRef<HTMLInputElement>(null)
+  const [importing, setImporting] = useState(false)
+  const [importNote, setImportNote] = useState<string | null>(null)
+  const importPostingFile = async (file: File | undefined) => {
+    if (!file) return
+    setImporting(true)
+    setImportNote(null)
+    try {
+      const text = await importPosting(file)
+      setPosting(posting.trim() ? `${posting.trimEnd()}\n\n${text}` : text)
+      setImportNote('내용을 확인해 주세요.')
+    } catch (cause) {
+      setImportNote(cause instanceof Error ? cause.message : '파일을 읽지 못했습니다')
+    } finally {
+      setImporting(false)
+      if (postingFile.current) postingFile.current.value = ''
+    }
+  }
 
   return (
     <main className="mx-auto max-w-(--container-reg1) px-8 pb-20 animate-dm-fade">
@@ -95,6 +141,23 @@ function Step1() {
           <div className="flex items-center gap-[6px]">
             <Label>채용공고</Label>
             <span className="text-[12px] text-faint">선택 · 링크 또는 내용을 붙여넣기</span>
+            <div className="flex-1" />
+            {importNote && <span className="text-[12px] text-body-2">{importNote}</span>}
+            <button
+              type="button"
+              onClick={() => postingFile.current?.click()}
+              disabled={importing}
+              className={`border-b border-field text-[12.5px] text-muted ${importing ? 'cursor-default opacity-60' : 'hover:text-ink'}`}
+            >
+              {importing ? '읽는 중…' : '파일로 올리기'}
+            </button>
+            <input
+              ref={postingFile}
+              type="file"
+              accept="application/pdf,image/png,image/jpeg"
+              className="hidden"
+              onChange={(e) => void importPostingFile(e.target.files?.[0])}
+            />
           </div>
           <TextArea
             value={posting}
@@ -166,6 +229,37 @@ function Step2() {
   const [focusOn, setFocusOn] = useState<string | null>(null)
   // 삭제를 물어보는 중인 파트. 지원서는 다시 쓰기 번거로워 되돌릴 수단이 없다.
   const [confirmPart, setConfirmPart] = useState<number | null>(null)
+  // "?"가 여는 작성 가이드. 입력은 그대로 둔 채 위에 덮는다.
+  const [guideOpen, setGuideOpen] = useState(false)
+
+  // PDF 불러오기. 서버가 Gemini로 읽어 파트·항목을 돌려주면 폼에 채운다 —
+  // 사용자는 옮겨 적는 대신 확인만 한다. 이미 쓴 것이 있으면 뒤에 붙인다.
+  const fileInput = useRef<HTMLInputElement>(null)
+  const [importing, setImporting] = useState(false)
+  const [importNote, setImportNote] = useState<string | null>(null)
+  const importPdf = async (file: File | undefined) => {
+    if (!file) return
+    setImporting(true)
+    setImportNote(null)
+    try {
+      const imported = await importApplication(file)
+      const count = imported.reduce((n, part) => n + part.items.length, 0)
+      if (count === 0) {
+        setImportNote('PDF에서 문항을 찾지 못했습니다. 직접 입력해 주세요.')
+        return
+      }
+      const untouched = parts.every((part) => part.items.every((item) => !item.body))
+      setParts(untouched ? imported : [...parts, ...imported])
+      setOpenPart(untouched ? 0 : parts.length)
+      setOpenItem(untouched ? '0-0' : `${parts.length}-0`)
+      setImportNote('내용을 확인해 주세요.')
+    } catch (cause) {
+      setImportNote(cause instanceof Error ? cause.message : 'PDF를 읽지 못했습니다')
+    } finally {
+      setImporting(false)
+      if (fileInput.current) fileInput.current.value = ''
+    }
+  }
   const takeFocus = (key: string) => (el: HTMLInputElement | null) => {
     if (!el || focusOn !== key) return
     el.focus()
@@ -233,8 +327,32 @@ function Step2() {
       <StepHeading
         step={2}
         title="지원서를 넣어 주세요"
-        desc="회사 양식 그대로 파트를 만들고 그 안에 항목을 나눠 넣으면, 항목 하나하나를 파고드는 질문이 만들어집니다."
+        desc="파트와 항목을 추가하고 내용을 입력해 주세요."
+        onHelp={() => setGuideOpen(true)}
       />
+      {guideOpen && <ApplicationGuide onClose={() => setGuideOpen(false)} />}
+
+      <div className="mb-[14px] flex flex-wrap items-center gap-[10px]">
+        <button
+          type="button"
+          onClick={() => fileInput.current?.click()}
+          disabled={importing}
+          className={`rounded-control border border-field bg-surface px-[14px] py-[8px] text-[13px] font-semibold text-ink ${
+            importing ? 'cursor-default opacity-60' : ''
+          }`}
+        >
+          {importing ? 'PDF 읽는 중…' : 'PDF로 불러오기'}
+        </button>
+        {/* 안내 문구는 두지 않는다 — 버튼 이름이 곧 설명이다. 결과와 오류만 옆에 적는다. */}
+        {importNote && <span className="text-[12.5px] text-body-2">{importNote}</span>}
+        <input
+          ref={fileInput}
+          type="file"
+          accept="application/pdf"
+          className="hidden"
+          onChange={(event) => void importPdf(event.target.files?.[0])}
+        />
+      </div>
 
       <div className="flex flex-col gap-[14px]">
         {parts.map((part, pi) => {
