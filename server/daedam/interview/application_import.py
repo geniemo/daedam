@@ -1,4 +1,4 @@
-"""지원서 PDF → 파트·항목. Gemini가 문서를 읽고 등록 화면의 구조로 옮긴다.
+"""지원서 PDF → 파트·항목, 채용공고 파일 → 본문. Gemini가 문서를 읽고 옮긴다.
 
 **왜 LLM인가.** 지원 사이트에서 내려받은 PDF(SK Careers 등)를 markitdown으로
 돌려 봤다 — 텍스트는 잘 빠지지만 평문일 뿐이다. 우리에게 필요한 건 "자기소개서
@@ -32,6 +32,17 @@ logger = logging.getLogger(__name__)
 
 #: 업로드 상한. 자기소개서 PDF는 수백 KB고, 사진이 든 것도 몇 MB다.
 MAX_PDF_BYTES = 10 * 1024 * 1024
+
+#: 파일 머리로 종류를 가린다 — 브라우저가 보내는 content-type은 믿지 않는다.
+#: 채용공고는 PDF 말고 캡처 이미지로 오는 일이 흔해서 PNG·JPG도 받는다.
+_MAGIC: tuple[tuple[bytes, str], ...] = (
+    (b"%PDF", "application/pdf"),
+    (b"\x89PNG", "image/png"),
+    (b"\xff\xd8\xff", "image/jpeg"),
+)
+
+#: 채용공고 본문 상한. 공고는 길어야 수천 자다.
+_MAX_POSTING_CHARS = 20_000
 
 #: 응답에서 받아들이는 상한. 이보다 크면 지원서가 아니라 다른 문서다.
 _MAX_PARTS = 12
@@ -125,3 +136,51 @@ def _tidy(parsed: ImportedApplication) -> list[dict[str, Any]]:
         if total_items >= _MAX_ITEMS:
             break
     return parts
+
+
+def sniff_mime(data: bytes) -> str | None:
+    """파일 머리로 본 종류. 받는 종류가 아니면 None."""
+    for magic, mime in _MAGIC:
+        if data.startswith(magic):
+            return mime
+    return None
+
+
+POSTING_PROMPT = """이 파일은 채용공고(직무 기술서)다. 본문을 글자 그대로 텍스트로 옮겨라.
+
+- 요약·보완·번역을 하지 않는다. 문장과 항목의 순서를 지킨다.
+- 표는 줄마다 "항목: 내용"으로 푼다. 머리글자·불릿은 "- "로 통일한다.
+- 사이트의 메뉴·광고·쿠키 안내처럼 공고와 무관한 화면 요소는 뺀다.
+- 결과는 본문 텍스트만 낸다. 앞뒤에 설명을 붙이지 않는다.
+"""
+
+
+def extract_posting(data: bytes, *, client: Any = None, model: str = MODEL_QUALITY) -> str:
+    """채용공고 파일(PDF·PNG·JPG)의 본문을 텍스트로 옮긴다.
+
+    구조를 만들지 않는다. 채용공고는 리서치 프롬프트에 그대로 실리는 문자열이라
+    (`posting`), 화면의 입력란에 채워 넣을 본문만 있으면 된다.
+
+    Raises:
+        ValueError: 받는 종류의 파일이 아니거나 글을 읽지 못했을 때.
+    """
+    mime = sniff_mime(data)
+    if mime is None:
+        raise ValueError("PDF·PNG·JPG 파일만 읽을 수 있습니다")
+    from google.genai import types
+
+    if client is None:
+        from google import genai
+
+        client = genai.Client()
+
+    response = client.models.generate_content(
+        model=model,
+        contents=[types.Part.from_bytes(data=data, mime_type=mime), POSTING_PROMPT],
+        config=types.GenerateContentConfig(temperature=0),
+    )
+    text = (response.text or "").strip()
+    if not text:
+        raise ValueError("채용공고 파일에서 글을 읽지 못했습니다")
+    logger.info("채용공고 파일 가져오기: %s, %d자", mime, len(text))
+    return text[:_MAX_POSTING_CHARS]

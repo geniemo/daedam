@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import { importApplication, startPreparation } from '@/api/preparation'
+import { importApplication, importPosting, startPreparation } from '@/api/preparation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getMe } from '@/api/auth'
 import { getCredits } from '@/api/credits'
@@ -91,6 +91,27 @@ function Step1() {
   // 대상이 없는데, live에서 등록은 20~60분짜리 유료 작업입니다.
   const ready = company.trim() !== '' && role.trim() !== ''
 
+  // 채용공고를 파일로. PDF나 캡처 이미지를 서버가 Gemini로 읽어 본문을 돌려주면
+  // 입력란에 채운다 — 이미 적은 것이 있으면 뒤에 붙인다. 사용자가 확인한다.
+  const postingFile = useRef<HTMLInputElement>(null)
+  const [importing, setImporting] = useState(false)
+  const [importNote, setImportNote] = useState<string | null>(null)
+  const importPostingFile = async (file: File | undefined) => {
+    if (!file) return
+    setImporting(true)
+    setImportNote(null)
+    try {
+      const text = await importPosting(file)
+      setPosting(posting.trim() ? `${posting.trimEnd()}\n\n${text}` : text)
+      setImportNote('내용을 확인해 주세요.')
+    } catch (cause) {
+      setImportNote(cause instanceof Error ? cause.message : '파일을 읽지 못했습니다')
+    } finally {
+      setImporting(false)
+      if (postingFile.current) postingFile.current.value = ''
+    }
+  }
+
   return (
     <main className="mx-auto max-w-(--container-reg1) px-8 pb-20 animate-dm-fade">
       <StepHeading
@@ -120,6 +141,23 @@ function Step1() {
           <div className="flex items-center gap-[6px]">
             <Label>채용공고</Label>
             <span className="text-[12px] text-faint">선택 · 링크 또는 내용을 붙여넣기</span>
+            <div className="flex-1" />
+            {importNote && <span className="text-[12px] text-body-2">{importNote}</span>}
+            <button
+              type="button"
+              onClick={() => postingFile.current?.click()}
+              disabled={importing}
+              className={`border-b border-field text-[12.5px] text-muted ${importing ? 'cursor-default opacity-60' : 'hover:text-ink'}`}
+            >
+              {importing ? '읽는 중…' : '파일로 올리기'}
+            </button>
+            <input
+              ref={postingFile}
+              type="file"
+              accept="application/pdf,image/png,image/jpeg"
+              className="hidden"
+              onChange={(e) => void importPostingFile(e.target.files?.[0])}
+            />
           </div>
           <TextArea
             value={posting}

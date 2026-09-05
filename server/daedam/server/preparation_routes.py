@@ -15,7 +15,12 @@ from typing import Any, Callable
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
-from daedam.interview.application_import import MAX_PDF_BYTES, extract_application
+from daedam.interview.application_import import (
+    MAX_PDF_BYTES,
+    extract_application,
+    extract_posting,
+    sniff_mime,
+)
 
 from .accounts import Accounts
 from .credits import COST_RESEARCH, Credits, InsufficientCredits
@@ -41,6 +46,7 @@ def create_preparation_router(
     accounts: Accounts,
     credits: Credits,
     import_application: Callable[[bytes], list[dict[str, Any]]] = extract_application,
+    import_posting: Callable[[bytes], str] = extract_posting,
 ) -> APIRouter:
     """준비 파이프라인을 라우터로 감싼다.
 
@@ -51,6 +57,7 @@ def create_preparation_router(
             취소할 수 없으므로 돈이 나가기 전에 막아야 한다.
         import_application: 지원서 PDF를 파트·항목으로 옮기는 함수. 테스트가
             대역을 주입한다.
+        import_posting: 채용공고 파일을 본문 텍스트로 옮기는 함수. 같은 이유.
 
     Returns:
         /api/preparation 라우터.
@@ -128,6 +135,27 @@ def create_preparation_router(
                 detail="PDF에서 지원서를 읽지 못했습니다. 잠시 뒤 다시 시도하거나 직접 입력해 주세요",
             ) from exc
         return {"parts": parts}
+
+    @router.post("/import-posting")
+    def import_posting_file(
+        file: UploadFile = File(...),
+        user_id: str = Depends(accounts.current_user_id),
+    ) -> dict[str, str]:
+        """채용공고 파일(PDF·PNG·JPG) → 본문 텍스트. 화면의 채용공고 칸에 채운다."""
+        data = file.file.read(MAX_PDF_BYTES + 1)
+        if len(data) > MAX_PDF_BYTES:
+            raise HTTPException(status_code=413, detail="파일이 너무 큽니다 (10MB까지)")
+        if sniff_mime(data) is None:
+            raise HTTPException(status_code=400, detail="PDF·PNG·JPG 파일만 올릴 수 있습니다")
+        try:
+            text = import_posting(data)
+        except Exception as exc:
+            logger.exception("채용공고 파일 읽기 실패 (user=%s)", user_id)
+            raise HTTPException(
+                status_code=502,
+                detail="파일에서 채용공고를 읽지 못했습니다. 링크나 본문을 붙여넣어 주세요",
+            ) from exc
+        return {"text": text}
 
     @router.get("/{task_id}")
     def preparation_status(task_id: str) -> dict[str, Any]:

@@ -69,6 +69,21 @@ export async function importApplication(file: File): Promise<ApplicationPart[]> 
   }))
 }
 
+/**
+ * 채용공고 파일(PDF·PNG·JPG) → 본문 텍스트. 화면의 채용공고 칸에 채운다.
+ * 구조는 없다 — 채용공고는 리서치 프롬프트에 그대로 실리는 문자열이다.
+ */
+export async function importPosting(file: File): Promise<string> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch('/api/preparation/import-posting', { method: 'POST', body: form })
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { detail?: string } | null
+    throw new Error(body?.detail || `파일을 읽지 못했습니다 (${res.status})`)
+  }
+  return ((await res.json()) as { text: string }).text
+}
+
 /** §서버 연동 1 — 회사 등록 + 리서치 시작. task_id를 돌려준다. */
 export async function startPreparation(
   company: string,

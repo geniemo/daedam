@@ -139,7 +139,7 @@ def test_시작이_실패하면_차감을_되돌리고_503(tmp_path: Path) -> No
 # ── PDF 가져오기 ───────────────────────────────────────────────────────────
 
 
-def _import_client(tmp_path: Path, extractor) -> TestClient:  # noqa: ANN001
+def _import_client(tmp_path: Path, extractor=None, posting=None) -> TestClient:  # noqa: ANN001
     store, accounts, _ = make_store(tmp_path / "data")
     preparation = InterviewPreparation(
         research=FixtureResearch(duration_s=10), store=store, generate=lambda **_: []
@@ -147,7 +147,11 @@ def _import_client(tmp_path: Path, extractor) -> TestClient:  # noqa: ANN001
     app = FastAPI()
     app.include_router(
         create_preparation_router(
-            preparation, accounts, accounts.credits, import_application=extractor
+            preparation,
+            accounts,
+            accounts.credits,
+            import_application=extractor or (lambda d: []),
+            import_posting=posting or (lambda d: ""),
         )
     )
     return TestClient(app)
@@ -198,3 +202,18 @@ def test_읽기_실패는_502로_말한다(tmp_path: Path) -> None:
         "/api/preparation/import", files={"file": ("a.pdf", b"%PDF-1.4", "application/pdf")}
     )
     assert response.status_code == 502
+
+
+def test_채용공고_파일은_본문_텍스트를_돌려준다(tmp_path: Path) -> None:
+    response = _import_client(tmp_path, posting=lambda d: "담당 업무\n- 분석").post(
+        "/api/preparation/import-posting",
+        files={"file": ("jd.png", b"\x89PNG....", "image/png")},
+    )
+    assert response.status_code == 200 and response.json() == {"text": "담당 업무\n- 분석"}
+
+
+def test_채용공고_파일이_받는_종류가_아니면_400(tmp_path: Path) -> None:
+    response = _import_client(tmp_path).post(
+        "/api/preparation/import-posting", files={"file": ("jd.gif", b"GIF89a", "image/gif")}
+    )
+    assert response.status_code == 400
