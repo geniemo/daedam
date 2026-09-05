@@ -343,8 +343,12 @@ function Step2() {
         >
           {importing ? 'PDF 읽는 중…' : 'PDF로 불러오기'}
         </button>
-        {/* 안내 문구는 두지 않는다 — 버튼 이름이 곧 설명이다. 결과와 오류만 옆에 적는다. */}
-        {importNote && <span className="text-[12.5px] text-body-2">{importNote}</span>}
+        {/* 기다릴 시간만 미리 알린다 — 실측 36초라 아무 말 없으면 멈춘 줄 안다. 결과와 오류가 그 자리를 잇는다. */}
+        {importNote ? (
+          <span className="text-[12.5px] text-body-2">{importNote}</span>
+        ) : (
+          <span className="text-[12.5px] font-light text-faint">30초 정도 걸립니다.</span>
+        )}
         <input
           ref={fileInput}
           type="file"
