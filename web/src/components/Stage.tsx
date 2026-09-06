@@ -51,13 +51,18 @@ export function Avatar({
     let raf = 0
     const loop = () => {
       const talking = isSpeaking.current
-      // 들을 때는 지원자 목소리를 받되 잦아든 채로 — 면접관의 불이 아니다.
-      const level = talking ? levels.current.output : levels.current.input * 0.35
+      const level = talking ? levels.current.output : levels.current.input
+      // 면접관이 말할 때는 불이 늘 켜져 있고 진폭이 그 위에 얹힌다. 들을 때는
+      // 지원자의 목소리가 불이다 — 조용하면 잦아들고 말하면 또렷이 차오른다.
+      // 앞서는 입력 진폭을 0.35배로 눌러 놓아 말해도 빛이 보이지 않았다(실측).
       if (voice.current) {
-        voice.current.style.transform = `scale(${1 + level * 0.16})`
-        voice.current.style.opacity = String((talking ? 0.6 : 0.28) + level * (talking ? 0.4 : 0.22))
+        voice.current.style.transform = `scale(${1 + level * (talking ? 0.16 : 0.22)})`
+        voice.current.style.opacity = String(talking ? 0.6 + level * 0.4 : 0.3 + level * 0.7)
       }
-      if (bloomEl.current) bloomEl.current.style.transform = `scale(${1 + level * 0.12})`
+      if (bloomEl.current) {
+        bloomEl.current.style.transform = `scale(${1 + level * 0.12})`
+        bloomEl.current.style.opacity = String(talking ? 1 : 0.6 + level * 0.4)
+      }
       raf = requestAnimationFrame(loop)
     }
     raf = requestAnimationFrame(loop)
