@@ -22,7 +22,7 @@ from google.genai import types
 from daedam.interview.stages import PROFILES, Profile
 from daedam.server import live_bridge
 from daedam.server.credits import COST_INTERVIEW
-from daedam.server.live_bridge import _client_messages_from, create_live_router
+from daedam.server.live_bridge import TurnTranscript, _client_messages_from, create_live_router
 from conftest import make_store
 
 
@@ -43,25 +43,27 @@ def test_오디오_파트는_바이너리가_된다() -> None:
     assert _client_messages_from(_audio_event(b"\x0a\x0b")) == [("bytes", b"\x0a\x0b")]
 
 
-def test_모델_전사는_caption이_된다() -> None:
+def test_전사_토막은_턴_안에서_이어지고_겹친_머리는_한_번만_둔다() -> None:
+    """ADK는 generation_complete에서 모아 둔 전사를 finished로 한 번 내보내고,
+    남은 음성의 전사는 그 뒤에 이어 온다 — 한 질문이 두 토막이 된다(실측)."""
+    turn = TurnTranscript()
+    assert turn.add("부산화물지점 국제선 판매를 담당하실 때,")
+    # ADK의 flush — 지금까지의 전문을 다시 보낸다. 겹쳐서 아무것도 안 붙는다.
+    assert not turn.add("부산화물지점 국제선 판매를 담당하실 때,")
+    # 남은 음성의 전사가 앞 토막의 꼬리부터 다시 시작한다.
+    assert turn.add("판매를 담당하실 때, 운임 협상과")
+    assert turn.text == "부산화물지점 국제선 판매를 담당하실 때, 운임 협상과"
+    assert not turn.add("") and not turn.add(None)
+    assert turn.close() == "부산화물지점 국제선 판매를 담당하실 때, 운임 협상과"
+    assert turn.text == "" and turn.close() == ""
+
+
+def test_전사는_이벤트_번역이_아니라_턴_누적기가_만든다() -> None:
     event = Event(
         author="interviewer",
         output_transcription=types.Transcription(text="자기소개 부탁드립니다"),
     )
-    assert (
-        "json",
-        {"type": "caption", "text": "자기소개 부탁드립니다", "final": False},
-    ) in _client_messages_from(event)
-
-
-def test_전사의_끝은_final로_알린다() -> None:
-    """조각을 이어 붙이는 프론트가 다음 턴에서 자막을 새로 시작할 지점이다.
-    마지막 조각은 텍스트가 비어 올 수 있어 finished만으로도 내보낸다."""
-    event = Event(
-        author="interviewer",
-        output_transcription=types.Transcription(finished=True),
-    )
-    assert ("json", {"type": "caption", "text": "", "final": True}) in _client_messages_from(event)
+    assert _client_messages_from(event) == []
 
 
 def test_질문_배달은_번호가_된다() -> None:
@@ -151,11 +153,16 @@ def _seeded_store(tmp_path, *interview_ids: str):
     return store
 
 
-def _client(runner: _FakeRunner, store, profile: str = "demo") -> TestClient:
+def _client(runner: _FakeRunner, store, profile: str = "demo", transcribe=None) -> TestClient:
     app = FastAPI()
     app.include_router(
         create_live_router(
-            runner, store, store.accounts, store.accounts.credits, profile=profile
+            runner,
+            store,
+            store.accounts,
+            store.accounts.credits,
+            profile=profile,
+            transcribe=transcribe,
         )
     )
     return TestClient(app)
@@ -386,6 +393,8 @@ class _TranscribingRunner(_FakeRunner):
                 text="자기소개 부탁드립니다.", finished=True
             ),
         )
+        # 턴의 끝 — 전사록의 한 줄이 여기서 닫힌다.
+        yield Event(author="interviewer", turn_complete=True)
         yield Event(
             author="user",
             input_transcription=types.Transcription(text="네, 저는", finished=True),
@@ -419,6 +428,118 @@ def test_면접이_음성과_전사를_남긴다(tmp_path) -> None:
 
     with wave.open(str(directory / "mic.wav"), "rb") as wav:
         assert wav.getnframes() == 16_000
+
+
+class _SplitFinalRunner(_FakeRunner):
+    """ADK의 실제 순서 — generation_complete에서 전사를 한 번 flush하고, 남은
+    음성의 전사가 이어 온 뒤 turn_complete에서 다시 flush한다."""
+
+    HEAD = "부산화물지점 국제선 판매를 담당하실 때,"
+    TAIL = "판매를 담당하실 때, 운임 협상과 공간 배분 문제를 어떻게 해결하셨나요?"
+
+    async def run_live(self, *, session, live_request_queue, run_config):
+        while True:
+            request = await live_request_queue.get()
+            self.heard.append(request)
+            if request.blob is not None:
+                break
+        for text, finished in ((self.HEAD, False), (self.HEAD, True), (self.TAIL, False), (self.TAIL, True)):
+            yield Event(
+                author="interviewer",
+                output_transcription=types.Transcription(text=text, finished=finished),
+            )
+        yield Event(author="interviewer", turn_complete=True)
+
+
+def test_생성이_끝난_뒤_이어_온_전사도_한_자막으로_잇는다(tmp_path) -> None:
+    """실측: 둘째 토막에서 자막이 새로 시작돼 질문 앞머리가 화면에서 사라졌고,
+    전사록에는 한 문장이 두 줄로 남았다."""
+    store = _seeded_store(tmp_path, "split")
+    client = _client(_SplitFinalRunner(), store)
+    full = "부산화물지점 국제선 판매를 담당하실 때, 운임 협상과 공간 배분 문제를 어떻게 해결하셨나요?"
+    with client.websocket_connect("/ws/interview?card=split") as websocket:
+        _handshake(websocket)
+        websocket.send_bytes(b"\x00\x01")
+        captions = []
+        while (message := websocket.receive_json())["type"] != "ended":
+            if message["type"] == "caption":
+                captions.append(message)
+    assert captions == [
+        {"type": "caption", "text": _SplitFinalRunner.HEAD, "final": False},
+        {"type": "caption", "text": full, "final": False},
+        {"type": "caption", "text": full, "final": True},
+    ]
+    [session] = store.list_sessions("split")
+    saved = store.load_session(session.id).transcript
+    assert [u["text"] for u in saved["utterances"] if u["speaker"] == "interviewer"] == [full]
+
+
+class _TruncatedRunner(_FakeRunner):
+    """실측 순서 — 음성은 다 나갔는데 전사는 앞머리에서 멈추고 뒤가 오지 않는다."""
+
+    async def run_live(self, *, session, live_request_queue, run_config):
+        while True:
+            request = await live_request_queue.get()
+            self.heard.append(request)
+            if request.blob is not None:
+                break
+        yield _audio_event(b"\x01\x02")
+        yield Event(
+            author="interviewer",
+            output_transcription=types.Transcription(text="임펙스의 특수", finished=True),
+        )
+        yield _audio_event(b"\x03\x04")
+        yield Event(author="interviewer", turn_complete=True)
+        # 복구가 끝날 때까지 대화를 붙들어 둔다 — 실제로는 지원자가 답하는 시간이다.
+        await asyncio.sleep(0.3)
+
+
+def test_끊긴_전사는_그_턴의_음성으로_다시_받아_적어_자막을_바꿔_끼운다(tmp_path) -> None:
+    heard: list[bytes] = []
+
+    def transcribe(pcm: bytes) -> str:
+        heard.append(pcm)
+        return "임펙스의 특수 물류 서비스에 대해 어떻게 생각하시나요?"
+
+    store = _seeded_store(tmp_path, "trunc")
+    client = _client(_TruncatedRunner(), store, transcribe=transcribe)
+    with client.websocket_connect("/ws/interview?card=trunc") as websocket:
+        _handshake(websocket)
+        websocket.send_bytes(b"\x00\x01")
+        captions = []
+        while True:
+            frame = websocket.receive()  # 음성 프레임(bytes)과 JSON이 섞여 온다
+            if frame.get("bytes") is not None:
+                continue
+            message = json.loads(frame["text"])
+            if message["type"] == "ended":
+                break
+            if message["type"] == "caption":
+                captions.append(message)
+
+    recovered = "임펙스의 특수 물류 서비스에 대해 어떻게 생각하시나요?"
+    assert captions == [
+        {"type": "caption", "text": "임펙스의 특수", "final": False},
+        {"type": "caption", "text": "임펙스의 특수", "final": True},
+        {"type": "caption", "text": recovered, "final": True},
+    ]
+    # 그 턴에 나간 음성 전부가 받아 적기에 들어갔다.
+    assert heard == [b"\x01\x02\x03\x04"]
+    # 전사록도 복구된 문장으로 바뀌고, 위치는 처음 적힌 자리 그대로다.
+    [session] = store.list_sessions("trunc")
+    saved = store.load_session(session.id).transcript
+    assert [u["text"] for u in saved["utterances"] if u["speaker"] == "interviewer"] == [recovered]
+
+
+def test_문장으로_끝난_전사는_다시_받아_적지_않는다(tmp_path) -> None:
+    calls: list[bytes] = []
+    client = _client(_SplitFinalRunner(), _seeded_store(tmp_path, "whole"), transcribe=lambda pcm: calls.append(pcm) or "")
+    with client.websocket_connect("/ws/interview?card=whole") as websocket:
+        _handshake(websocket)
+        websocket.send_bytes(b"\x00\x01")
+        while websocket.receive_json()["type"] != "ended":
+            pass
+    assert calls == []
 
 
 # ── 끝난 면접은 이어지지 않는다 ──────────────────────────────────────
@@ -623,6 +744,7 @@ class _TalkingRunner(_FakeRunner):
                 text="자기소개 부탁드립니다.", finished=True
             ),
         )
+        yield Event(author="interviewer", turn_complete=True)
         while True:
             self.heard.append(await live_request_queue.get())
 

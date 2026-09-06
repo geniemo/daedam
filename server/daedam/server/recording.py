@@ -117,12 +117,19 @@ class InterviewRecording:
         """
         self.question_ends.append(self.elapsed_s)
 
-    def note(self, speaker: Speaker, text: str) -> None:
-        """전사 한 토막을 지금 위치에 적는다. 빈 문자열은 무시한다."""
+    def note(self, speaker: Speaker, text: str) -> Utterance | None:
+        """전사 한 토막을 지금 위치에 적는다. 빈 문자열은 무시한다.
+
+        Returns:
+            적힌 토막. 자막 복구(captions.py)가 나중에 글을 바꿔 끼울 수 있게
+            돌려준다 — 위치(at)는 그대로 두고 글만 바뀐다.
+        """
         text = text.strip()
         if not text:
-            return
-        self.utterances.append(Utterance(speaker=speaker, text=text, at=self.elapsed_s))
+            return None
+        utterance = Utterance(speaker=speaker, text=text, at=self.elapsed_s)
+        self.utterances.append(utterance)
+        return utterance
 
     def finish(self) -> None:
         """면접 종료 — 재생용 wav를 만들고 전사를 저장한다."""

@@ -56,10 +56,10 @@ from interviewer.tools import (
     STATE_STARTED_AT,
 )
 
-from . import fillers
+from . import captions, fillers
 from .accounts import LOCAL_PROVIDER, Accounts
 from .credits import COST_INTERVIEW, Credits, InsufficientCredits
-from .recording import InterviewRecording
+from .recording import InterviewRecording, Utterance
 from .store import InterviewData, InterviewStore, has_answer
 
 logger = logging.getLogger(__name__)
@@ -94,6 +94,9 @@ _TRACE_EVENTS = os.environ.get("TRACE_EVENTS") == "1"
 #: 며칠 뒤의 새 면접이 옛 대화 위에서 시작한다.
 _STALE_SESSION_S = 3600.0
 
+#: 자막 복구용으로 들고 있는 한 턴의 면접관 음성 상한 — 24kHz 16-bit 60초.
+_TURN_AUDIO_CAP = 24_000 * 2 * 60
+
 
 def _client_messages_from(event: Event) -> list[tuple[str, Any]]:
     """에이전트 이벤트를 프론트 프로토콜 메시지로 번역한다.
@@ -113,23 +116,8 @@ def _client_messages_from(event: Event) -> list[tuple[str, Any]]:
         if blob and blob.data:
             messages.append(("bytes", blob.data))
 
-    # 모델 발화의 전사 → 화면 자막. 조각으로 흘러오므로 프론트가 이어 붙이고,
-    # finished가 턴의 끝을 알린다(google.genai types.Transcription.finished).
-    # 자막이 실제 발화인 이유는 면접관이 뼈대질문을 그대로 읽지 않고, 꼬리질문에는
-    # 대본 자체가 없기 때문이다 — 준비된 문장을 띄우면 들리는 말과 어긋난다.
-    # 사용자 쪽 전사(input_transcription)는 화면에 안 쓰므로 보내지 않는다.
-    transcription = event.output_transcription
-    if transcription is not None and (transcription.text or transcription.finished):
-        messages.append(
-            (
-                "json",
-                {
-                    "type": "caption",
-                    "text": transcription.text or "",
-                    "final": bool(transcription.finished),
-                },
-            )
-        )
+    # 모델 발화의 전사(자막)는 여기서 만들지 않는다 — 턴 단위로 이어 붙여야
+    # 해서 상태가 필요하다. 펌프 루프의 `TurnTranscript` 참고.
 
     # ask_question이 뼈대질문을 배달하면 그 이벤트의 state 델타에 늘어난 asked가
     # 실려 온다 — 뼈대질문이 하나 나간 순간이고, 낸 질문 수가 곧 번호다.
@@ -235,6 +223,53 @@ class _Usage:
         )
 
 
+def _merge_overlap(base: str, piece: str) -> str:
+    """`piece`를 `base` 뒤에 잇되, 겹치는 머리는 한 번만 둔다.
+
+    뒤 토막이 앞 토막의 꼬리부터 다시 시작하는 일이 있다(실측 "…판매를 담당하실
+    때," 뒤에 "판매를 담당하실 때, 운임 협상과…"). ADK가 모아 둔 전문을 다시
+    보내는 경우(앞 토막 전체와 같음)는 통째로 겹쳐서 아무것도 붙지 않는다.
+    """
+    if not piece:
+        return base
+    if not base:
+        return piece
+    for size in range(min(len(base), len(piece)), 0, -1):
+        if base.endswith(piece[:size]):
+            return base + piece[size:]
+    return base + piece
+
+
+class TurnTranscript:
+    """면접관 한 턴의 전사를 잇는다.
+
+    ADK는 generation_complete마다 모아 둔 전사를 finished=True로 내보낸다
+    (google/adk/models/gemini_llm_connection.py — "we rely on generation_complete,
+    turn_complete or interrupted signals to flush any pending transcriptions").
+    그런데 모델이 생성을 마친 뒤에도 남은 음성의 전사가 계속 들어와서, 한 질문이
+    두세 토막의 finished로 갈라져 온다. 토막마다 자막을 갈아끼우면 화면에서 질문
+    앞머리가 사라지고 전사록에도 한 문장이 두 줄로 남는다(실측 "부산화물지점
+    국제선 판매를 담당하실 때," / "판매를 담당하실 때, 운임 협상과 …"). 그래서
+    finished는 보지 않고 턴이 끝날 때(turn_complete·interrupted)까지 잇는다.
+    """
+
+    def __init__(self) -> None:
+        self.text = ""
+
+    def add(self, piece: str | None) -> bool:
+        """토막을 잇는다. 자막이 실제로 달라졌으면 True."""
+        merged = _merge_overlap(self.text, piece or "")
+        if merged == self.text:
+            return False
+        self.text = merged
+        return True
+
+    def close(self) -> str:
+        """턴을 닫고 전문을 돌려준다. 아무 말도 없었으면 빈 문자열."""
+        text, self.text = self.text.strip(), ""
+        return text
+
+
 def _last_said(recording: InterviewRecording, speaker: str) -> str:
     """이 판에서 `speaker`가 마지막으로 한 말. 없으면 빈 문자열."""
     for utterance in reversed(recording.utterances):
@@ -322,6 +357,7 @@ def create_live_router(
     credits: Credits,
     profile: str = DEFAULT_PROFILE,
     evaluation: Any = None,
+    transcribe: Callable[[bytes], str] | None = None,
 ) -> APIRouter:
     """음성 브리지 라우터를 만든다.
 
@@ -331,6 +367,8 @@ def create_live_router(
             이 지점에 꽂힌다. 테스트는 대역 러너를 주입한다.
         evaluation: 면접이 끝나면 피드백을 만드는 오케스트레이터. None이면
             기록만 남기고 만들지 않는다(테스트).
+        transcribe: 면접관 음성(24kHz PCM)을 받아 적는 함수 — 전사가 끊긴
+            턴의 자막을 복구한다(captions.py). None이면 복구하지 않는다(테스트).
         store: 면접 준비 데이터 저장소. 세션 생성 시 여기서 읽어 시딩한다.
         accounts: 접속한 사람을 알아낸다 — 남의 면접에 붙는 것을 막는다.
         credits: 새 면접 한 판의 크레딧을 차감한다. 재접속에는 물리지 않는다 —
@@ -459,21 +497,61 @@ def create_live_router(
         recording = InterviewRecording(
             directory=store.session_directory(card, session_id)
         )
-        # 전사는 조각으로 흘러오다 finished에 전문이 실린다. 그 전문만 한
-        # 토막으로 남긴다. 프론트도 같은 규칙이다 — final이면 자막을 text로
-        # 통째로 교체하고(store/interview.ts appendCaption), 그래도 자막이 잘려
-        # 보인 적이 없다. 전문이 안 실린 경우를 대비해 모아둔 조각을 받쳐 둔다.
-        partial: dict[str, str] = {"interviewer": "", "applicant": ""}
+        # 면접관의 말은 턴 단위로 잇는다(TurnTranscript). 자막은 늘 그 턴의
+        # 전문을 통째로 보내고 프론트는 갈아끼우기만 한다(store/interview.ts
+        # setCaption). 턴이 끝나면 전문이 전사록의 한 줄이 된다 — 자막이 실제
+        # 발화인 이유는 면접관이 뼈대질문을 그대로 읽지 않고 꼬리질문에는 대본
+        # 자체가 없기 때문이다. 준비된 문장을 띄우면 들리는 말과 어긋난다.
+        turn = TurnTranscript()
+        # 이 턴의 면접관 음성. 전사가 끊기면 이걸 다시 받아 적는다(captions.py).
+        turn_audio = bytearray()
+        recoveries: set[asyncio.Task[None]] = set()
 
-        def collect(speaker: str, transcription: Any) -> None:
+        def note_turn() -> Utterance | None:
+            text = turn.close()
+            if not text:
+                return None
+            # 면접관이 실제로 한 말. 툴 호출 기록만으로는 면접에서 무슨 일이
+            # 있었는지 알 수 없다 — 꼬리질문의 질, 준비된 질문을 어떻게 바꿔
+            # 물었는지, 검색 결과를 대화에 실었는지가 여기서만 드러난다.
+            logger.info("면접관: %s", text)
+            return recording.note("interviewer", text)
+
+        async def recover_caption(pcm: bytes, utterance: Utterance | None) -> None:
+            """끊긴 전사를 음성으로 다시 받아 적어 자막과 전사록을 바꿔 끼운다."""
+            assert transcribe is not None
+            try:
+                text = (await asyncio.to_thread(transcribe, pcm)).strip()
+            except Exception:  # noqa: BLE001 — 안전망이 실패하면 자막은 그대로다
+                logger.exception("자막 복구 실패 (session=%s)", session_id)
+                return
+            before = utterance.text if utterance is not None else ""
+            if len(text) <= len(before):
+                return
+            if utterance is not None:
+                utterance.text = text
+            else:
+                recording.note("interviewer", text)
+            logger.info("면접관(음성으로 복구): %s", text)
+            try:
+                await websocket.send_json({"type": "caption", "text": text, "final": True})
+            except Exception:  # noqa: BLE001 — 소켓이 이미 닫혔다. 전사록에는 남았다
+                pass
+
+        # 지원자 쪽 전사는 화면에 안 쓴다. Gemini 3.x Live는 한 발화를 finished
+        # 하나로 준다(ADK gemini_llm_connection.py) — 조각이 오면 모았다가 남긴다.
+        applicant_partial = ""
+
+        def collect_applicant(transcription: Any) -> None:
+            nonlocal applicant_partial
             if transcription is None:
                 return
             text = transcription.text or ""
             if not transcription.finished:
-                partial[speaker] += text
+                applicant_partial += text
                 return
-            recording.note(speaker, text or partial[speaker])
-            partial[speaker] = ""
+            recording.note("applicant", text or applicant_partial)
+            applicant_partial = ""
 
         # 툴이 도는 침묵을 메울 필러 클립의 전송 상대 — 이 커넥션의 소켓.
         # 콜백(`fillers.play_filler_before_tool`)이 세션 id로 찾아 쓴다.
@@ -684,8 +762,7 @@ def create_live_router(
                             logger.info("추적: %s", line)
                     if event.usage_metadata is not None:
                         usage.add(event.usage_metadata)
-                    collect("interviewer", event.output_transcription)
-                    collect("applicant", event.input_transcription)
+                    collect_applicant(event.input_transcription)
                     # 하드캡 백스톱. 면접을 끝내는 것은 지원자의 종료 버튼이고
                     # 그 설계는 그대로다 — 이건 창을 닫고 잊은 면접이 무한히
                     # 도는 것만 막는다. Live API가 턴마다 누적 맥락을 다시
@@ -708,19 +785,40 @@ def create_live_router(
                     for kind, payload in _client_messages_from(event):
                         if kind == "bytes":
                             await websocket.send_bytes(payload)
+                            if len(turn_audio) < _TURN_AUDIO_CAP:
+                                turn_audio.extend(payload)
                             continue
                         if payload["type"] == "question":
                             # 툴의 배달 로그와 짝을 이룬다. 둘 중 이 줄만 없으면
                             # state 델타가 브리지까지 오지 않은 것이다.
                             logger.info("질문 %d번 화면 전달", payload["index"])
-                        elif payload["type"] == "caption" and payload["final"]:
-                            # 면접관이 실제로 한 말. 툴 호출 기록만으로는 면접에서
-                            # 무슨 일이 있었는지 알 수 없다 — 꼬리질문의 질, 준비된
-                            # 질문을 어떻게 바꿔 물었는지, 검색 결과를 대화에
-                            # 실었는지가 여기서만 드러난다. 턴이 끝난 전문만 남긴다.
-                            if payload["text"]:
-                                logger.info("면접관: %s", payload["text"])
                         await websocket.send_json(payload)
+                    # 자막 — 이 턴의 전문을 통째로. 토막이 붙을 때만 보낸다
+                    # (ADK가 모아 둔 전문을 다시 보내는 것은 겹쳐서 안 붙는다).
+                    transcription = event.output_transcription
+                    if transcription is not None and turn.add(transcription.text):
+                        await websocket.send_json(
+                            {"type": "caption", "text": turn.text, "final": False}
+                        )
+                    # 턴의 끝 — 전문을 남기고 자막을 final로 굳힌다. 말이 끊긴
+                    # 경우(interrupted)도 거기까지가 그 턴의 말이다.
+                    if event.turn_complete or event.interrupted:
+                        utterance = note_turn()
+                        if utterance is not None:
+                            await websocket.send_json(
+                                {"type": "caption", "text": utterance.text, "final": True}
+                            )
+                        # 전사가 문장으로 끝나지 않았다(또는 아예 없다) — 이 턴의
+                        # 음성을 다시 받아 적는다. 기다리지 않는다: 다음 턴은 그대로
+                        # 흐르고, 복구된 자막은 준비되는 대로 따라간다.
+                        said = utterance.text if utterance is not None else ""
+                        if transcribe is not None and turn_audio and not captions.is_complete(said):
+                            task = asyncio.create_task(recover_caption(bytes(turn_audio), utterance))
+                            recoveries.add(task)
+                            task.add_done_callback(recoveries.discard)
+                        turn_audio.clear()
+                # 대화가 끝났는데 아직 닫히지 않은 턴이 있으면 전사록에는 남긴다.
+                note_turn()
             await notify_ended()
 
         async def hard_cap_timer() -> None:
@@ -771,6 +869,9 @@ def create_live_router(
             failed = True
         finally:
             fillers.unregister(session_id, filler_connection)
+            # 아직 안 끝난 자막 복구는 버린다 — 기다리면 아래 저장 순서가 밀린다.
+            for task in recoveries:
+                task.cancel()
             # 커넥션이 끝날 때마다 저장한다. 재접속이면 다음 커넥션이 이어
             # 받으므로 중간 저장이고, 마지막 커넥션의 것이 최종본이 된다 —
             # 면접이 어떻게 끝나든(종료 버튼·창 닫기) 기록이 남는다.
