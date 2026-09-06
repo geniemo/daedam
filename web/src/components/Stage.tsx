@@ -1,51 +1,47 @@
 import { useEffect, useRef } from 'react'
-import type { RefObject } from 'react'
+import type { CSSProperties, RefObject } from 'react'
 import type { Levels } from '@/audio/useVoiceSession'
 
 /**
- * 면접 무대의 아바타와 파형. 면접 화면(Interview.tsx)과 랜딩의 데모 창이 같은
- * 것을 그린다 — 규격은 README §8 아바타 영역, 값은 index.css의 무대 토큰.
+ * 무대의 부품 — 면접관(구체), 파형, 키라이트, 진행 막대.
+ *
+ * 무대는 밝은 화면과 다른 세계다(index.css의 --stage-* 토큰). 면접 화면·문턱
+ * 띠(준비 완료)·리서치 진행·분석 중·리포트 머리·랜딩의 데모 창이 같은 부품을
+ * 그린다. 규격: design_handoff_daedam/design-system/components/stage.
+ *
+ * **면접관은 무광 유리 구체 하나다.** 앞서 있던 동심원 링은 레이더로 읽혀서
+ * 걷어냈다. 구체 안의 불이 말차례를 쥔다 — 면접관이 말하면 앰버, 지원자의 말을
+ * 들을 때는 민트. 바깥 번짐도 같은 색을 따른다.
  *
  * **구동 방식이 둘이다.** 면접에서는 실제 오디오 진폭(`levels`)이 60fps로
  * 들어오므로 React state를 거치지 않고 rAF 루프가 ref → style에 직접 쓴다.
- * 랜딩에는 오디오가 없다 — `levels`를 안 주면 README §Assets가 정의한 순수
- * CSS 애니메이션(dm-pulse · dm-pulse2)으로 돈다.
- *
- * **말할 때와 들을 때 둘 다 살아 있어야 한다.** 앞서는 링이 speaking일 때만
- * 붙어서, 지원자가 답하는 동안(면접 시간의 절반) 아바타가 정지한 검은 원이
- * 됐다. 지금은 링 두 벌이 늘 붙어 있고 불투명도로 건넨다 — 마운트를 여닫으면
- * 전환할 때 툭 끊긴다. 색이 갈린다: 면접관이 말할 때는 강조색(머스터드),
- * 지원자가 말할 때는 듣는 색(초록). 내 목소리가 면접관에게 가 닿는 것이
- * 보여야 대화가 된다.
- *
- * CSS 구동에서 링을 켜고 끄는 것은 링 자체가 아니라 바깥 래퍼의 불투명도다.
- * 키프레임이 opacity를 쥐고 있어서 링에 직접 opacity를 주면 애니메이션에
- * 덮여 speaking과 무관하게 늘 보인다.
- *
- * `data-avatar-slot="true"` 컨테이너 내부만 교체하면 실제 아바타로 대체된다.
- * 링·자막·컨트롤은 이 컨테이너 바깥에 있다.
+ * 오디오가 없으면(문턱·리포트 머리·분석 중) 불의 밝기를 `glow`로 고정하고
+ * 숨쉬기 애니메이션만 돈다.
  */
 
-/** 면접 화면 원본 슬롯 지름. 다른 크기는 이 비율로 링·내부 도형까지 줄인다. */
-const BASE_SIZE = 206
+/** 면접 화면 원본 지름. 문턱·리서치·분석 128, 랜딩 데모 150, 리포트 머리 72. */
+const BASE_SIZE = 216
 
 export function Avatar({
   speaking,
   levels,
   size = BASE_SIZE,
+  glow,
+  bloom = true,
 }: {
   speaking: boolean
-  /** 실제 오디오 진폭. 없으면 CSS 애니메이션으로 돈다. */
+  /** 실제 오디오 진폭. 없으면 정적으로 선다. */
   levels?: RefObject<Levels>
-  /** 아바타 슬롯 지름(px). 링과 내부 도형이 같은 비율로 따라간다. */
+  /** 구체 지름(px). */
   size?: number
+  /** 정적일 때 불의 불투명도. 없으면 말할 때 .85, 들을 때 .4. */
+  glow?: number
+  /** 구체 바깥의 번짐. 좁은 자리(카드 안)에서는 끈다. */
+  bloom?: boolean
 }) {
-  const s = size / BASE_SIZE
   const live = levels !== undefined
-  const talkGlow = useRef<HTMLDivElement>(null)
-  const talkRing = useRef<HTMLDivElement>(null)
-  const hearRing = useRef<HTMLDivElement>(null)
-  const core = useRef<HTMLDivElement>(null)
+  const voice = useRef<HTMLDivElement>(null)
+  const bloomEl = useRef<HTMLDivElement>(null)
   // 루프가 phase마다 다시 붙지 않도록 ref로 읽는다.
   const isSpeaking = useRef(speaking)
   isSpeaking.current = speaking
@@ -55,96 +51,66 @@ export function Avatar({
     let raf = 0
     const loop = () => {
       const talking = isSpeaking.current
-      const out = levels.current.output
-      const inp = levels.current.input
-
-      if (talkGlow.current) {
-        talkGlow.current.style.transform = `scale(${1 + out * 0.26})`
-        talkGlow.current.style.opacity = String(talking ? 0.06 + out * 0.26 : 0)
+      // 들을 때는 지원자 목소리를 받되 잦아든 채로 — 면접관의 불이 아니다.
+      const level = talking ? levels.current.output : levels.current.input * 0.35
+      if (voice.current) {
+        voice.current.style.transform = `scale(${1 + level * 0.16})`
+        voice.current.style.opacity = String((talking ? 0.6 : 0.28) + level * (talking ? 0.4 : 0.22))
       }
-      if (talkRing.current) {
-        talkRing.current.style.transform = `scale(${1 + out * 0.14})`
-        talkRing.current.style.opacity = String(talking ? 0.14 + out * 0.36 : 0)
-      }
-      // 듣는 링은 지원자 목소리를 받는다. 조용해도 완전히 꺼지지 않는다 —
-      // 꺼두면 "듣고 있다"가 화면에서 사라진다.
-      if (hearRing.current) {
-        hearRing.current.style.transform = `scale(${1 + inp * 0.1})`
-        hearRing.current.style.opacity = String(talking ? 0 : 0.28 + inp * 0.62)
-      }
-      // 가운데 표식이 말차례를 쥔다. 면접관이 말하면 부풀고, 들을 때는 잦아든다.
-      if (core.current) {
-        const level = talking ? out : inp * 0.4
-        core.current.style.transform = `scale(${(talking ? 1 : 0.82) + level * 0.22})`
-      }
+      if (bloomEl.current) bloomEl.current.style.transform = `scale(${1 + level * 0.12})`
       raf = requestAnimationFrame(loop)
     }
     raf = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(raf)
   }, [levels])
 
-  // CSS 구동일 때 래퍼가 링을 켜고 끈다. 오디오 구동에서는 rAF가 링에 직접 쓴다.
-  const gate = (on: boolean) =>
-    live ? undefined : { opacity: on ? 1 : 0, transition: 'opacity .6s' }
-  // 오디오 구동은 꺼진 채 시작한다 — 첫 진폭이 오기 전까지 링이 보이면 안 된다.
-  const dark = live ? { opacity: 0 } : undefined
+  // 큰 구체는 토큰의 그림자 그대로, 작은 구체는 안쪽 그림자만 지름에 비례해서.
+  const shadow =
+    size >= 160
+      ? 'var(--shadow-sphere)'
+      : `inset 0 1px 0 rgba(255,255,255,.10), inset 0 -${Math.round(size * 0.14)}px ${Math.round(size * 0.25)}px rgba(0,0,0,.42)`
+  const layer: CSSProperties = { position: 'absolute', inset: 0, borderRadius: '50%' }
 
   return (
-    <div
-      className="relative flex items-center justify-center"
-      style={{ width: 340 * s, height: 340 * s }}
-    >
-      <div className="absolute inset-0 flex items-center justify-center" style={gate(speaking)}>
-        <div
-          ref={talkGlow}
-          className={`rounded-full ${live ? '' : 'animate-dm-pulse2'}`}
-          style={{ width: 340 * s, height: 340 * s, background: 'var(--gradient-talk-glow)', ...dark }}
-        />
-      </div>
-      <div className="absolute inset-0 flex items-center justify-center" style={gate(speaking)}>
-        <div
-          ref={talkRing}
-          className={`rounded-full border border-talk-ring ${live ? '' : 'animate-dm-pulse'}`}
-          style={{ width: 270 * s, height: 270 * s, ...dark }}
-        />
-      </div>
-      <div className="absolute inset-0 flex items-center justify-center" style={gate(!speaking)}>
-        <div
-          ref={hearRing}
-          className={`rounded-full border-[1.5px] border-hear-ring ${live ? '' : 'animate-dm-pulse'}`}
-          style={{ width: 246 * s, height: 246 * s, ...dark }}
-        />
-      </div>
-
+    <div data-avatar-slot="true" style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
       <div
-        data-avatar-slot="true"
-        className="relative flex animate-dm-breathe items-center justify-center overflow-hidden rounded-full border border-stage-line"
-        style={{ width: size, height: size, background: 'var(--gradient-avatar)' }}
-      >
-        <div className="absolute inset-0" style={{ background: 'var(--gradient-avatar-highlight)' }} />
+        style={{
+          ...layer,
+          background: 'var(--gradient-sphere)',
+          boxShadow: shadow,
+          animation: 'dm-breathe 6s ease-in-out infinite',
+        }}
+      />
+      <div style={{ ...layer, background: 'var(--gradient-sphere-sheen)' }} />
+      <div
+        ref={voice}
+        style={{
+          ...layer,
+          background: speaking ? 'var(--gradient-voice-amber)' : 'var(--gradient-voice-mint)',
+          opacity: live ? (speaking ? 0.6 : 0.28) : (glow ?? (speaking ? 0.85 : 0.4)),
+          transition: 'background 1.4s ease, opacity 1s ease',
+        }}
+      />
+      {bloom && (
         <div
-          className="flex items-center justify-center rounded-full border border-avatar-inner-ring"
-          style={{ width: 96 * s, height: 96 * s }}
-        >
-          <div
-            ref={core}
-            className="rounded-full bg-avatar-core"
-            style={{
-              width: 44 * s,
-              height: 44 * s,
-              ...(live
-                ? { transition: 'background .4s ease' }
-                : { transform: speaking ? 'scale(1)' : 'scale(.82)', transition: 'transform .6s' }),
-            }}
-          />
-        </div>
-      </div>
+          ref={bloomEl}
+          style={{
+            ...layer,
+            inset: -Math.round(size * 0.5),
+            pointerEvents: 'none',
+            background: speaking
+              ? 'radial-gradient(circle, rgba(var(--stage-keylight-rgb), .13), transparent 60%)'
+              : 'radial-gradient(circle, rgba(var(--stage-mint-rgb), .09), transparent 60%)',
+            transition: 'background 1.4s ease',
+          }}
+        />
+      )}
     </div>
   )
 }
 
 /**
- * 마이크 입력 파형 — 3px 폭 막대 16개.
+ * 마이크 입력 파형 — 3px 폭 막대 16개, 모래색.
  * 진폭은 입력 AnalyserNode에서 온다. 막대별 위상차로 파도 모양을 만든다.
  * 오디오가 없으면(랜딩) 사인파 둘을 겹친 합성 진폭으로 말소리처럼 들쭉날쭉하게.
  */
@@ -193,10 +159,81 @@ export function Waveform({
           ref={(el) => {
             bars.current[i] = el
           }}
-          className="bg-accent"
-          style={{ width: 3, height, transformOrigin: 'center', transform: 'scaleY(0.22)' }}
+          style={{
+            width: 3,
+            height,
+            background: 'var(--stage-sand)',
+            transformOrigin: 'center',
+            transform: 'scaleY(0.22)',
+          }}
         />
       ))}
+    </div>
+  )
+}
+
+/** 눕은 파형 — 답변이 녹음되지 않았을 때. 조금 전까지 움직이던 막대가 전부 누웠다. */
+export function FlatWaveform({ dark = false, height = 38 }: { dark?: boolean; height?: number }) {
+  return (
+    <div className="flex items-center" style={{ gap: 3, height }}>
+      {Array.from({ length: BAR_COUNT }, (_, i) => (
+        <div
+          key={i}
+          style={{ width: 3, height: 2, background: dark ? 'rgba(255,255,255,.18)' : 'var(--color-line)' }}
+        />
+      ))}
+    </div>
+  )
+}
+
+/**
+ * 정지한 키라이트 — 무대 위쪽에서 내려오는 타원 하나. 움직이지 않는다.
+ * 면접에서는 면접관이 말할 때 조금 밝아진다(alpha .10 / .06).
+ */
+export function Keylight({
+  width,
+  height,
+  top,
+  left = '50%',
+  alpha = 0.07,
+}: {
+  width: number
+  height: number
+  top: string | number
+  left?: string | number
+  alpha?: number
+}) {
+  return (
+    <div
+      className="pointer-events-none absolute"
+      style={{
+        left,
+        top,
+        width,
+        height,
+        transform: 'translateX(-50%)',
+        background: `radial-gradient(ellipse at 50% 0%, rgba(var(--stage-keylight-rgb), ${alpha}), transparent 62%)`,
+        transition: 'background 1.4s ease',
+      }}
+    />
+  )
+}
+
+/**
+ * 무대 위의 진행 막대 — 2px, 앰버. pct를 모르면(null) 조각이 지나간다.
+ * 밝은 화면의 ProgressBar·IndeterminateBar와 약속은 같고 색만 무대 것이다.
+ */
+export function StageBar({ pct, width = '100%' }: { pct: number | null; width?: number | string }) {
+  return (
+    <div className="overflow-hidden" style={{ width, height: 2, background: 'rgba(255,255,255,.08)' }}>
+      <div
+        className={pct === null ? 'animate-dm-slide h-full' : 'h-full'}
+        style={{
+          width: pct === null ? '25%' : `${pct}%`,
+          background: 'var(--stage-amber)',
+          transition: pct === null ? undefined : 'width .4s ease',
+        }}
+      />
     </div>
   )
 }

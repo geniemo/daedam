@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { completeOnboarding, logout } from '@/api/auth'
 import { CheckDot, EmptyDot } from '@/components/ui'
+import { Logo } from '@/components/Logo'
 
 /**
  * 첫 로그인 뒤 한 번 — 이름 확정과 약관·개인정보 동의.
@@ -54,12 +55,7 @@ export function Onboarding() {
     <main className="flex min-h-dvh flex-col break-keep">
       {/* 상단 바 — 로고와 진행 막대 두 개. 지금 단계까지가 진하다. */}
       <div className="flex items-center px-8 py-[26px]">
-        <div className="flex items-center gap-[10px]">
-          <span className="flex h-[26px] w-[26px] items-center justify-center border-[1.5px] border-ink">
-            <span className="h-[10px] w-[10px] bg-accent" />
-          </span>
-          <span className="text-[20px] font-bold tracking-[-.02em] text-ink">대담</span>
-        </div>
+        <Logo size={26} wordmark={20} />
         <div className="flex-1" />
         <div className="flex gap-[5px]">
           {[0, 1].map((i) => (

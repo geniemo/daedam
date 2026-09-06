@@ -7,7 +7,7 @@ import { getCredits } from '@/api/credits'
 import type { Insufficient } from '@/api/credits'
 import { InsufficientCreditsError } from '@/api/preparation'
 import { useAppStore } from '@/store/app'
-import { Label, TextArea, TextField } from '@/components/ui'
+import { Caret, Label, TextArea, TextField } from '@/components/ui'
 import { ApplicationGuide } from '@/screens/ApplicationGuide'
 
 /** README §2·§3. 등록 STEP 1·2 */
@@ -393,7 +393,7 @@ function Step2() {
                 <div className="flex-1" />
                 {/* 파트 삭제는 여기 없다. 접기·펼치기 화살표 바로 옆이라 자꾸
                     잘못 눌렸다. 펼친 안쪽으로 옮기고 한 번 더 묻는다. */}
-                <span className="text-[12px] text-faintest">{open ? '▲' : '▼'}</span>
+                <Caret open={open} size={12} />
               </div>
 
               {open && (
@@ -425,7 +425,7 @@ function Step2() {
                           <span className="text-[11.5px] text-faint">
                             {item.body ? item.len : '비어 있음'}
                           </span>
-                          <span className="text-[11px] text-faintest">{itemOpen ? '▲' : '▼'}</span>
+                          <Caret open={itemOpen} size={11} />
                         </div>
 
                         {itemOpen && (

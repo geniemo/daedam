@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getMe, logout, withdraw } from '@/api/auth'
 import { getCredits } from '@/api/credits'
-import { OutlineButton, SectionLabel } from '@/components/ui'
+import { Icon, OutlineButton, SectionLabel } from '@/components/ui'
 
 /** 제공자마다 화면에 나갈 말. `note`는 프로필이 어디 소속인지만 적는다. */
 const PROVIDER: Record<string, { name: string; title: string; note: string }> = {
@@ -108,8 +108,8 @@ export function Account() {
         <div className="mb-[14px] flex items-center">
           <SectionLabel>크레딧</SectionLabel>
           <div className="flex-1" />
-          <button onClick={() => nav('/credits')} className="text-[12.5px] text-muted">
-            충전하기 →
+          <button onClick={() => nav('/credits')} className="flex items-center gap-1 text-[12.5px] text-muted">
+            충전하기 <Icon name="arrow-right" size={12} />
           </button>
         </div>
         <div className="mb-[16px] flex items-baseline gap-[6px]">
