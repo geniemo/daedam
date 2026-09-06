@@ -93,6 +93,11 @@ export async function startPreparation(
   posting = '',
   /** 지원자 이름. 면접관이 부르고 전사 어휘 힌트로도 나간다. */
   name = '',
+  /**
+   * 이 등록 시도의 키. 확인 박스를 열 때 한 번 만든다 — 같은 키로 다시 보내면
+   * 서버가 새 리서치를 돌리지 않고 앞서 만든 task_id를 돌려준다(이중 과금 방지).
+   */
+  clientKey?: string,
 ): Promise<string> {
   const res = await fetch('/api/preparation', {
     method: 'POST',
@@ -103,6 +108,7 @@ export async function startPreparation(
       application: toServerParts(parts),
       posting,
       name,
+      client_key: clientKey,
     }),
   })
   if (res.status === 402) {
