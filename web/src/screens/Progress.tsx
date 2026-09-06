@@ -3,11 +3,12 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import { getFeedback, getPreparationStatus } from '@/api/preparation'
 import { useActiveCard } from '@/store/app'
+import { Avatar, FlatWaveform, Keylight, StageBar } from '@/components/Stage'
 
 /**
  * README §7. 질문 재생성 — 검토에서 리포트를 고쳤을 때만 거칩니다. 헤더 숨김.
  *
- * 가짜 타이머가 아니라 서버 진행률을 봅니다. 생성은 실제로 Grok 호출이라
+ * 가짜 타이머가 아니라 서버 진행률을 봅니다. 생성은 실제로 모델 호출이라
  * 몇 초 걸리고, 끝나기 전에 준비 완료 화면으로 보내면 옛 질문이 보입니다.
  */
 export function Regen() {
@@ -68,9 +69,9 @@ export function Regen() {
 }
 
 /**
- * README §9. 분석 중 — 헤더 숨김, 면접 화면과 같은 어두운 배경
+ * README §9. 분석 중 — 헤더 숨김, 면접과 같은 무대 위.
  *
- * 가짜 타이머가 아니라 서버를 기다린다. 지표 계산은 순식간이지만 코칭은 Grok
+ * 가짜 타이머가 아니라 서버를 기다린다. 지표 계산은 순식간이지만 코칭은 모델
  * 호출이라 수십 초 걸린다. 타이머로 넘기면 아직 없는 리포트를 열게 된다.
  */
 export function Analyzing() {
@@ -119,31 +120,33 @@ export function Analyzing() {
     }
   }, [card.id, nav, queryClient])
 
+  const stage = {
+    background: 'var(--stage-bg)',
+    color: 'var(--stage-ink-warm)',
+    animation: 'dm-fade .8s ease',
+  }
+
   if (stopped) {
-    // 면접 화면과 같은 어두운 배경 위다. 여기서 리포트로 보내면 같은 말을 다시
-    // 만나므로, 무엇이 일어났는지 여기서 말하고 나가는 길만 준다.
+    // 면접과 같은 무대 위다. 여기서 리포트로 보내면 같은 말을 다시 만나므로,
+    // 무엇이 일어났는지 여기서 말하고 나가는 길만 준다.
     const { silent, refunded } = stopped
     return (
-      <div className="fixed inset-0 z-60 flex flex-col items-center justify-center gap-[18px] bg-stage px-8 text-center">
-        {silent && (
-          /* 눕은 파형 — 조금 전까지 이 자리에서 움직이던 막대다. */
-          <div className="flex items-center" style={{ gap: 3, height: 20 }}>
-            {Array.from({ length: 16 }, (_, i) => (
-              <div key={i} className="bg-stage-line" style={{ width: 3, height: 2 }} />
-            ))}
-          </div>
-        )}
-        <h1 className="m-0 text-[19px] font-semibold text-stage-ink-2">
+      <div className="fixed inset-0 z-60 flex flex-col items-center justify-center gap-[18px] px-8 text-center" style={stage}>
+        <Keylight width={1100} height={700} top="-20%" alpha={0.07} />
+        {/* 눕은 파형 — 조금 전까지 이 자리에서 움직이던 막대다. */}
+        {silent && <FlatWaveform dark height={20} />}
+        <h1 className="relative m-0 max-w-[420px] break-keep text-[19px] font-semibold" style={{ color: 'var(--stage-paper)' }}>
           {silent ? '답변이 녹음되지 않았습니다' : '분석 결과를 만들지 못했습니다'}
         </h1>
-        <p className="m-0 max-w-[420px] text-[13.5px] leading-[1.8] text-stage-muted">
+        <p className="relative m-0 max-w-[420px] break-keep text-[13.5px] leading-[1.8]" style={{ color: 'var(--stage-dim)' }}>
           {silent
             ? `${refunded ? '크레딧은 돌려드렸습니다. ' : ''}마이크를 확인한 뒤 다시 시작해 주세요.`
             : '녹음과 전사는 남아 있습니다. 잠시 뒤 리포트를 다시 열어 보세요.'}
         </p>
         <button
           onClick={() => nav('/')}
-          className="mt-2 rounded-control border border-stage-line px-5 py-[10px] text-[13.5px] font-semibold text-stage-ink-2"
+          className="relative mt-2 rounded-full px-5 py-[10px] text-[13.5px] font-semibold"
+          style={{ border: '1px solid var(--stage-line-warm)' }}
         >
           내 면접으로
         </button>
@@ -152,24 +155,22 @@ export function Analyzing() {
   }
 
   return (
-    <div className="fixed inset-0 z-60 flex flex-col items-center justify-center gap-[18px] bg-stage">
-      <span
-        className="animate-dm-breathe rounded-full border border-stage-line"
-        style={{
-          width: 96,
-          height: 96,
-          background: 'linear-gradient(160deg, #233047, #16223A)',
-          animationDuration: '3s',
-        }}
-      />
-      <h1 className="m-0 text-[19px] font-semibold text-stage-ink-2">
+    <div className="fixed inset-0 z-60 flex flex-col items-center justify-center gap-[22px] px-8 text-center" style={stage}>
+      <Keylight width={1100} height={700} top="-20%" alpha={0.07} />
+      {/* 면접관은 아직 여기 있다 — 불이 잦아든 채 답변을 읽고 있다. */}
+      <div className="relative">
+        <Avatar size={128} speaking glow={0.22} bloom={false} />
+      </div>
+      <h1 className="relative m-0 max-w-[420px] break-keep text-[19px] font-semibold" style={{ color: 'var(--stage-paper)' }}>
         면접이 끝났습니다. 수고하셨습니다
       </h1>
       {/* 진행률을 만들지 않는다. 코칭이 언제 끝날지 서버도 모른다 — 끝나면
           바로 넘어가므로 막대가 차오르는 그림은 약속만 하고 못 지킨다. */}
-      <p className="m-0 text-[13.5px] text-stage-muted">답변을 분석하고 있습니다</p>
-      <div className="overflow-hidden bg-stage-line-2" style={{ width: 240, height: 2.5 }}>
-        <div className="animate-dm-slide h-full bg-accent" style={{ width: '25%' }} />
+      <p className="relative m-0 text-[13.5px]" style={{ color: 'var(--stage-dim)' }}>
+        답변을 평가 중입니다
+      </p>
+      <div className="relative">
+        <StageBar pct={null} width={240} />
       </div>
     </div>
   )

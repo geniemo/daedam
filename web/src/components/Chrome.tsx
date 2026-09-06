@@ -2,6 +2,7 @@ import { Link, Outlet, useLocation } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { getMe } from '@/api/auth'
 import { getCredits } from '@/api/credits'
+import { Symbol } from '@/components/Logo'
 
 /**
  * 공통 헤더 (README §공통 헤더).
@@ -25,9 +26,7 @@ export function Chrome() {
         >
           <div className="mx-auto flex h-full max-w-(--container-home) items-center gap-8 px-8">
             <Link to="/" className="flex items-center gap-[9px]">
-              <span className="flex h-[22px] w-[22px] items-center justify-center border-[1.5px] border-ink">
-                <span className="h-[8px] w-[8px] bg-accent" />
-              </span>
+              <Symbol size={22} />
               <span className="text-[17px] font-bold tracking-[-.02em] text-ink">대담</span>
             </Link>
             <nav>

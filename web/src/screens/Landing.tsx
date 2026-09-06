@@ -1,26 +1,27 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getProviders, loginUrl } from '@/api/auth'
+import type { Levels } from '@/audio/useVoiceSession'
 import { GoogleMark, KakaoMark } from '@/components/ProviderMark'
-import { Avatar, Waveform } from '@/components/Stage'
-import { AccentDot, CheckDot, EmptyDot, IndeterminateBar, Spinner } from '@/components/ui'
+import { Logo } from '@/components/Logo'
+import { Avatar, Keylight, Waveform } from '@/components/Stage'
+import { AccentDot, CheckDot, EmptyDot, Icon, IndeterminateBar, Spinner } from '@/components/ui'
 import { Metric } from '@/screens/Report'
 
 /**
  * 로그인하지 않은 사람이 보는 첫 화면.
- * 규격: design_handoff_daedam/HANDOFF-landing-onboarding.md §1 (2a 라이브 데모).
+ * 규격: design_handoff_daedam/design-system/ui_kits/web/Landing.jsx (2a 라이브 데모).
  *
- * 앞서는 560px 글 기둥 하나라 1440px 화면이 비어 보였다. 지금은 밝은 바탕을
- * 유지하되 히어로 우측에 **스스로 돌아가는 면접관 창**을 둔다. 회사가 바뀌면
- * 질문이 바뀐다 — "그 회사에 맞춘 질문"을 말이 아니라 예시로 보여준다. 아래로
- * 01·02·03 단계가 실제 화면 조각으로 이어진다.
+ * 밝은 바탕을 유지하되 히어로 우측에 **스스로 돌아가는 면접관 창**을 둔다.
+ * 회사가 바뀌면 질문이 바뀐다 — "그 회사에 맞춘 질문"을 말이 아니라 예시로
+ * 보여준다. 아래로 01·02·03 단계가 실제 화면 조각으로 이어진다.
  *
  * 마케팅 페이지가 아니라 제품의 첫 화면으로 만든다 — 같은 타이포와 같은 여백을
- * 쓰고, 데모 창은 면접 화면과 같은 아바타·파형(components/Stage.tsx)을 그린다.
- * 브랜드 색이 들어오는 곳은 로그인 버튼뿐이다. 카카오·구글이 자기 색과 표기를
- * 규정하기 때문이다. 별도 로그인 페이지는 없다 — 헤더 "로그인"은 히어로의
- * 소셜 버튼으로 내려보낸다.
+ * 쓰고, 데모 창은 면접 무대의 축소판(components/Stage.tsx)이다. 브랜드 색이
+ * 들어오는 곳은 로그인 버튼뿐이다. 카카오·구글이 자기 색과 표기를 규정하기
+ * 때문이다. 별도 로그인 페이지는 없다 — 헤더 "로그인"은 히어로의 소셜 버튼으로
+ * 내려보낸다.
  */
 export function Landing() {
   const { data: providers } = useQuery({ queryKey: ['providers'], queryFn: getProviders })
@@ -31,6 +32,13 @@ export function Landing() {
     const timer = setInterval(() => setDemo((i) => (i + 1) % DEMOS.length), DEMO_INTERVAL_MS)
     return () => clearInterval(timer)
   }, [demo])
+  // 제목의 회사 — 데모 창 주기의 절반으로 돈다.
+  const [companyAt, setCompanyAt] = useState(0)
+  useEffect(() => {
+    const timer = setInterval(() => setCompanyAt((i) => (i + 1) % COMPANIES.length), COMPANY_INTERVAL_MS)
+    return () => clearInterval(timer)
+  }, [])
+  const company = COMPANIES[companyAt]
 
   const scrollToLogin = () =>
     document.getElementById('login')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -42,8 +50,8 @@ export function Landing() {
         className="sticky top-0 z-40 h-16 border-b border-line"
         style={{ background: 'var(--header-bg)', backdropFilter: 'blur(8px)' }}
       >
-        <div className="mx-auto flex h-full max-w-(--container-home) items-center px-8">
-          <Logo />
+        <div className="mx-auto flex h-full max-w-(--container-landing) items-center px-8">
+          <Logo size={26} wordmark={20} />
           <div className="flex-1" />
           <button
             type="button"
@@ -56,7 +64,7 @@ export function Landing() {
       </header>
 
       {/* 히어로 — 왼쪽 카피, 오른쪽 데모 창. 1000px 아래에서는 카피가 위. */}
-      <section className="mx-auto grid max-w-(--container-home) grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-[56px] px-8 pt-[72px] pb-20 max-[1000px]:grid-cols-1">
+      <section className="mx-auto grid max-w-(--container-landing) grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-[56px] px-8 pt-[72px] pb-20 max-[1000px]:grid-cols-1">
         <div className="flex flex-col">
           <div className="mb-[22px] flex items-center gap-2">
             <AccentDot size={5} />
@@ -67,9 +75,19 @@ export function Landing() {
           <h1 className="m-0 text-[44px] leading-[1.22] font-bold tracking-[-.04em] text-ink">
             대담과 함께
             <br />
-            미리 면접장에 들어가세요
+            {/* 바뀌는 줄 — 회사와 "면접장에"가 한 줄에 있어야 명사구가 갈라지지
+                않는다. 높이 1.22em 고정, key 리마운트로 회사만 fade. */}
+            <span className="inline-flex h-[1.22em] items-center gap-[0.27em] align-top whitespace-nowrap">
+              <span key={company.key} className="inline-flex animate-dm-fade-slow items-center gap-[0.22em]">
+                <CompanyLogo company={company} />
+                {company.name}
+              </span>
+              면접장에
+            </span>
+            <br />
+            미리 들어가세요
           </h1>
-          <p className="mt-[22px] mb-0 max-w-[440px] text-[16px] leading-[1.75] text-body-2">
+          <p className="mt-[22px] mb-0 max-w-[460px] text-[18px] leading-[1.7] text-body-2">
             몇 번이든 다시 연습하세요.
           </p>
 
@@ -97,7 +115,7 @@ export function Landing() {
                 <span className="num text-[22px] leading-none font-bold tracking-[-.03em] text-ink">
                   {value}
                 </span>
-                <span className="text-[12px] text-muted">{label}</span>
+                <span className="text-[13.5px] text-muted">{label}</span>
               </div>
             ))}
           </div>
@@ -111,7 +129,7 @@ export function Landing() {
                 key={item.company}
                 type="button"
                 onClick={() => setDemo(i)}
-                className={`rounded-full border px-[11px] py-[5px] text-[12px] transition-colors duration-300 ${
+                className={`rounded-full border px-[13px] py-[6px] text-[13px] transition-colors duration-300 ${
                   i === demo ? 'border-ink bg-ink text-white' : 'border-line bg-transparent text-muted'
                 }`}
               >
@@ -123,7 +141,7 @@ export function Landing() {
       </section>
 
       {/* 단계 셋 — 각각 실제 화면의 조각으로 증명한다. */}
-      <section className="mx-auto max-w-(--container-home) px-8 pb-10">
+      <section className="mx-auto max-w-(--container-landing) px-8 pb-10">
         <StepFrame
           label="01 회사 조사"
           title="실제와 같은 면접관과 대화하세요"
@@ -152,14 +170,14 @@ export function Landing() {
 
       {/* 마무리 띠와 푸터 — 부제도 버튼도 없다. 로그인은 위에서 이미 청했다. */}
       <section className="border-t border-line bg-surface">
-        <div className="mx-auto flex max-w-(--container-home) flex-col items-center px-8 py-24 text-center">
+        <div className="mx-auto flex max-w-(--container-landing) flex-col items-center px-8 py-24 text-center">
           <h2 className="m-0 text-[34px] leading-[1.3] font-bold tracking-[-.04em] text-ink">
             연습은 여기서 끝내고
             <br />
             합격 소식을 전하세요
           </h2>
         </div>
-        <div className="mx-auto flex max-w-(--container-home) flex-wrap gap-4 px-8 pb-10 text-[12px] text-faintest">
+        <div className="mx-auto flex max-w-(--container-landing) flex-wrap gap-4 px-8 pb-10 text-[13px] text-muted">
           <span>면접 중 음성과 웹캠 영상이 기록되고, 답변 분석에 쓰입니다.</span>
           <div className="flex-1" />
           <a href="/terms" className="text-faint hover:text-muted">
@@ -171,17 +189,6 @@ export function Landing() {
         </div>
       </section>
     </main>
-  )
-}
-
-function Logo() {
-  return (
-    <div className="flex items-center gap-[10px]">
-      <span className="flex h-[26px] w-[26px] items-center justify-center border-[1.5px] border-ink">
-        <span className="h-[10px] w-[10px] bg-accent" />
-      </span>
-      <span className="text-[20px] font-bold tracking-[-.02em] text-ink">대담</span>
-    </div>
   )
 }
 
@@ -208,6 +215,64 @@ function LoginButton({ provider }: { provider: string }) {
       )}
       {LABEL[provider] ?? `${provider}로 시작하기`}
     </a>
+  )
+}
+
+/* ── 제목의 회사 — 2.6초마다 바뀐다 ───────────────────────────────────── */
+
+/** 데모 창 주기(5.2초)의 절반. */
+const COMPANY_INTERVAL_MS = 2600
+
+/**
+ * 이름은 6자 이하로 둔다: 44px 한 줄(약 520px)에 "타일 + 이름 + 면접장에"가
+ * 들어가야 한다. mark는 로고 자리의 모노그램 — 실제 로고는 상표라 여기서 그리지
+ * 않는다. `web/public/logos/{key}.svg`를 두면 그 파일이 모노그램을 덮는다.
+ */
+const COMPANIES = [
+  { key: 'skhynix', name: 'SK하이닉스', mark: 'SK' },
+  { key: 'samsung', name: '삼성전자', mark: '삼' },
+  { key: 'naver', name: '네이버', mark: 'N' },
+  { key: 'hyundai', name: '현대자동차', mark: '현' },
+  { key: 'kakao', name: '카카오', mark: 'K' },
+  { key: 'lg', name: 'LG전자', mark: 'LG' },
+  { key: 'kia', name: '기아', mark: '기' },
+  { key: 'posco', name: '포스코', mark: 'P' },
+  { key: 'coupang', name: '쿠팡', mark: 'C' },
+  { key: 'celltrion', name: '셀트리온', mark: '셀' },
+  { key: 'nexon', name: '넥슨', mark: 'N' },
+  { key: 'shinhan', name: '신한은행', mark: '신' },
+]
+
+/** 로고 파일이 있는지는 페이지당 한 번만 물어본다 — 없는 파일을 회전마다 다시 청하지 않게. */
+const LOGO_FOUND = new Map<string, boolean>()
+
+/**
+ * 회사 로고 — 상자 없이 로고만, 원색 그대로. 높이를 글자에 맞추고(38) 폭은
+ * 비율대로 두되 워드마크형(삼성)은 2.5배까지만 늘어난다. 파일이 없으면
+ * 모노그램 글자가 그 자리에 선다.
+ */
+function CompanyLogo({ company, size = 38 }: { company: (typeof COMPANIES)[number]; size?: number }) {
+  const [found, setFound] = useState<boolean | undefined>(LOGO_FOUND.get(company.key))
+  const mark = (ok: boolean) => {
+    LOGO_FOUND.set(company.key, ok)
+    setFound(ok)
+  }
+  if (found === false) {
+    return (
+      <span className="font-bold tracking-[-.02em] text-ink" style={{ fontSize: Math.round(size * 0.6), lineHeight: 1 }}>
+        {company.mark}
+      </span>
+    )
+  }
+  return (
+    <img
+      src={`/logos/${company.key}.svg`}
+      alt=""
+      onLoad={() => mark(true)}
+      onError={() => mark(false)}
+      className="inline-block shrink-0 object-contain"
+      style={{ height: size, width: 'auto', maxWidth: Math.round(size * 2.5), opacity: found ? 1 : 0 }}
+    />
   )
 }
 
@@ -265,59 +330,87 @@ function useTyped(text: string, speedMs = 28): string {
 }
 
 /**
- * 면접 화면(Interview.tsx)의 축소판. 상태 줄 · 아바타 · 자막 · 파형 · 출처.
- * 타이핑이 끝나면 "듣고 있습니다"로 넘어가고 파형이 돈다 — 실제 면접의 말차례와
- * 같은 순서다.
+ * 면접 무대의 축소판 — 실제 면접장과 같은 것을 보여준다. 정지한 키라이트,
+ * 무광 유리 구체, 구체 아래 붙은 질문. 타이핑이 끝나면 "듣고 있습니다"로
+ * 넘어가고 파형이 돈다 — 실제 면접의 말차례와 같은 순서다.
+ *
+ * 오디오가 없으므로 진폭은 사인파 둘을 겹친 합성값이다. 면접 화면과 같은
+ * 부품(Avatar·Waveform)이 같은 ref를 읽는다.
  */
 function LiveDemo({ demo }: { demo: (typeof DEMOS)[number] }) {
   const typed = useTyped(demo.question)
   const done = typed.length >= demo.question.length
+  const speaking = !done
+  const levels = useRef<Levels>({ input: 0, output: 0 })
+  const speakingRef = useRef(speaking)
+  speakingRef.current = speaking
+  useEffect(() => {
+    let raf = 0
+    const loop = () => {
+      const s = performance.now() / 1000
+      const a = Math.max(0, Math.sin(s * 5.3) * 0.5 + Math.sin(s * 9.1) * 0.3 + 0.3)
+      levels.current = speakingRef.current ? { output: a, input: 0 } : { output: 0, input: a }
+      raf = requestAnimationFrame(loop)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [])
+  const light = speaking ? 'var(--stage-amber)' : 'var(--stage-mint)'
+
   return (
-    <div className="relative flex min-h-[440px] w-full max-w-[640px] flex-col overflow-hidden rounded-card border border-stage-line bg-stage">
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{ background: 'var(--gradient-stage-vignette)' }}
-      />
+    <div
+      className="relative flex min-h-[440px] w-full max-w-[640px] flex-col overflow-hidden rounded-card"
+      style={{
+        border: '1px solid rgba(255,255,255,.08)',
+        background: 'var(--stage-bg)',
+        color: 'var(--stage-ink-warm)',
+      }}
+    >
+      <Keylight width={760} height={460} top="-30%" alpha={speaking ? 0.1 : 0.06} />
       <div className="relative flex items-center px-[22px] py-[18px]">
         <span
           className="rounded-full"
-          style={{
-            width: 6,
-            height: 6,
-            background: done ? 'var(--color-listening)' : 'var(--color-accent)',
-            transition: 'background .4s',
-          }}
+          style={{ width: 7, height: 7, background: light, boxShadow: `0 0 10px ${light}`, transition: 'background .6s, box-shadow .6s' }}
         />
-        <span className="ml-2 text-[13px] text-stage-ink">
-          {done ? '듣고 있습니다' : '면접관이 말하고 있습니다'}
-        </span>
+        <span className="ml-[9px] text-[13px]">{done ? '듣고 있습니다' : '면접관이 말하고 있습니다'}</span>
         <div className="flex-1" />
-        <span key={demo.company} className="animate-dm-fade-slow text-[12.5px] text-stage-muted-2">
+        <span key={demo.company} className="animate-dm-fade-slow text-[12.5px]" style={{ color: 'var(--stage-dim)' }}>
           {demo.company} · {demo.role}
         </span>
       </div>
-      <div className="relative flex flex-1 items-center justify-center">
-        <Avatar size={150} speaking={!done} />
+      <div className="relative flex flex-1 flex-col items-center justify-center gap-7 px-6 pt-2">
+        <Avatar levels={levels} speaking={speaking} size={150} />
+        {/* 질문 — 구체 바로 아래. 두 줄 높이를 늘 비워 둔다. */}
+        <div className="flex min-h-[78px] max-w-[520px] flex-col items-center gap-[14px]">
+          <span style={{ width: 24, height: 1, background: light, transition: 'background 1s ease' }} />
+          <p
+            className="m-0 text-center text-[18px] leading-[1.6] font-semibold tracking-[-.02em]"
+            style={{ color: 'var(--stage-paper)' }}
+          >
+            {typed}
+            {!done && (
+              <span
+                className="ml-[2px] inline-block w-[2px] align-[-2px]"
+                style={{ height: 16, background: 'var(--stage-amber)' }}
+              />
+            )}
+          </p>
+        </div>
       </div>
-      {/* 자리를 늘 비워 둔다 — 자막 길이에 따라 아바타가 위아래로 튀면 안 된다. */}
-      <div className="relative mx-auto flex min-h-[78px] max-w-[520px] items-start justify-center px-6">
-        <p className="m-0 text-center text-[16.5px] leading-[1.65] font-medium tracking-[-.01em] text-stage-ink">
-          {typed}
-          {!done && (
-            <span className="ml-[2px] inline-block w-[2px] bg-accent align-[-2px]" style={{ height: 16 }} />
-          )}
-        </p>
-      </div>
-      <div className="relative flex h-[92px] items-center justify-center">
+      <div className="relative flex h-[72px] items-center justify-center">
         {done ? (
-          <Waveform active height={28} />
+          <Waveform levels={levels} height={28} />
         ) : (
-          <span className="text-[12px] text-stage-muted-3">답변이 끝나면 마이크가 열립니다</span>
+          <span className="text-[12px]" style={{ color: 'var(--stage-dim-2)' }}>
+            답변이 끝나면 마이크가 열립니다
+          </span>
         )}
       </div>
       <div className="relative flex items-center gap-2 px-[22px] pb-4">
-        <span className="text-[11px] text-stage-muted">이 질문의 출처</span>
-        <span key={demo.company} className="animate-dm-fade-slow text-[11px] text-stage-muted-2">
+        <span className="text-[12.5px]" style={{ color: 'var(--stage-dim)' }}>
+          이 질문의 출처
+        </span>
+        <span key={demo.company} className="animate-dm-fade-slow text-[12.5px]">
           {demo.source}
         </span>
       </div>
@@ -339,11 +432,11 @@ function StepFrame({
   children: ReactNode
 }) {
   return (
-    <div className="grid grid-cols-[300px_minmax(0,1fr)] items-center gap-12 border-t border-line py-14 max-[900px]:grid-cols-1">
+    <div className="grid grid-cols-[360px_minmax(0,1fr)] items-center gap-14 border-t border-line py-16 max-[900px]:grid-cols-1">
       <div className="flex flex-col gap-3">
         <span className="num text-[12px] font-semibold tracking-[.05em] text-accent">{label}</span>
-        <h2 className="m-0 text-[25px] leading-[1.3] font-bold tracking-[-.03em] text-ink">{title}</h2>
-        <p className="m-0 text-[14.5px] leading-[1.75] text-body-2">{body}</p>
+        <h2 className="m-0 text-[28px] leading-[1.3] font-bold tracking-[-.03em] text-ink">{title}</h2>
+        <p className="m-0 text-[16px] leading-[1.8] text-body-2">{body}</p>
       </div>
       <div className="min-w-0">{children}</div>
     </div>
@@ -499,11 +592,8 @@ function CoachCard() {
         <span className="num text-[15px] font-bold text-ink">88</span>
       </div>
       <div className="flex items-center gap-3 rounded-control border border-line-2 bg-surface-2 px-[13px] py-[10px]">
-        <span
-          className="flex items-center justify-center rounded-full bg-ink text-white"
-          style={{ width: 26, height: 26, fontSize: 9 }}
-        >
-          ▶
+        <span className="flex items-center justify-center rounded-full bg-ink" style={{ width: 26, height: 26 }}>
+          <Icon name="play" size={12} color="#fff" />
         </span>
         <div className="flex-1 bg-line-3" style={{ height: 3 }} />
         <span className="text-[11.5px] text-muted">내 답변 다시 듣기</span>

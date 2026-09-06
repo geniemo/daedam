@@ -1,0 +1,69 @@
+/* 대담 — motion, blur, borders
+   No shadows anywhere. Depth is 1px borders and background contrast. */
+:root {
+  --shadow-none: none;
+  /* v2: 밝은 화면 카드에 아주 옅은 잉크 그림자 하나 — 테두리만의 평평함을 덜어낸다 */
+  --shadow-card: 0 1px 2px rgba(22, 35, 58, 0.05), 0 6px 20px -14px rgba(22, 35, 58, 0.12);
+  --header-bg: rgba(245, 243, 239, 0.92);
+
+  --border-w: 1px;
+  --border-w-logo: 1.5px;
+  --border-w-check: 1.5px;
+  --border-w-accent: 2px;   /* coaching left rule */
+
+  --blur-header: blur(8px);
+  --blur-overlay: blur(6px);
+  --footer-bar-bg: rgba(255, 255, 255, 0.94);
+  --overlay-stage-bg: rgba(14, 23, 38, 0.86);
+  /* 정보 다이얼로그(지원서 가이드) 뒤 오버레이 — 잉크 45%. 확인은 모달이 아니라 제자리 펼침 박스라 이 값을 쓸 곳은 하나다. */
+  --overlay-dialog-bg: rgba(22, 35, 58, 0.45);
+
+  --ease: ease;
+  --ease-inout: ease-in-out;
+  --dur-fade: 0.3s;
+  --dur-fade-slow: 0.4s;
+  --dur-fade-fast: 0.25s;
+  --dur-width: 0.4s;
+  --dur-width-slow: 0.5s;
+  --dur-grow: 0.7s;
+  --dur-color: 0.4s;
+  --dur-colors: 0.3s;       /* transition-colors — 링크·칩·단계 막대 */
+  --dur-border: 0.2s;       /* 밑줄 입력 focus */
+
+  --animate-dm-pulse: dm-pulse 2.2s ease-in-out infinite;
+  --animate-dm-pulse2: dm-pulse2 2.6s ease-in-out infinite;
+  --animate-dm-breathe: dm-breathe 4.5s ease-in-out infinite;
+  --animate-dm-wave: dm-wave 1.1s ease-in-out infinite;
+  --animate-dm-spin: dm-spin 1s linear infinite;
+  --animate-dm-fade: dm-fade 0.3s ease;
+  --animate-dm-fade-slow: dm-fade 0.4s ease;
+  --animate-dm-grow: dm-grow 0.7s ease;
+  --animate-dm-slide: dm-slide 1.6s ease-in-out infinite;
+}
+
+@keyframes dm-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.5; }
+  50% { transform: scale(1.14); opacity: 0.14; }
+}
+@keyframes dm-pulse2 {
+  0%, 100% { transform: scale(1); opacity: 0.32; }
+  50% { transform: scale(1.26); opacity: 0.06; }
+}
+@keyframes dm-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.035); }
+}
+@keyframes dm-wave {
+  0%, 100% { transform: scaleY(0.22); }
+  50% { transform: scaleY(1); }
+}
+@keyframes dm-spin { to { transform: rotate(360deg); } }
+@keyframes dm-fade {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes dm-grow { from { width: 0; } }
+@keyframes dm-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}

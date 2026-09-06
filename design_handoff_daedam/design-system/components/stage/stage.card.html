@@ -1,0 +1,37 @@
+<!-- @dsCard group="Components" viewport="700x380" name="Stage — Avatar & Waveform" subtitle="무대 D 공유 컴포넌트. 구체 안의 불이 말할 때 앰버, 들을 때 민트. 눕은 파형은 무응답" -->
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.26.10/babel.min.js"></script>
+<script>Babel.registerPreset('classic',{presets:[[Babel.availablePresets.react,{runtime:'classic'}]]});</script>
+<style>body{margin:0;padding:16px;background:var(--stage-bg);font-family:var(--font-sans);color:var(--stage-ink-warm);-webkit-font-smoothing:antialiased;font-size:13px;min-height:100vh;box-sizing:border-box}</style></head>
+<body><div id="root"></div>
+<script>
+(function(){
+  ['components/stage/Avatar.jsx','components/stage/Waveform.jsx'].forEach(function(p){
+    var x=new XMLHttpRequest();x.open('GET','../../'+p,false);x.send(null);
+    var src=x.responseText.replace(/^import[^\n]*\n/gm,'').replace(/^export function /gm,'function ');
+    (0,eval)(Babel.transform(src,{presets:['classic'],filename:p}).code);
+  });
+  var demo = `
+const { Avatar, Waveform, FlatWaveform } = window.Daedam;
+function Demo() {
+  const [speaking, setSpeaking] = React.useState(true);
+  React.useEffect(() => { const t = setInterval(() => setSpeaking(s => !s), 4000); return () => clearInterval(t); }, []);
+  const row = { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 };
+  const cap = { fontSize: 11, color: 'var(--stage-dim)' };
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', gap: 16, padding: '20px 0' }}>
+      <div style={row}><Avatar speaking={speaking} size={150} /><span style={cap}>{speaking ? '면접관이 말하고 있습니다' : '듣고 있습니다'} · 150</span></div>
+      <div style={{ ...row, gap: 22 }}>
+        <div style={row}><Waveform active height={38} /><span style={cap}>Waveform · 합성 진폭</span></div>
+        <div style={row}><FlatWaveform dark /><span style={cap}>FlatWaveform · 답변이 녹음되지 않았습니다</span></div>
+        <div style={{ display: 'flex', gap: 18, alignItems: 'flex-end' }}><Avatar speaking={false} size={72} /><Avatar speaking={true} size={56} /><span style={cap}>72 · 56</span></div>
+      </div>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<Demo />);`;
+  (0,eval)(Babel.transform(demo,{presets:['classic'],filename:'demo.jsx'}).code);
+})();
+</script></body></html>

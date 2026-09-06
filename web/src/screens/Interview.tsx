@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useActiveCard, useAppStore } from '@/store/app'
 import { formatClock, useInterviewStore } from '@/store/interview'
 import { useVoiceSession } from '@/audio/useVoiceSession'
 import { fill } from '@/data/mock'
 import { useCamera } from '@/video/useCamera'
-import { SelfView } from '@/video/SelfView'
+import { SelfView, SWAP_TRANSITION } from '@/video/SelfView'
 import { useRecorder } from '@/video/useRecorder'
 import { useSnapshots } from '@/video/useSnapshots'
-import { Avatar, Waveform } from '@/components/Stage'
+import { Avatar, Keylight, Waveform } from '@/components/Stage'
 
 /** 결과 없이 홈으로 돌아갈 때 홈에 남기는 한 줄. 키는 서버의 ended.reason. */
 const FINISH_NOTICE: Record<string, string> = {
@@ -19,7 +19,22 @@ const FINISH_NOTICE: Record<string, string> = {
   rejected: '이 면접을 시작할 수 없습니다. 준비가 끝났는지 확인해 주세요.',
 }
 
-/** README §8. 면접 진행 — 화면이 시선을 뺏지 않는 것이 목표입니다. */
+/** 구체 지름의 상한·하한, 거울 배치에서 우상단으로 들어갈 때의 지름. */
+const SPHERE_MAX = 216
+const SPHERE_MIN = 150
+const PIP = 92
+/** 초점(구체 또는 웹캠)과 질문 사이. 질문은 구체 바로 아래 붙는다. */
+const GAP = 44
+/** 질문 자리 — 두 줄 높이를 늘 비워 둔다. 자막 길이에 따라 위가 튀면 안 된다. */
+const QUESTION_H = 100
+
+/**
+ * README §8. 면접 진행 — 화면이 시선을 뺏지 않는 것이 목표입니다.
+ *
+ * 무대 D(design-system/ui_kits/web/Interview.jsx): 정지한 키라이트, 무광 유리
+ * 구체, 구체 바로 아래 붙은 질문, 모래색 파형. 비네트도 헤더 페이드도 없다.
+ * 가운데 덩이(초점 + 44 + 질문)를 무대 영역의 세로 중앙에 둔다.
+ */
 export function Interview({ showCaption = true }: { showCaption?: boolean }) {
   const nav = useNavigate()
   const card = useActiveCard()
@@ -65,9 +80,16 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
   const cameraReady = useAppStore((s) => s.cameraReady)
   const camera = useCamera()
   const [selfVisible, setSelfVisible] = useState(true)
+  // 거울 배치 — 웹캠이 가운데, 면접관이 우상단. SelfView 참고.
+  const [mirror, setMirror] = useState(false)
   useEffect(() => {
     if (cameraReady) void camera.start()
   }, [cameraReady, camera.start])
+  // 카메라가 꺼지면(끄기 버튼이든 장치 쪽 사정이든) 가운데가 비므로 면접관을
+  // 제자리로 돌린다.
+  useEffect(() => {
+    if (camera.state !== 'on') setMirror(false)
+  }, [camera.state])
 
   // 녹화는 서버가 판 id를 알려준 뒤에 시작한다. 그전에 올리면 어느 판인지
   // 정할 수 없어 404가 나고, 그 404가 녹화를 영구히 죽인다(useRecorder 참고).
@@ -92,85 +114,165 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
     elapsedNow,
   )
 
+  // 무대 영역의 크기. 구체 지름과 두 배치의 좌표가 여기서 나온다 — 창 크기가
+  // 바뀌면 다시 잰다.
+  const area = useRef<HTMLDivElement>(null)
+  const [box, setBox] = useState({ w: 0, h: 0 })
+  useLayoutEffect(() => {
+    const el = area.current
+    if (!el) return
+    const measure = () => setBox({ w: el.clientWidth, h: el.clientHeight })
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  const speaking = phase === 'speaking'
+  // 가운데 덩이 = 초점(구체 또는 웹캠) + 44 + 질문. 세로 중앙.
+  const sphere = Math.max(SPHERE_MIN, Math.min(SPHERE_MAX, Math.round(box.h * 0.4)))
+  const mirrorH = Math.max(160, Math.min(420, box.h - 60 - GAP - QUESTION_H))
+  const mirrorW = Math.round((mirrorH * 4) / 3)
+  const focusH = mirror ? mirrorH : sphere
+  const blockTop = Math.max(60, Math.round((box.h - (focusH + GAP + QUESTION_H)) / 2))
+  const questionTop = blockTop + focusH + GAP
+  const clock = <span className="num text-[13px]" style={{ color: 'var(--stage-dim)' }}>{formatClock(elapsed)}</span>
+
   return (
-    <div className="fixed inset-0 z-60 flex flex-col bg-stage">
-      {/* 상단 오버레이 */}
-      <div className="absolute top-0 right-0 left-0 z-3 flex items-center px-[30px] py-[22px]">
-        <div className="flex items-center gap-[8px]">
-          <span
-            className="rounded-full"
-            style={{
-              width: 6,
-              height: 6,
-              background: phase === 'speaking' ? 'var(--color-accent)' : 'var(--color-listening)',
-            }}
-          />
-          <span className="text-[13.5px] text-stage-ink">
-            {phase === 'speaking' ? '면접관이 말하고 있습니다' : '듣고 있습니다'}
+    <div
+      className="fixed inset-0 z-60 flex flex-col overflow-hidden"
+      style={{ background: 'var(--stage-bg)', color: 'var(--stage-ink-warm)' }}
+    >
+      {/* 키라이트 — 정지, 면접관이 말할 때 조금 밝아진다. */}
+      <Keylight width={1100} height={700} top="-20%" alpha={speaking ? 0.1 : 0.06} />
+
+      {/* 상단 — 상태 문장과 시계. 거울 배치에서는 우상단에 면접관이 들어오므로
+          시계가 상태 문장 옆으로 온다. */}
+      <div className="relative z-5 flex items-center px-[30px] py-[22px]">
+        <span
+          className="rounded-full"
+          style={{
+            width: 7,
+            height: 7,
+            background: speaking ? 'var(--stage-amber)' : 'var(--stage-mint)',
+            boxShadow: `0 0 10px ${speaking ? 'var(--stage-amber)' : 'var(--stage-mint)'}`,
+            transition: 'background .6s, box-shadow .6s',
+          }}
+        />
+        <span className="ml-[9px] text-[13.5px]">
+          {speaking ? '면접관이 말하고 있습니다' : '듣고 있습니다'}
+        </span>
+        {connection === 'reconnecting' && (
+          <span className="ml-2 text-[12.5px]" style={{ color: 'var(--stage-dim)' }}>
+            · 연결을 복구하는 중입니다
           </span>
-          {connection === 'reconnecting' && (
-            <span className="text-[12.5px] text-stage-muted-3">· 연결을 복구하는 중입니다</span>
-          )}
-        </div>
+        )}
+        {mirror && (
+          <>
+            <span className="mx-3" style={{ width: 1, height: 12, background: 'rgba(255,255,255,.18)' }} />
+            {clock}
+          </>
+        )}
         <div className="flex-1" />
-        <span className="num text-[13px] text-stage-ink">{formatClock(elapsed)}</span>
+        {!mirror && clock}
       </div>
 
-      {/* 무대의 중심 — 랜딩의 데모 창과 같은 비네트(index.css). */}
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{ background: 'var(--gradient-stage-vignette)' }}
-      />
+      {/* 무대 — 구체·웹캠·질문이 절대 좌표로 놓인다. */}
+      <div ref={area} className="relative min-h-0 flex-1">
+        {/* 면접관 — 기본 가운데, 거울이면 우상단 92. */}
+        <div
+          className="absolute"
+          style={{
+            width: sphere,
+            height: sphere,
+            transformOrigin: 'top left',
+            transition: SWAP_TRANSITION,
+            zIndex: mirror ? 4 : 1,
+            ...(mirror
+              ? {
+                  left: `calc(100% - 30px - ${PIP}px)`,
+                  top: 14,
+                  transform: `translate(0, 0) scale(${PIP / sphere})`,
+                }
+              : { left: '50%', top: blockTop, transform: 'translate(-50%, 0) scale(1)' }),
+          }}
+        >
+          <Avatar levels={levels} speaking={speaking} size={sphere} />
+        </div>
 
-      {/* 아바타 영역 */}
-      <div className="relative flex flex-1 items-center justify-center">
-        <Avatar levels={levels} speaking={phase === 'speaking'} />
         <SelfView
           camera={camera}
+          mirror={mirror}
           visible={selfVisible}
+          top={blockTop}
+          width={mirror ? mirrorW : 240}
+          height={mirror ? mirrorH : 180}
+          onMirror={() => setMirror((m) => !m)}
           onHide={() => setSelfVisible((v) => !v)}
           onStop={camera.stop}
         />
+
+        {/* 질문 — 면접관이 실제로 하고 있는 말. 뼈대질문 문장이 아닙니다.
+            가운데 것(구체 또는 웹캠) 바로 아래 44px에 붙고, 자리는 늘 비워 둔다. */}
+        <div
+          className="absolute flex flex-col items-center gap-[18px]"
+          style={{
+            left: '50%',
+            top: questionTop,
+            transform: 'translateX(-50%)',
+            width: 'min(680px, calc(100% - 64px))',
+            minHeight: QUESTION_H,
+            transition: 'top .45s ease-in-out',
+          }}
+        >
+          <span
+            style={{
+              width: 28,
+              height: 1,
+              background: speaking ? 'var(--stage-amber)' : 'var(--stage-mint)',
+              transition: 'background 1s ease',
+            }}
+          />
+          {showCaption && caption && (
+            <p
+              key={askedCount}
+              className="m-0 break-keep text-center leading-[1.55] font-semibold tracking-[-.02em]"
+              style={{
+                fontSize: 'clamp(20px, 2.7vh, 25px)',
+                color: 'var(--stage-paper)',
+                animation: 'dm-fade .6s ease',
+              }}
+            >
+              {fill(caption, card.company, card.role)}
+            </p>
+          )}
+        </div>
       </div>
 
-      {/* 자막 — 면접관이 실제로 하고 있는 말. 뼈대질문 문장이 아닙니다.
-          자리를 늘 비워 둔다. 조건부로 넣고 빼면 위의 flex-1이 밀려서
-          자막이 바뀔 때마다 아바타가 위아래로 튄다. */}
-      <div className="relative mx-auto flex min-h-[92px] max-w-[660px] items-start justify-center px-8">
-        {showCaption && caption && (
-          <p
-            key={askedCount}
-            className="m-0 animate-dm-fade-slow text-center text-[17px] leading-[1.65] font-medium tracking-[-.01em] text-stage-ink"
-          >
-            {fill(caption, card.company, card.role)}
-          </p>
-        )}
-      </div>
-
-      {/* 하단 상태 영역 */}
+      {/* 하단 상태 영역 — 들을 때 파형, 말할 때 안내 한 줄. */}
       <div className="relative flex h-[104px] items-center justify-center">
         {phase === 'listening' ? (
-          <Waveform levels={levels} />
+          <Waveform levels={levels} height={40} />
         ) : (
-          <span className="text-[12.5px] text-stage-muted-3">답변이 끝나면 마이크가 열립니다</span>
+          <span className="text-[12.5px] tracking-[.02em]" style={{ color: 'var(--stage-dim-2)' }}>
+            답변이 끝나면 마이크가 열립니다
+          </span>
         )}
       </div>
 
       {/* 하단 컨트롤 — 종료 버튼 하나. 질문 번호·단계·남은 시간 같은 진행
           표시는 두지 않는다. 실제 면접에서 지원자가 보는 것은 면접관뿐이다. */}
-      <div className="relative px-[30px] pb-[26px]">
-        <div className="flex items-center justify-end">
-          {/* 멈췄다 이어가는 길은 두지 않는다 — 면접은 한 번에 끝까지 간다.
-              중간에 그만두면 그때까지의 답변으로 리포트를 받는다. */}
-          <button
-            onClick={end}
-            className="tap44 rounded-control border border-stage-line px-[18px] py-[9px] text-[13px] text-stage-muted-2"
-          >
-            종료하고 리포트 받기
-          </button>
-        </div>
+      <div className="relative flex justify-end px-[30px] pb-[26px]">
+        {/* 멈췄다 이어가는 길은 두지 않는다 — 면접은 한 번에 끝까지 간다.
+            중간에 그만두면 그때까지의 답변으로 리포트를 받는다. */}
+        <button
+          onClick={end}
+          className="tap44 rounded-full px-5 py-[10px] text-[13px]"
+          style={{ color: 'var(--stage-dim)', border: '1px solid var(--stage-line-warm)' }}
+        >
+          종료하고 리포트 받기
+        </button>
       </div>
-
     </div>
   )
 }

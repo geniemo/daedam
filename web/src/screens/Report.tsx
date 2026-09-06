@@ -4,7 +4,8 @@ import { useQuery } from '@tanstack/react-query'
 import { audioUrl, getFeedback, listSessions, videoUrl } from '@/api/preparation'
 import type { Feedback, FeedbackStatus, InterviewSession } from '@/api/preparation'
 import { useActiveCard } from '@/store/app'
-import { AccentDot, SectionLabel, Spinner } from '@/components/ui'
+import { AccentDot, Caret, Icon, SectionLabel, Spinner } from '@/components/ui'
+import { Avatar, Keylight } from '@/components/Stage'
 import { Delivery } from './Delivery'
 import { IMPRESSIONS } from '@/video/expression'
 
@@ -319,28 +320,43 @@ function ReportBody({
 
       <SessionPicker sessions={sessions} current={sessionId} onPick={onPick} />
 
-      {/* 헤더 */}
-      <div className="flex items-start gap-[34px] border-b border-line pb-[30px]">
-        <div className="flex flex-1 flex-col gap-[9px]">
-          <div className="text-[12.5px] text-faint">
+      {/* 머리 — 무대 띠. 이 리포트가 어느 면접장에서 나왔는지. 점수와 총평이
+          어두운 판 위에 있고, 나머지 섹션은 밝은 화면 그대로다. */}
+      <div
+        className="relative mb-[30px] flex items-start gap-[34px] overflow-hidden rounded-card px-8 py-[30px]"
+        style={{ background: 'var(--stage-bg)', color: 'var(--stage-ink-warm)' }}
+      >
+        <Keylight width={900} height={420} top="-60%" alpha={0.09} />
+        <div className="relative mt-[2px]">
+          <Avatar size={72} speaking glow={0.55} bloom={false} />
+        </div>
+        <div className="relative flex min-w-0 flex-1 flex-col gap-[9px]">
+          <div className="num text-[12.5px]" style={{ color: 'var(--stage-dim)' }}>
             {minutes}분 {seconds}초 · 답변 {coaching.answers.length}개
           </div>
-          <h1 className="m-0 text-[25px] font-bold tracking-[-.03em]">
+          <h1 className="m-0 text-[25px] font-bold tracking-[-.03em]" style={{ color: 'var(--stage-paper)' }}>
             {company} · {role}
           </h1>
-          <p className="mt-[6px] mb-0 max-w-[520px] text-[14px] leading-[1.7] text-body-2">
+          <p className="mt-[6px] mb-0 max-w-[520px] break-keep text-[14px] leading-[1.7]">
             {coaching.summary}
           </p>
         </div>
         {/* 점수는 답변 점수의 평균입니다 — 아래 답변별 점수와 반드시 맞습니다. */}
-        <div className="flex flex-col items-end gap-[4px]">
+        <div className="relative flex flex-col items-end gap-[4px]">
           <div className="flex items-baseline gap-[4px]">
-            <span className="num text-[52px] leading-none font-bold tracking-[-.05em]">
+            <span
+              className="num text-[56px] leading-none font-bold tracking-[-.05em]"
+              style={{ color: 'var(--stage-paper)' }}
+            >
               {coaching.score ?? '—'}
             </span>
-            <span className="text-[15px] text-faint">/ 100</span>
+            <span className="text-[15px]" style={{ color: 'var(--stage-dim)' }}>
+              / 100
+            </span>
           </div>
-          <span className="text-[12px] text-faintest">답변 점수의 평균</span>
+          <span className="text-[12px]" style={{ color: 'var(--stage-dim-2)' }}>
+            답변 점수의 평균
+          </span>
         </div>
       </div>
 
@@ -440,7 +456,9 @@ function ReportBody({
               <div className="text-[13px] font-bold text-positive">잘한 점</div>
               {coaching.strengths.map((text) => (
                 <div key={text} className="flex gap-[8px]">
-                  <span className="text-[12px] text-positive">✓</span>
+                  <span className="mt-[3px] flex">
+                    <Icon name="check" size={13} color="var(--color-positive)" />
+                  </span>
                   <span className="text-[13.5px] leading-[1.65] text-body-2">{text}</span>
                 </div>
               ))}
@@ -449,7 +467,9 @@ function ReportBody({
               <div className="text-[13px] font-bold text-accent">보완할 점</div>
               {coaching.improvements.map((text) => (
                 <div key={text} className="flex gap-[8px]">
-                  <span className="text-[12px] text-accent">→</span>
+                  <span className="mt-[3px] flex">
+                    <Icon name="arrow-right" size={13} color="var(--color-accent)" />
+                  </span>
                   <span className="text-[13.5px] leading-[1.65] text-body-2">{text}</span>
                 </div>
               ))}
@@ -509,7 +529,9 @@ function ReportBody({
                   <span className="num w-[28px] text-right text-[15px] font-bold">
                     {answer.score}
                   </span>
-                  <span className="w-[12px] text-[11px] text-faintest">{open ? '▲' : '▼'}</span>
+                  <span className="flex w-[16px]">
+                    <Caret open={open} size={12} />
+                  </span>
                 </div>
 
                 {open && (
@@ -784,9 +806,9 @@ function Playback({
           <button
             onClick={toggle}
             className="flex items-center justify-center rounded-full bg-ink text-white"
-            style={{ width: 26, height: 26, fontSize: 9 }}
+            style={{ width: 26, height: 26 }}
           >
-            {playing ? '❚❚' : '▶'}
+            <Icon name={playing ? 'pause' : 'play'} size={12} color="#fff" />
           </button>
           <div className="flex-1 bg-line-3" style={{ height: 3 }}>
             <div className="h-full bg-accent" style={{ width: `${done * 100}%` }} />
@@ -803,9 +825,9 @@ function Playback({
       <button
         onClick={toggle}
         className="flex items-center justify-center rounded-full bg-ink text-white"
-        style={{ width: 26, height: 26, fontSize: 9 }}
+        style={{ width: 26, height: 26 }}
       >
-        {playing ? '❚❚' : '▶'}
+        <Icon name={playing ? 'pause' : 'play'} size={12} color="#fff" />
       </button>
       <div className="flex-1 bg-line-3" style={{ height: 3 }}>
         <div className="h-full bg-accent" style={{ width: `${done * 100}%` }} />
