@@ -1,11 +1,19 @@
 """면접관 목소리로 추임새 클립을 수확한다 — 일회성 개발용.
 
-    uv run python scripts/harvest_fillers.py
+    uv run python scripts/harvest_fillers.py            # 없는 클립만
+    uv run python scripts/harvest_fillers.py --redo     # 전부 다시 뜬다
 
-면접과 같은 Live 모델·같은 목소리(`interviewer.agent`의 MODEL·VOICE)로 세션을
-열어 추임새 문장을 읽게 하고, 24kHz PCM을 `assets/fillers/<이름>.pcm`으로
-저장한다. 청음용 `<이름>.wav`도 같이 남긴다 — 커밋 전에 반드시 들어 보고
-면접 목소리와 같은지 판정할 것.
+면접과 같은 Live 모델·같은 목소리(`interviewer.agent`의 MODEL·VOICE)에 **같은
+페르소나·말투 지시**(`interviewer.instruction`)를 주고, 지원자의 답변이 막 끝난
+대화 맥락에서 추임새를 말하게 해 24kHz PCM을 `assets/fillers/<이름>.pcm`으로
+저장한다. 청음용 `<이름>.wav`도 같이 남긴다 — 커밋 전에 반드시 들어 볼 것.
+
+앞서는 "차분한 면접관" 한 줄만 주고 문장을 읽게 했는데, 그렇게 뜬 클립 몇 개가
+면접 중의 말투와 달라 어색했다(실측). 읽기가 아니라 **반응**이어야 한다 — 그래서
+지시는 면접관의 것 그대로 쓰고, 직전 답변을 대화로 넣어 준다.
+
+클립마다 받아 적기(`daedam.server.captions.transcribe_pcm`)로 문장이 그대로
+나왔는지 확인한다. 모델이 말을 덧붙이거나 바꾸면 다시 뜬다(최대 3회).
 
 TTS API로 만들지 않는 이유: 목소리 이름(Aoede)이 같아도 TTS와 Live는 다른
 음성 엔진이라 같은 목소리로 들리지 않았다(실측: 기계음, interviewer/agent.py의
@@ -22,9 +30,11 @@ VOICE 주석). 클립이 Live 엔진 자신의 출력이면 그 문제가 원리
 from __future__ import annotations
 
 import asyncio
+import re
 import sys
 import wave
 from pathlib import Path
+from types import SimpleNamespace
 
 from dotenv import load_dotenv
 from google import genai
@@ -32,7 +42,9 @@ from google.genai import types
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from daedam.server.captions import transcribe_pcm  # noqa: E402
 from interviewer.agent import MODEL, VOICE  # noqa: E402
+from interviewer.instruction import _STYLE, build_instruction  # noqa: E402
 
 _SERVER_DIR = Path(__file__).resolve().parent.parent
 _OUT_DIR = _SERVER_DIR / "assets" / "fillers"
@@ -56,19 +68,42 @@ _PHRASES = {
     "jasehi": "네, 자세히 말씀해 주셔서 잘 들었습니다.",
     "sangsehan": "상세한 설명 감사합니다.",
 }
+_ACCEPT = {"gwaenchanseumnida", "algesseumnida"}
 
-#: 성우 지시. 면접 instruction과 무관한 일회성 세션이다 — 문장을 그대로,
-#: 면접관의 차분한 말투로 읽게만 한다.
-_INSTRUCTION = (
-    "당신은 차분한 톤의 면접관입니다. 사용자가 보내는 문장을 토씨 하나 바꾸지"
-    " 말고 그대로 말하세요. 인사, 덧붙이는 말, 되묻기 없이 그 문장만 말합니다."
-)
+#: 추임새 직전의 답변 — 클립이 쓰이는 자리와 같은 맥락. 수용 풀은 모르겠다는
+#: 답 뒤, 기본 풀은 제대로 한 답 뒤다. 말투가 "읽기"가 아니라 "듣고 반응"으로
+#: 잡히는 것이 목적이다.
+_ANSWERS = {
+    True: "죄송합니다. 그 부분은 제가 정확히 기억이 나지 않습니다.",
+    False: (
+        "그래서 분류 기준을 소분류 단위로 바꾼 뒤에 회전율이 낮은 품목부터 정리했고, "
+        "그 제안이 실제 발주 주기에 반영됐습니다. 이상입니다."
+    ),
+}
+
+#: 면접 지시의 페르소나·말투를 그대로 쓰되, 툴 규칙은 뺀다 — 이 세션에는 툴이
+#: 없고 질문도 하지 않는다. 말투 문단은 _STYLE의 첫 문단이다.
+_TONE = _STYLE.split("\n\n")[0]
+_CONTEXT = SimpleNamespace(state={"company": "누리테크", "role": "서비스기획", "candidate": "김서연"})
 
 
-async def _record(client: genai.Client, phrase: str) -> bytes:
-    """문장 하나를 새 세션에서 읽게 하고 오디오 한 턴을 모은다.
+def _instruction(phrase: str) -> str:
+    persona = build_instruction(_CONTEXT).replace(_STYLE, _TONE)  # type: ignore[arg-type]
+    return (
+        f"{persona}\n\n"
+        "지원자의 답변이 끝나면 다음 문장만, 토씨 하나 바꾸지 말고 그대로 말한 뒤 "
+        f"멈추세요. 다른 말·질문·인사를 덧붙이지 않습니다.\n{phrase}"
+    )
 
-    문장마다 세션을 새로 여는 이유: 한 세션에서 이어 읽히면 앞 문장이 맥락이
+
+def _norm(text: str) -> str:
+    return re.sub(r"[\s.,!?…'\"「」]", "", text)
+
+
+async def _record(client: genai.Client, name: str, phrase: str) -> bytes:
+    """추임새 하나를 새 세션에서 말하게 하고 오디오 한 턴을 모은다.
+
+    문장마다 세션을 새로 여는 이유: 한 세션에서 이어 말하면 앞 문장이 맥락이
     되어 억양이 끌려간다 — 클립은 각각 독립적으로 쓰인다.
     """
     config = types.LiveConnectConfig(
@@ -78,12 +113,12 @@ async def _record(client: genai.Client, phrase: str) -> bytes:
                 prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=VOICE)
             )
         ),
-        system_instruction=_INSTRUCTION,
+        system_instruction=_instruction(phrase),
     )
     chunks: list[bytes] = []
     async with client.aio.live.connect(model=MODEL, config=config) as session:
         await session.send_client_content(
-            turns=types.Content(role="user", parts=[types.Part(text=phrase)]),
+            turns=types.Content(role="user", parts=[types.Part(text=_ANSWERS[name in _ACCEPT])]),
             turn_complete=True,
         )
         async for message in session.receive():
@@ -112,16 +147,22 @@ def _save(name: str, pcm: bytes) -> None:
 async def main() -> None:
     load_dotenv(_SERVER_DIR / ".env")
     _OUT_DIR.mkdir(parents=True, exist_ok=True)
+    redo = "--redo" in sys.argv
     client = genai.Client()
     for name, phrase in _PHRASES.items():
-        if (_OUT_DIR / f"{name}.pcm").exists():
-            print(f"{name}: 이미 있음 — 건너뜀 (다시 뜨려면 파일을 지우고 재실행)")
+        if (_OUT_DIR / f"{name}.pcm").exists() and not redo:
+            print(f"{name}: 이미 있음 — 건너뜀 (--redo로 다시)")
             continue
-        pcm = await _record(client, phrase)
+        for attempt in range(1, 4):
+            pcm = await _record(client, name, phrase)
+            heard = transcribe_pcm(pcm) if pcm else ""
+            ok = _norm(heard) == _norm(phrase)
+            print(f"{name} #{attempt}: {len(pcm) / (_RATE * 2):.1f}초 — 들림 {heard!r} {'✓' if ok else '≠ ' + phrase}")
+            if ok:
+                break
         _save(name, pcm)
-        print(f"{name}: {len(pcm) / (_RATE * 2):.1f}초 — {phrase}")
     print(f"\n저장: {_OUT_DIR}")
-    print("커밋 전에 .wav를 들어 보고 면접 목소리와 같은지 판정할 것.")
+    print("커밋 전에 .wav를 들어 보고 면접 목소리·말투와 같은지 판정할 것.")
 
 
 if __name__ == "__main__":
