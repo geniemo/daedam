@@ -7,7 +7,7 @@ import { getCredits } from '@/api/credits'
 import type { Insufficient } from '@/api/credits'
 import { InsufficientCreditsError } from '@/api/preparation'
 import { useAppStore } from '@/store/app'
-import { Caret, Label, TextArea, TextField } from '@/components/ui'
+import { Caret, Label, OutlineButton, TextArea, TextField } from '@/components/ui'
 import { ApplicationGuide } from '@/screens/ApplicationGuide'
 
 /** README §2·§3. 등록 STEP 1·2 */
@@ -213,7 +213,49 @@ function Step2() {
   const queryClient = useQueryClient()
   // 크레딧이 모자라 막혔다. 다시 눌러도 같은 결과라 안내를 띄운다.
   const [blocked, setBlocked] = useState<Insufficient | null>(null)
+  // 등록 확인 박스가 펼쳐졌는가 / 서버에 보내는 중인가(두 번 눌리면 리서치가 두 번 돈다).
+  const [confirming, setConfirming] = useState(false)
+  const [sending, setSending] = useState(false)
+  // 이 등록 시도의 키. 확인 박스를 열 때 새로 만들고, 서버는 같은 키의 두 번째
+  // 요청을 흡수한다 — 화면의 잠금이 놓친 재시도까지 이중 과금이 안 되게.
+  const clientKey = useRef('')
+  const openConfirm = () => {
+    clientKey.current = crypto.randomUUID()
+    setConfirming(true)
+  }
   const { company, role, posting, parts, setParts, submitRegister } = useAppStore()
+
+  const submit = async () => {
+    if (sending) return
+    setSending(true)
+    // §서버 연동 1 — 리서치를 시작하고 task_id를 카드 id로 쓴다.
+    // 서버가 없으면(프론트 단독 실행) 프로토타입의 로컬 진행으로 돌아간다.
+    let taskId: string | undefined
+    try {
+      taskId = await startPreparation(
+        company.trim(),
+        role.trim(),
+        parts,
+        posting,
+        // 로그인한 사용자입니다 — 등록할 때마다 다시 묻지 않습니다.
+        me?.name ?? '',
+        clientKey.current,
+      )
+    } catch (error) {
+      if (error instanceof InsufficientCreditsError) {
+        setBlocked(error.detail)
+        setConfirming(false)
+        setSending(false)
+        return
+      }
+      // 서버가 없으면(프론트 단독 실행) 프로토타입의 로컬 진행으로 돌아간다.
+    }
+    submitRegister(taskId)
+    // 등록하는 순간 크레딧이 빠진다. 리서치 화면에도 헤더가 있으므로
+    // 비우지 않으면 옛 잔액이 남는다.
+    await queryClient.invalidateQueries()
+    nav('/research')
+  }
   const [openPart, setOpenPart] = useState(0)
   // 어느 파트의 몇 번째 항목이 열렸는지. 인덱스만 들고 있으면 A파트의 첫
   // 항목을 열 때 B파트의 첫 항목도 같이 열린다.
@@ -507,57 +549,68 @@ function Step2() {
         </button>
       </div>
 
-      <div className="mt-7 flex items-center gap-4">
-        <button onClick={() => nav('/register/1')} className="text-[13.5px] text-muted">
+      <div className="mt-7 flex items-start gap-4">
+        <button onClick={() => nav('/register/1')} className="mt-[12px] text-[13.5px] text-muted">
           ← 이전
         </button>
         <div className="flex-1" />
-        <button
-          onClick={async () => {
-            // §서버 연동 1 — 리서치를 시작하고 task_id를 카드 id로 쓴다.
-            // 서버가 없으면(프론트 단독 실행) 프로토타입의 로컬 진행으로 돌아간다.
-            let taskId: string | undefined
-            try {
-              taskId = await startPreparation(
-                company.trim(),
-                role.trim(),
-                parts,
-                posting,
-                // 로그인한 사용자입니다 — 등록할 때마다 다시 묻지 않습니다.
-                me?.name ?? '',
+        {/* 등록하는 순간 크레딧이 빠지고 리서치가 돈다 — 면접 시작과 같은 무게라
+            같은 방식으로 한 번 더 묻는다(제자리에서 펼치는 확인 박스). */}
+        {!confirming ? (
+          <div className="flex flex-col items-end gap-[9px]">
+            <button
+              onClick={openConfirm}
+              className="rounded-control bg-ink px-[26px] py-[12px] text-[14px] font-semibold text-white"
+            >
+              등록하고 준비 시작
+            </button>
+            {blocked ? (
+              /* 다시 시도하면 같은 결과다 — "다시 시도"가 아니라 무엇이 부족한지 적는다. */
+              <span className="text-right text-[13px] text-accent">
+                크레딧이 부족합니다. 등록에 {blocked.needed}개가 필요한데 {blocked.balance}개
+                남았습니다.
+              </span>
+            ) : (
+              credits && (
+                <span className="text-[12.5px] text-faint">
+                  <span className="num">{credits.balance}</span>개 보유 · 등록에{' '}
+                  <span className="num">{credits.costs.research}</span>개
+                </span>
               )
-            } catch (error) {
-              if (error instanceof InsufficientCreditsError) {
-                setBlocked(error.detail)
-                return
-              }
-              // 서버가 없으면(프론트 단독 실행) 프로토타입의 로컬 진행으로 돌아간다.
-            }
-            submitRegister(taskId)
-            // 등록하는 순간 크레딧이 빠진다. 리서치 화면에도 헤더가 있으므로
-            // 비우지 않으면 옛 잔액이 남는다.
-            await queryClient.invalidateQueries()
-            nav('/research')
-          }}
-          className="rounded-control bg-ink px-[26px] py-[12px] text-[14px] font-semibold text-white"
-        >
-          등록하고 준비 시작
-        </button>
+            )}
+          </div>
+        ) : (
+          <div className="flex flex-col items-end gap-[10px] rounded-card border border-accent-line bg-accent-bg px-[18px] py-[14px]">
+            <span className="text-[13.5px] text-body-2">
+              {credits ? (
+                <>
+                  등록하면 크레딧 <span className="num font-semibold">{credits.costs.research}</span>개가
+                  사용됩니다.
+                </>
+              ) : (
+                '등록하면 크레딧이 사용됩니다.'
+              )}
+            </span>
+            <div className="flex items-center gap-[8px]">
+              <OutlineButton
+                onClick={() => setConfirming(false)}
+                className="px-[16px] py-[10px] text-[13.5px]"
+              >
+                취소
+              </OutlineButton>
+              <button
+                disabled={sending}
+                onClick={submit}
+                className={`rounded-control px-[24px] py-[10px] text-[13.5px] font-semibold text-white ${
+                  sending ? 'cursor-default bg-faintest' : 'bg-ink'
+                }`}
+              >
+                {sending ? '등록 중…' : '시작하기'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
-
-      {blocked && (
-        /* 다시 시도하면 같은 결과다 — "다시 시도"가 아니라 무엇이 부족한지 적는다. */
-        <p className="mt-[14px] mb-0 text-right text-[13px] text-accent">
-          크레딧이 부족합니다. 등록에 {blocked.needed}개가 필요한데 {blocked.balance}개
-          남았습니다.
-        </p>
-      )}
-      {!blocked && credits && (
-        <p className="mt-[14px] mb-0 text-right text-[12.5px] text-faint">
-          <span className="num">{credits.balance}</span>개 보유 · 등록에{' '}
-          <span className="num">{credits.costs.research}</span>개
-        </p>
-      )}
     </main>
   )
 }

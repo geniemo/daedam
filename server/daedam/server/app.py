@@ -40,6 +40,7 @@ from daedam.settings import data_root as default_data_root
 from . import preflight
 from .accounts import Accounts
 from .auth import configured_providers, create_auth_router
+from .captions import transcribe_pcm
 from .credit_routes import create_credit_router
 from .credits import Credits
 from .evaluation import InterviewEvaluation
@@ -299,6 +300,8 @@ def create_app() -> FastAPI:
             credits,
             profile=_interview_profile(),
             evaluation=evaluation,
+            # 전사가 끊긴 턴의 자막을 음성으로 복구한다(captions.py).
+            transcribe=transcribe_pcm,
         )
     )
     # 감시용. catch-all보다 앞에 있어야 한다 — 뒤에 두면 index.html이 200으로 답한다.

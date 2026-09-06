@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from typing import Any, Callable
 
@@ -39,6 +40,13 @@ class PreparationRequest(BaseModel):
     posting: str = ""
     #: 지원자 이름. 면접관이 부르고 전사 어휘 힌트로도 나간다.
     name: str = ""
+    #: 화면이 확인 박스를 열 때 만든 키. 같은 키로 다시 오면 새 리서치를 돌리지
+    #: 않고 앞서 만든 task_id를 돌려준다 — 두 번 눌림·재시도의 이중 과금 방지.
+    client_key: str | None = None
+
+
+#: 같은 키를 기억해 두는 시간. 두 번 눌림과 네트워크 재시도는 몇 초 안의 일이다.
+IDEMPOTENCY_TTL_S = 600.0
 
 
 def create_preparation_router(
@@ -64,11 +72,31 @@ def create_preparation_router(
     """
     router = APIRouter(prefix="/api/preparation", tags=["preparation"])
 
+    # (user_id, client_key) → (task_id, 받은 시각). 실측: 응답을 기다리는 3초 사이에
+    # 버튼이 한 번 더 눌려 같은 등록이 두 번 돌고 두 번 과금됐다. 화면도 잠그지만
+    # 돈이 걸린 문은 서버가 지켜야 한다. 프로세스 메모리면 충분하다 — 인스턴스
+    # 하나이고, 재시작 뒤에 같은 키가 올 일은 없다.
+    recent_keys: dict[tuple[str, str], tuple[str, float]] = {}
+
+    def remembered(user_id: str, key: str | None) -> str | None:
+        if not key:
+            return None
+        now = time.monotonic()
+        for stale in [k for k, (_, at) in recent_keys.items() if now - at > IDEMPOTENCY_TTL_S]:
+            del recent_keys[stale]
+        found = recent_keys.get((user_id, key))
+        return found[0] if found else None
+
     @router.post("", status_code=202)
     def start_preparation(
         request: PreparationRequest,
         user_id: str = Depends(accounts.current_user_id),
     ) -> dict[str, str]:
+        # 같은 등록이 다시 왔다 — 이미 돌고 있는 리서치의 id를 돌려주고 끝낸다.
+        earlier = remembered(user_id, request.client_key)
+        if earlier:
+            logger.info("등록 중복 요청 — 기존 task 반환 (task=%s, user=%s)", earlier, user_id)
+            return {"task_id": earlier}
         # 유료 작업을 열기 **전에** 차감한다. Deep Research는 시작하면 취소할 수
         # 없어서, 앞서처럼 잔액만 보고 시작한 뒤 차감하면 그 사이에 같은
         # 사용자의 다른 요청이 잔액을 써 버린 경우 리서치는 돌고 요금은 안
@@ -108,6 +136,8 @@ def create_preparation_router(
                 status_code=503,
                 detail="리서치를 시작하지 못했습니다. 크레딧은 돌려드렸습니다. 잠시 뒤 다시 시도해 주세요",
             ) from exc
+        if request.client_key:
+            recent_keys[(user_id, request.client_key)] = (task_id, time.monotonic())
         return {"task_id": task_id}
 
     @router.post("/import")

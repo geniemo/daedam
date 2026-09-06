@@ -53,7 +53,7 @@ interface InterviewState {
   setConnection: (c: Connection) => void
   setPhase: (p: Phase) => void
   setQuestion: (index: number) => void
-  appendCaption: (text: string, final: boolean) => void
+  setCaption: (text: string, final: boolean) => void
   applySession: (info: SessionInfo) => void
   setResumeToken: (t: string | null) => void
   tick: () => void
@@ -78,16 +78,16 @@ export const useInterviewStore = create<InterviewState>((set) => ({
   setPhase: (phase) => set({ phase }),
   setQuestion: (index) => set({ askedCount: index + 1 }),
 
-  // 전사는 조각으로 흘러오고, 턴이 끝나면 누적 전문이 한 번 더 옵니다
-  // (ADK gemini_llm_connection.py — 조각은 finished=false, 마지막은 그때까지
-  // 모은 전체 텍스트에 finished=true). 그래서 마지막 것은 이어 붙이지 않고
-  // 갈아끼웁니다. 붙이면 같은 말이 두 번 보입니다.
+  // 서버가 늘 그 턴의 전문을 통째로 보낸다(live_bridge.py TurnTranscript) —
+  // 화면은 갈아끼우기만 한다. 앞서는 조각을 여기서 이어 붙였는데, ADK가 한
+  // 턴의 전사를 두세 토막의 final로 갈라 보내는 바람에 둘째 토막에서 자막이
+  // 새로 시작돼 질문 앞머리가 사라졌다(실측).
   //
   // 턴이 끝나도 자막을 지우지는 않습니다 — 지원자가 답하는 동안에도 방금
-  // 받은 질문을 읽을 수 있어야 합니다. 다음 턴의 첫 조각이 밀어냅니다.
-  appendCaption: (text, final) =>
+  // 받은 질문을 읽을 수 있어야 합니다. 다음 턴의 첫 토막이 밀어냅니다.
+  setCaption: (text, final) =>
     set((s) => ({
-      caption: final ? text || s.caption : (s.captionDone ? '' : s.caption) + text,
+      caption: text || s.caption,
       captionDone: final,
     })),
 

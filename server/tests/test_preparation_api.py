@@ -110,6 +110,32 @@ def test_등록은_리서치를_열기_전에_차감하고_그_id를_카드로_�
     assert credits.balance(user_id) == before
 
 
+def test_같은_키로_다시_오면_새_리서치_없이_같은_task를_돌려준다(tmp_path: Path) -> None:
+    # 실측: 응답을 기다리는 사이 버튼이 한 번 더 눌려 같은 등록이 두 번 돌고
+    # 두 번 과금됐다. 화면이 만든 키가 같으면 서버가 두 번째를 흡수해야 한다.
+    store, accounts, user_id = make_store(tmp_path / "data")
+    preparation = InterviewPreparation(
+        research=FixtureResearch(duration_s=10),
+        store=store,
+        generate=lambda **kwargs: [],
+        poll_interval_s=0.01,
+    )
+    app = FastAPI()
+    app.include_router(create_preparation_router(preparation, accounts, accounts.credits))
+    client = TestClient(app)
+    before = accounts.credits.balance(user_id)
+    body = {"company": "한결물류", "role": "데이터 엔지니어", "client_key": "k-1"}
+
+    first = client.post("/api/preparation", json=body).json()["task_id"]
+    second = client.post("/api/preparation", json=body).json()["task_id"]
+    other = client.post("/api/preparation", json={**body, "client_key": "k-2"}).json()["task_id"]
+
+    assert first == second
+    assert other != first
+    # 두 건만 과금됐다 — 중복 요청은 돈을 물리지 않는다.
+    assert accounts.credits.balance(user_id) == before - 2 * COST_RESEARCH
+
+
 def test_시작이_실패하면_차감을_되돌리고_503(tmp_path: Path) -> None:
     """유료 작업이 열리지 않았는데 요금을 물리면 안 된다."""
     store, accounts, user_id = make_store(tmp_path / "data")

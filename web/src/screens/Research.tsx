@@ -172,7 +172,7 @@ export function Research() {
                     조사를 시작하고 있습니다
                   </span>
                   <span className="text-[12px] leading-[1.6]" style={{ color: 'var(--stage-dim)' }}>
-                    보통 10~40분 걸립니다. 조사 에이전트가 단계를 넘길 때마다 여기에 쌓입니다.
+                    15분 내외로 완료됩니다.
                   </span>
                 </div>
               </div>
