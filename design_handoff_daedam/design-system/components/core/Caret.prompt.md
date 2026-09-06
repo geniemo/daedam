@@ -1,0 +1,3 @@
+```jsx
+<Caret open={isOpen} />
+```

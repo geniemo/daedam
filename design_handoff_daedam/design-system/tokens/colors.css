@@ -1,0 +1,110 @@
+/* 대담 — color tokens
+   Source of truth: geniemo/daedam web/src/index.css @theme block.
+   Values transcribed verbatim. Do not round. */
+:root {
+  /* Light surface */
+  --color-bg: #f5f3ef;          /* v2: 따뜻한 종이색 — 무대(앰버)와 온도를 맞춘다. 이전 #f4f5f7 */
+  --color-surface: #ffffff;
+  --color-surface-2: #faf8f4;   /* v2: 이전 #fafbfc */
+
+  /* Text — darkest to lightest */
+  --color-ink: #16233a;
+  --color-body: #2a3a55;
+  --color-body-2: #3e4c63;
+  --color-muted: #5f6b7e;
+  --color-faint: #8e98a8;
+  --color-faintest: #b7c0cd;
+
+  /* Rules — 연한 구분선 (inside cards) */
+  --color-hair: #f0ede7;        /* v2 warm — 이전 #f1f3f6 */
+  --color-hair-2: #ece8e1;      /* 이전 #eef0f4 */
+  --color-hair-3: #f3f0ea;      /* 이전 #f4f6f9 */
+
+  /* Rules — 구분선 (card borders, section dividers) */
+  --color-line: #e3dfd7;        /* v2 warm — 이전 #e2e6ed */
+  --color-line-2: #e9e5de;      /* 이전 #e8ebf0 */
+  --color-line-3: #ebe7e0;      /* 이전 #eaedf2 */
+
+  /* Input borders */
+  --color-field: #cbc6bc;       /* v2 warm — 이전 #c9d0db */
+  --color-field-2: #d9d4cb;     /* 이전 #d8dde5 */
+
+  /* Accent — mustard. Only for "things to look at": ready state,
+     active step, warnings, coaching, the interviewer's voice. */
+  --color-accent: #b8802e;      /* v2: 무대 앰버 #D9A86C와 같은 색상, 밝은 바탕용 농도. 이전 #b57f1c */
+  --color-accent-bg: #f8f0e3;
+  --color-accent-bg-2: #fbf6ee;
+  --color-accent-line: #eadcc4;
+
+  /* 표정 흐름 띠의 "긴장" — 강조색 55%. 카테고리 색은 띠와 범례에만, 막대는 강조색 하나 */
+  --color-tense-tick: color-mix(in srgb, var(--color-accent) 55%, var(--color-surface));
+
+  /* Positive — in-range metrics, strengths, connected state */
+  --color-positive: #3a7a68;    /* v2: 무대 민트 #8FCFBC 계열, 밝은 바탕용 농도. 이전 #2f6b55 */
+
+  /* Interview stage (dark) — v2: 무대 D */
+  --stage-bg: radial-gradient(120% 90% at 50% 18%, #1a1e2e 0%, #0c0f19 58%, #07090f 100%);
+  --stage-amber: #d9a86c;
+  --stage-mint: #8fcfbc;
+  --stage-sand: #d9b98c;
+  --stage-paper: #f4efe6;
+  --stage-ink-warm: #e9e3d8;
+  --stage-dim: #8f897d;
+  --stage-dim-2: #7f796e;
+  --stage-line-warm: rgba(255, 255, 255, 0.12);
+  --stage-keylight-rgb: 255, 205, 160;   /* 키라이트·번짐의 채널 — rgba(var(--stage-keylight-rgb), .1) */
+  --stage-mint-rgb: 143, 207, 188;
+  --gradient-sphere: radial-gradient(circle at 42% 30%, #3b4360 0%, #252c44 42%, #141a2c 78%, #0e1322 100%);
+  --gradient-sphere-sheen: radial-gradient(ellipse at 40% 10%, rgba(255, 255, 255, 0.12), transparent 48%);
+  --gradient-voice-amber: radial-gradient(circle at 50% 52%, rgba(255, 222, 184, 0.95) 0%, rgba(255, 186, 124, 0.42) 26%, transparent 52%);
+  --gradient-voice-mint: radial-gradient(circle at 50% 52%, rgba(196, 236, 224, 0.9) 0%, rgba(143, 207, 188, 0.32) 24%, transparent 50%);
+  --shadow-sphere: inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 -26px 48px rgba(0, 0, 0, 0.42), 0 30px 70px -30px rgba(0, 0, 0, 0.9);
+  /* 이전 무대 팔레트(#0E1726 계열) — 컴포넌트 카드·검토 화면 등 무대 밖 어두운 요소가 아직 읽는다. 새 무대는 --stage-* */
+  --color-stage: #0e1726;
+  --color-stage-surface: #16233a;
+  --color-stage-line: #2e3f5c;
+  --color-stage-line-2: #22314a;
+  --color-stage-ink: #e8ecf3;
+  --color-stage-ink-2: #f2f5f9;
+  --color-stage-muted: #8896ac;
+  --color-stage-muted-2: #c7d0de;
+  /* Floor for small text on the stage. #5D6E88 was 3.3:1 — below AA. */
+  --color-stage-muted-3: #8395af;
+  --color-stage-selfview-bg: #0b1220;
+
+  /* The candidate's voice — listening dot, hearing ring */
+  --color-listening: #5aa48d;   /* 이전 #4e9e7e */
+
+  /* Avatar slot */
+  --gradient-avatar: linear-gradient(160deg, #233047, #16223a);
+  --gradient-avatar-highlight: radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.07), transparent 58%);
+  /* 구체감 — 아래쪽이 어두워진다. 그림자 없이 부피를 내는 유일한 방법 */
+  --gradient-avatar-depth: radial-gradient(circle at 50% 108%, rgba(14, 23, 38, 0.62), transparent 62%);
+  /* 가운데 "목소리" 덩이 — 가장자리가 부드럽다. 평면 점은 스피너로 읽혔다 */
+  --gradient-avatar-voice: radial-gradient(circle, rgba(181, 127, 28, 0.95) 0%, rgba(181, 127, 28, 0.6) 42%, rgba(181, 127, 28, 0) 72%);
+  --gradient-stage-vignette: radial-gradient(58% 44% at 50% 42%, rgba(35, 48, 71, 0.74), transparent 70%);
+  --gradient-talk-glow: radial-gradient(circle, rgba(181, 127, 28, 0.5), transparent 68%);
+  --color-talk-ring: rgba(181, 127, 28, 0.34);
+  --color-hear-ring: rgba(78, 158, 126, 0.9);          /* (코드의 1.5px 듣는 링 — 킷은 아래 글로우로 대체 제안) */
+  /* 구체(반지름 103) 바깥 103~170px 띠에 초록이 남아야 한다 — closest-side 기준, 투명 지점을 멀리 둔다 */
+  --gradient-hear-glow: radial-gradient(closest-side, rgba(78, 158, 126, 0.55) 0%, rgba(78, 158, 126, 0.42) 58%, rgba(78, 158, 126, 0) 100%);
+  --color-avatar-core: rgba(181, 127, 28, 0.85);
+  --color-avatar-inner-ring: rgba(232, 236, 243, 0.22);
+
+  /* Third-party login marks — outside the palette by their brand rules */
+  --color-kakao: #fee500;
+  --color-kakao-ink: #191600;
+
+  /* Semantic aliases */
+  --text-primary: var(--color-ink);
+  --text-body: var(--color-body);
+  --text-secondary: var(--color-muted);
+  --text-tertiary: var(--color-faint);
+  --text-disabled: var(--color-faintest);
+  --surface-page: var(--color-bg);
+  --surface-card: var(--color-surface);
+  --surface-inset: var(--color-surface-2);
+  --border-card: var(--color-line);
+  --border-input: var(--color-field);
+  --border-inner: var(--color-hair);
+}

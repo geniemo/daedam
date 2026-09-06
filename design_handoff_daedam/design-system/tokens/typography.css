@@ -1,0 +1,57 @@
+/* 대담 — typography tokens
+   One family. Weight and tracking do all the work; no display face. */
+:root {
+  --font-sans: 'Pretendard Variable', Pretendard, 'Spoqa Han Sans Neo', -apple-system, system-ui, sans-serif;
+
+  /* Scale — px, exactly as used in screens */
+  --text-hero: 52px;        /* 종합 점수 */
+  --text-landing: 34px;     /* 랜딩 제목 */
+  --text-card-score: 28px;  /* 홈 카드 점수 */
+  --text-h1: 27px;          /* 페이지 제목 (홈·준비 완료) */
+  --text-h1-sm: 25px;       /* 등록·리포트 제목 */
+  --text-h1-doc: 23px;      /* 리서치 문서 h1, 지표 값 */
+  --text-h2-research: 20px; /* 리서치 카드 회사명 */
+  --text-h2-dialog: 19px;   /* 모달·안내 제목 */
+  --text-h2-progress: 18px; /* 진행 화면 제목 */
+  --text-stage-caption: 19px; /* 면접 자막 — 화면에서 유일하게 읽는 글자. lh 1.6, max-width 620 */
+  --text-card-title: 17px;  /* 카드 제목 */
+  --text-h3: 16px;          /* 문서 섹션 제목 */
+  --text-emph: 15px;        /* 강조 본문, 파트명, 점수 */
+  --text-input: 14.5px;
+  --text-body: 14px;
+  --text-body-sm: 13.5px;
+  --text-label: 13px;
+  --text-small: 12.5px;
+  --text-section-label: 12px;
+  --text-caption: 11.5px;
+  --text-micro: 11px;
+  --text-nano: 10.5px;
+
+  /* Weights */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* Tracking — tighter as size grows */
+  --tracking-hero: -0.05em;
+  --tracking-score: -0.04em;
+  --tracking-landing: -0.035em;
+  --tracking-title: -0.03em;
+  --tracking-heading: -0.02em;
+  --tracking-emph: -0.01em;
+  --tracking-label: 0.04em;
+  --tracking-step: 0.05em;
+
+  /* Leading */
+  --leading-none: 1;
+  --leading-tight: 1.32;
+  --leading-heading: 1.4;
+  --leading-snug: 1.5;
+  --leading-body: 1.6;
+  --leading-relaxed: 1.65;
+  --leading-prose: 1.7;
+  --leading-coach: 1.8;
+  --leading-transcript: 1.85;
+  --leading-doc: 1.9;
+}

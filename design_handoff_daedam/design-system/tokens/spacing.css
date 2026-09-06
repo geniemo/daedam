@@ -1,0 +1,72 @@
+/* 대담 — spacing, containers, radii */
+:root {
+  /* Containers (max-width) */
+  --container-home: 1160px;    /* 홈, 헤더, 등록 상단 바, 랜딩 */
+  --container-reg1: 520px;     /* 등록 STEP 1, 재생성 */
+  --container-doc: 760px;      /* 등록 STEP 2, 리서치, 준비 완료, 계정, 크레딧 */
+  --container-report: 860px;   /* 피드백 리포트 */
+  --container-review: 1180px;  /* 리포트 검토 (사이드바 + 문서) */
+
+  /* Page */
+  --page-x: 32px;
+  --page-top: 44px;
+  --page-bottom: 80px;
+  --header-h: 64px;
+
+  /* Card padding */
+  --card-pad: 20px;
+  --card-pad-lg: 28px;
+  --card-pad-doc: 36px 40px;
+
+  /* Gaps */
+  --gap-card-grid: 16px;
+  --gap-card-list: 10px;
+  --gap-card-list-lg: 14px;
+  --gap-section: 30px;
+  --gap-field: 20px;
+  --gap-label: 7px;
+
+  /* Sizes */
+  --onboarding-col: 460px;     /* 온보딩 한 기둥 */
+  --dialog-max-w: 640px;       /* 지원서 가이드 다이얼로그 */
+  --demo-max-w: 640px;         /* 랜딩 데모 창 (min-height 440) */
+  --avatar-demo: 150px;        /* 데모 창 아바타 슬롯 */
+  --preview-w: 320px;          /* 시작 전 확인 카메라 미리보기 */
+  --preview-h: 240px;
+  --video-col-w: 248px;        /* 리포트 답변 영상 열 */
+  --gaze-cell-h: 52px;
+  --mic-test-w: 90px;          /* 시작 전 확인 마이크 막대 90×4 */
+  --card-min-h: 172px;
+  --sidebar-w: 236px;
+  --avatar-stage: 340px;
+  --avatar-slot: 206px;
+  --avatar-ring: 270px;
+  --avatar-hear-ring: 246px;
+  --avatar-inner: 96px;
+  --avatar-core: 44px;
+  --selfview-w: 240px;         /* 면접 중 셀프뷰 기본. 구도 확인용 — 얼굴 ~60px */
+  --selfview-h: 180px;
+  --mirror-h: min(420px, calc(100vh - 380px)); /* 거울 배치(내 모습 크게 보기). 380 = 상단 바 74 + 라벨 30 + 자막 92 + 상태 104 + 컨트롤 ~66. 폭은 4:3 */
+  --mirror-h-max: 420px;
+  --avatar-pip: 92px;          /* 거울 배치에서 우상단으로 들어간 면접관 슬롯 */
+  --wave-h: 38px;
+  --wave-bar-w: 3px;
+  --wave-gap: 3px;
+  --wave-bars: 16;
+  --progress-h: 3px;
+  --progress-h-stage: 2.5px;
+  --score-bar-h: 6px;
+  --step-w: 22px;
+  --step-h: 2.5px;
+  --dot: 5px;
+  --dot-live: 6px;
+  --check: 14px;
+  --check-lg: 15px;
+  --tap-min: 44px;
+
+  /* Radii — 4/3/2. Nothing rounder except circles. */
+  --radius-card: 4px;
+  --radius-control: 3px;
+  --radius-chip: 2px;
+  --radius-full: 9999px;
+}

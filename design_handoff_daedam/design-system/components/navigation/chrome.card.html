@@ -1,0 +1,24 @@
+<!-- @dsCard group="Components" viewport="700x150" name="Chrome (header)" subtitle="sticky 64px, blur 8, 로고 + 내 면접 + 크레딧 + 계정" -->
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.26.10/babel.min.js"></script>
+<script>Babel.registerPreset('classic',{presets:[[Babel.availablePresets.react,{runtime:'classic'}]]});</script>
+<style>body{margin:0;background:var(--color-bg);font-family:var(--font-sans);-webkit-font-smoothing:antialiased}</style></head>
+<body><div id="root"></div>
+<script>
+// Loads the design-system component sources without a bundler: synchronous fetch, strip ESM
+// import/export, classic-runtime JSX (React.createElement). Each file registers on window.Daedam.
+(function(){
+  var root='../../', files=["components/core/Card.jsx","components/core/PrimaryButton.jsx","components/core/OutlineButton.jsx","components/core/TextField.jsx","components/core/TextArea.jsx","components/core/Label.jsx","components/core/SectionLabel.jsx","components/core/Chip.jsx","components/core/ProgressBar.jsx","components/core/IndeterminateBar.jsx","components/core/Dots.jsx","components/core/Caret.jsx","components/navigation/Chrome.jsx","components/stage/Avatar.jsx","components/stage/Waveform.jsx"];
+  files.forEach(function(p){
+    var x=new XMLHttpRequest();x.open('GET',root+p,false);x.send(null);
+    if(x.status>=400){console.warn('missing',p);return;}
+    var src=x.responseText.replace(/^import[^\n]*\n/gm,'').replace(/^export function /gm,'function ');
+    var out=Babel.transform(src,{presets:['classic'],filename:p}).code;
+    (0,eval)(out);
+  });
+})();
+</script>
+
+<script>(0,eval)(Babel.transform("\nconst NS = window.Daedam || window[Object.keys(window).find(k => { try { return window[k] && window[k].PrimaryButton && window[k].Card; } catch(e) { return false; } })] || {};\nconst { Chrome } = NS;\nReactDOM.createRoot(document.getElementById('root')).render(\n  <div><Chrome name=\"김서연\" credits={7} /><div style={{padding:'16px 32px',fontSize:12,color:'var(--color-faint)'}}>아래는 페이지 배경(#F4F5F7). 헤더 바탕은 rgba(244,245,247,.92) + blur라 스크롤 시 내용이 비쳐 보인다.</div><Chrome name=\"Park Jiweon\" /></div>\n);\n",{presets:['classic']}).code);</script></body></html>
