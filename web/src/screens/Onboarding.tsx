@@ -54,7 +54,7 @@ export function Onboarding() {
   return (
     <main className="flex min-h-dvh flex-col break-keep">
       {/* 상단 바 — 로고와 진행 막대 두 개. 지금 단계까지가 진하다. */}
-      <div className="flex items-center px-8 py-[26px]">
+      <div className="flex items-center px-5 py-[18px] md:px-8 md:py-[26px]">
         <Logo size={26} wordmark={20} />
         <div className="flex-1" />
         <div className="flex gap-[5px]">
@@ -70,7 +70,7 @@ export function Onboarding() {
       </div>
 
       {/* key로 리마운트해서 단계마다 fade가 다시 돈다. */}
-      <div className="flex flex-1 items-center justify-center px-8 pb-[96px]">
+      <div className="flex flex-1 items-center justify-center px-5 pb-16 md:px-8 md:pb-[96px]">
         {step === 0 ? (
           <div key="name" className="w-[460px] max-w-full animate-dm-fade">
             <StepMark>1 / 2</StepMark>

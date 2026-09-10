@@ -75,6 +75,10 @@
   --radius-control: 3px;
   --radius-chip: 2px;
 
+  /* §Responsive — 분기는 하나. 720px 미만이 좁은 화면(휴대폰·세로 태블릿)이고
+     코드에서는 `md:` 접두어 하나에 대응한다. 중간 단계를 만들지 않는다. */
+  --breakpoint-md: 720px;
+
   /* §Spacing — 컨테이너 최대 폭 */
   --container-home: 1160px;
   --container-landing: 1240px;

@@ -189,7 +189,7 @@ function ReportEmpty({
   ]
 
   return (
-    <main className="mx-auto max-w-(--container-report) px-8 pt-10 pb-20 animate-dm-fade">
+    <main className="mx-auto max-w-(--container-report) px-4 pt-7 pb-[60px] animate-dm-fade md:px-8 md:pt-10 md:pb-20">
       <button onClick={onLeave} className="mb-6 text-[13px] text-muted">
         ← 내 면접
       </button>
@@ -311,7 +311,7 @@ function ReportBody({
   const seconds = Math.round(feedback.durationS % 60)
 
   return (
-    <main className="mx-auto max-w-(--container-report) px-8 pt-10 pb-[90px] animate-dm-fade">
+    <main className="mx-auto max-w-(--container-report) px-4 pt-7 pb-[60px] animate-dm-fade md:px-8 md:pt-10 md:pb-[90px]">
       <div className="mb-[30px] flex items-center gap-[14px]">
         <button onClick={onLeave} className="text-[13px] text-muted">
           ← 내 면접
@@ -323,29 +323,30 @@ function ReportBody({
       {/* 머리 — 무대 띠. 이 리포트가 어느 면접장에서 나왔는지. 점수와 총평이
           어두운 판 위에 있고, 나머지 섹션은 밝은 화면 그대로다. */}
       <div
-        className="relative mb-[30px] flex items-start gap-[34px] overflow-hidden rounded-card px-8 py-[30px]"
+        className="relative mb-[30px] flex flex-wrap items-start gap-4 overflow-hidden rounded-card px-5 py-[22px] md:gap-[34px] md:px-8 md:py-[30px]"
         style={{ background: 'var(--stage-bg)', color: 'var(--stage-ink-warm)' }}
       >
         <Keylight width={900} height={420} top="-60%" alpha={0.09} />
         <div className="relative mt-[2px]">
           <Avatar size={72} speaking glow={0.55} bloom={false} />
         </div>
-        <div className="relative flex min-w-0 flex-1 flex-col gap-[9px]">
+        <div className="relative flex min-w-0 flex-1 basis-[200px] flex-col gap-[9px] md:basis-0">
           <div className="num text-[12.5px]" style={{ color: 'var(--stage-dim)' }}>
             {minutes}분 {seconds}초 · 답변 {coaching.answers.length}개
           </div>
-          <h1 className="m-0 text-[25px] font-bold tracking-[-.03em]" style={{ color: 'var(--stage-paper)' }}>
+          <h1 className="m-0 break-keep text-[21px] font-bold tracking-[-.03em] md:text-[25px]" style={{ color: 'var(--stage-paper)' }}>
             {company} · {role}
           </h1>
           <p className="mt-[6px] mb-0 max-w-[520px] break-keep text-[14px] leading-[1.7]">
             {coaching.summary}
           </p>
         </div>
-        {/* 점수는 답변 점수의 평균입니다 — 아래 답변별 점수와 반드시 맞습니다. */}
-        <div className="relative flex flex-col items-end gap-[4px]">
+        {/* 점수는 답변 점수의 평균입니다 — 아래 답변별 점수와 반드시 맞습니다.
+            좁은 화면에서는 아래 줄로 내려와 가로로 놓이고 위에 1px 선이 선다. */}
+        <div className="relative flex w-full items-baseline justify-between gap-3 border-t border-white/8 pt-[14px] md:w-auto md:flex-col md:items-end md:gap-[4px] md:border-t-0 md:pt-0">
           <div className="flex items-baseline gap-[4px]">
             <span
-              className="num text-[56px] leading-none font-bold tracking-[-.05em]"
+              className="num text-[44px] leading-none font-bold tracking-[-.05em] md:text-[56px]"
               style={{ color: 'var(--stage-paper)' }}
             >
               {coaching.score ?? '—'}
@@ -371,7 +372,7 @@ function ReportBody({
               범위는 일반 대화의 관찰값보다 조금 좁게 잡았습니다. 면접은 평소
               대화보다 또렷해야 하는 자리라서입니다. 근거는 카드마다 아래 주석에
               적었습니다 — 지어낸 숫자가 아니어야 판정을 신뢰할 수 있습니다. */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-3">
             {/* 한국어 뉴스 아나운서가 353~357 음절/분(말소리와 음성과학).
                 또렷하게 들리는 상한이 그쯤이라 360을 위로 두고, 아래는 그보다
                 한참 느리면 답답하게 들리는 선에서 280으로 잡았습니다. */}
@@ -451,7 +452,7 @@ function ReportBody({
           <div className="mb-[18px]">
             <SectionLabel>종합 평가</SectionLabel>
           </div>
-          <div className="grid grid-cols-2 gap-[14px]">
+          <div className="grid grid-cols-1 gap-[22px] md:grid-cols-2 md:gap-[14px]">
             <div className="flex flex-col gap-3">
               <div className="text-[13px] font-bold text-positive">잘한 점</div>
               {coaching.strengths.map((text) => (
@@ -508,21 +509,22 @@ function ReportBody({
               >
                 <div
                   onClick={() => setOpenQ(open ? -1 : index)}
-                  className="flex cursor-pointer items-center gap-[13px] px-[18px] py-[15px]"
+                  className="flex cursor-pointer items-center gap-[10px] px-[14px] py-[13px] md:gap-[13px] md:px-[18px] md:py-[15px]"
                 >
                   <span className="num w-[22px] text-[11.5px] font-semibold text-faintest">
                     Q{index + 1}
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold">
+                  {/* 좁은 화면에서는 질문이 줄을 바꾸고 지속시간·표정 칩은 숨긴다. */}
+                  <span className="min-w-0 flex-1 break-keep text-[13.5px] leading-[1.5] font-semibold md:truncate">
                     {open ? '' : answer.question}
                   </span>
                   {dominant && (
-                    <span className="rounded-chip bg-surface-2 px-[8px] py-[2px] text-[11px] text-body-2">
+                    <span className="hidden rounded-chip bg-surface-2 px-[8px] py-[2px] text-[11px] text-body-2 md:inline">
                       {dominant.label} 우세
                     </span>
                   )}
                   {span && (
-                    <span className="num text-[11.5px] text-faintest">
+                    <span className="num hidden text-[11.5px] text-faintest md:inline">
                       {(span.endS - span.startS).toFixed(1)}초
                     </span>
                   )}
@@ -535,7 +537,7 @@ function ReportBody({
                 </div>
 
                 {open && (
-                  <div className="flex animate-dm-fade flex-col gap-4 px-[18px] pt-[4px] pb-5">
+                  <div className="flex animate-dm-fade flex-col gap-4 px-[14px] pt-[4px] pb-[18px] md:px-[18px] md:pb-5">
                     <div className="border-t border-hair pt-4 text-[15px] leading-[1.6] font-semibold">
                       {answer.question}
                     </div>
@@ -543,7 +545,7 @@ function ReportBody({
                     {span && (
                       /* 전사와 영상을 나란히 둔다. 위아래로 쌓으면 "내가 이 말을
                          할 때 어떻게 보였나"를 한눈에 맞춰 볼 수 없다. */
-                      <div className={video ? 'grid grid-cols-[1fr_248px] gap-[14px]' : ''}>
+                      <div className={video ? 'grid grid-cols-1 gap-[14px] md:grid-cols-[1fr_248px]' : ''}>
                         <div className="flex min-w-0 flex-col gap-[6px] rounded-control bg-surface-2 px-[14px] py-[12px]">
                           <span className="num text-[11.5px] text-faint">
                             ({formatAt(span.startS)})
@@ -615,7 +617,7 @@ function ReportBody({
         </div>
       </section>
 
-      <div className="flex items-center">
+      <div className="flex flex-wrap items-center gap-3">
         <button onClick={onLeave} className="text-[13px] text-muted">
           내 면접으로
         </button>

@@ -42,7 +42,7 @@ export function Account() {
   }
 
   return (
-    <main className="mx-auto max-w-(--container-doc) px-8 pt-[44px] pb-20 animate-dm-fade">
+    <main className="mx-auto max-w-(--container-doc) px-5 pt-7 pb-20 animate-dm-fade md:px-8 md:pt-[44px]">
       <button onClick={() => nav('/')} className="mb-4 text-[13px] text-muted">
         ← 내 면접
       </button>

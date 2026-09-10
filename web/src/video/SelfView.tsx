@@ -27,6 +27,7 @@ export const SWAP_TRANSITION =
 export function SelfView({
   camera,
   mirror,
+  narrow,
   visible,
   top,
   width,
@@ -38,6 +39,8 @@ export function SelfView({
   camera: Camera
   /** 거울 배치 — 웹캠이 가운데. */
   mirror: boolean
+  /** 좁은 무대 — 상자가 우상단 16/8에 붙고, 동작 링크는 구분점 없이 세로로 쌓인다. */
+  narrow: boolean
   /** 화면에 보일지. 꺼도 촬영은 계속됩니다. 거울 배치에서는 늘 보입니다. */
   visible: boolean
   /** 거울 배치일 때 상자의 윗변(면접 화면의 무대 영역 기준). */
@@ -60,6 +63,7 @@ export function SelfView({
   if (camera.state !== 'on') return null
 
   const shown = mirror || visible
+  const edge = narrow ? 16 : 30
   return (
     <div
       className="absolute flex flex-col gap-[7px]"
@@ -68,7 +72,7 @@ export function SelfView({
         zIndex: mirror ? 2 : 4,
         ...(mirror
           ? { left: '50%', top, width, transform: 'translateX(-50%)' }
-          : { left: 'calc(100% - 30px - 240px)', top: 14, width: 240, transform: 'translateX(0)' }),
+          : { left: `calc(100% - ${edge}px - ${width}px)`, top: narrow ? 8 : 14, width, transform: 'translateX(0)' }),
       }}
     >
       <div
@@ -113,7 +117,7 @@ export function SelfView({
         style={{ animation: 'dm-fade .3s ease .3s both' }}
       >
         {mirror ? (
-          <div className="flex items-center gap-[9px] whitespace-nowrap">
+          <div className="flex flex-wrap items-center gap-x-[9px] gap-y-1 whitespace-nowrap">
             <Recording />
             <div className="flex-1" />
             <Action onClick={onMirror}>면접관 크게 보기</Action>
@@ -127,11 +131,12 @@ export function SelfView({
             <div className="flex justify-end">
               <Recording />
             </div>
-            <div className="flex justify-end gap-[9px] whitespace-nowrap">
+            {/* 132px 상자 아래에는 세 링크가 한 줄에 안 선다 — 세로로 쌓고 구분점을 뺀다. */}
+            <div className={`flex justify-end whitespace-nowrap ${narrow ? 'flex-col items-end gap-1' : 'gap-[9px]'}`}>
               <Action onClick={onMirror}>내 모습 크게 보기</Action>
-              <Sep />
+              {!narrow && <Sep />}
               <Action onClick={onHide}>{visible ? '내 화면 가리기' : '다시 보기'}</Action>
-              <Sep />
+              {!narrow && <Sep />}
               <Action onClick={onStop} dim>
                 카메라 끄기
               </Action>
