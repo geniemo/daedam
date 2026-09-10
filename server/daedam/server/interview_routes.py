@@ -35,6 +35,7 @@ from daedam.eval import expression
 from .accounts import Accounts
 from .credits import Credits
 from .preparation import InterviewPreparation
+from .recurring import recurring_improvement
 from .store import InterviewStore, SessionSummary
 
 
@@ -174,6 +175,34 @@ def create_interviews_router(
             }
             for item in store.list_for_user(user_id)
         ]
+
+    @router.get("/records")
+    def list_records(
+        user_id: str = Depends(accounts.current_user_id),
+    ) -> dict[str, Any]:
+        """홈의 기록 띠 — 면접 횟수·점수 흐름·반복된 보완점.
+
+        `/{interview_id}`보다 **앞에** 있어야 한다. 경로는 등록 순서로 맞춰지므로
+        뒤에 두면 "records"가 면접 id로 읽혀 404가 난다.
+
+        반복된 보완점은 임베딩으로 묶는다(recurring.py) — 코칭 문장이 판마다
+        새로 쓰여 글자로는 겹치지 않는다.
+        """
+        records = store.records_for_user(user_id)
+        return {
+            "records": [
+                {
+                    "interviewId": item.interview_id,
+                    "sessionId": item.session_id,
+                    "company": item.company,
+                    "n": item.n,
+                    "score": item.score,
+                    "at": item.started_at.isoformat(),
+                }
+                for item in records
+            ],
+            "recurring": recurring_improvement(records),
+        }
 
     @router.get("/{interview_id}")
     def get_interview(

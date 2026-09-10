@@ -316,6 +316,37 @@ export async function listInterviews(): Promise<StoredInterview[]> {
   return (await res.json()) as StoredInterview[]
 }
 
+/**
+ * 면접 한 판의 기록 — 홈의 기록 띠 한 칸. 계약: server/daedam/server/interview_routes.py
+ *
+ * 점수가 있는 판만 온다. 답변이 없던 판은 면접이 아니고, 분석이 아직 없는
+ * 판은 셀 점수가 없다.
+ */
+export interface InterviewRecord {
+  interviewId: string
+  sessionId: string
+  company: string
+  /** 그 회사에서 몇 번째 면접인가. 리포트 화면의 회차 번호와 같은 기준이다. */
+  n: number
+  score: number
+  /** 시작 시각, ISO 8601. */
+  at: string
+}
+
+export interface RecordSummary {
+  /** 회사를 가로질러 오래된 것부터. */
+  records: InterviewRecord[]
+  /** 리포트 2건 이상에서 같은 보완점이 나왔으면 그 문장과 횟수. 없으면 null. */
+  recurring: { text: string; count: number } | null
+}
+
+/** 내 면접 기록 전부 — 홈의 기록 띠가 그린다. */
+export async function listRecords(): Promise<RecordSummary> {
+  const res = await fetch('/api/interviews/records')
+  if (!res.ok) throw new Error(`면접 기록 조회 실패: ${res.status}`)
+  return (await res.json()) as RecordSummary
+}
+
 export interface InterviewDetail extends StoredInterview {
   report: DocSection[]
   uncertain: UncertainRef[]

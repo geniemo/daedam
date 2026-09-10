@@ -14,6 +14,7 @@ from conftest import make_store
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from daedam.server import recurring
 from daedam.server.interview_routes import create_interviews_router
 from daedam.server.preparation import InterviewPreparation
 
@@ -445,3 +446,65 @@ def test_남의_면접에는_스냅샷을_올릴_수_없다(tmp_path) -> None:
     )
     assert r.status_code == 404
     assert not (store.session_directory("bbb", other) / "frames").exists()
+
+
+class _OneHotEmbedder:
+    """같은 문장이면 같은 벡터, 다르면 직교. 라우트가 반복을 싣는지만 본다 —
+    문장을 묶는 규칙 자체는 test_recurring.py가 본다."""
+
+    def encode(self, texts, *, query=False):
+        import numpy as np
+
+        keys = list(dict.fromkeys(texts))
+        rows = np.zeros((len(texts), len(keys)), dtype=np.float32)
+        for i, text in enumerate(texts):
+            rows[i, keys.index(text)] = 1.0
+        return rows
+
+
+def test_기록은_회사를_가로질러_오래된_것부터(tmp_path, monkeypatch) -> None:
+    """홈의 기록 띠. 점수가 있는 판만 기록이고, 회차 번호는 답변이 있는 판만으로."""
+    monkeypatch.setattr(recurring, "default_embedder", lambda: _OneHotEmbedder())
+    bundle = _store(tmp_path, ("aaa", True), ("bbb", True))
+    store, _ = bundle
+
+    def played(interview_id: str, transcript: dict, feedback: dict | None) -> None:
+        session_id = store.start_session(interview_id)
+        store.save_transcript(session_id, transcript)
+        if feedback is not None:
+            store.save_feedback(session_id, feedback)
+        store.end_session(session_id)
+        time.sleep(0.01)  # 시작 시각이 같으면 순서가 정해지지 않는다
+
+    played("aaa", _SPOKE, {"coaching": {"score": 60, "improvements": ["숫자를 붙이십시오"]}})
+    # 아무 말도 안 한 판 — 회차로 세지 않는다.
+    played("aaa", {"durationS": 4.0, "utterances": []}, {"coaching": {"score": None}})
+    played("bbb", _SPOKE, {"coaching": {"score": 70, "improvements": ["숫자를 붙이십시오", "결론부터"]}})
+    played("aaa", _SPOKE, {"coaching": {"score": 80, "improvements": ["시선"]}})
+    # 분석이 아직 없는 판 — 회차는 세지만 기록은 아니다.
+    played("bbb", _SPOKE, None)
+
+    body = _client(bundle).get("/api/interviews/records").json()
+    assert [(item["interviewId"], item["n"], item["score"]) for item in body["records"]] == [
+        ("aaa", 1, 60),
+        ("bbb", 1, 70),
+        ("aaa", 2, 80),
+    ]
+    assert body["recurring"] == {"text": "숫자를 붙이십시오", "count": 2}
+
+
+def test_기록이_없으면_빈_띠(tmp_path) -> None:
+    body = _client(_store(tmp_path, ("aaa", True))).get("/api/interviews/records").json()
+    assert body == {"records": [], "recurring": None}
+
+
+def test_같은_판_안의_반복은_한_번으로(tmp_path, monkeypatch) -> None:
+    """"반복"은 회차를 가로지르는 것이다. 한 리포트가 같은 말을 두 번 해도 한 번이다."""
+    monkeypatch.setattr(recurring, "default_embedder", lambda: _OneHotEmbedder())
+    bundle = _store(tmp_path, ("aaa", True))
+    store, _ = bundle
+    session_id = store.start_session("aaa")
+    store.save_transcript(session_id, _SPOKE)
+    store.save_feedback(session_id, {"coaching": {"score": 50, "improvements": ["결론부터", "결론부터"]}})
+    store.end_session(session_id)
+    assert _client(bundle).get("/api/interviews/records").json()["recurring"] is None
