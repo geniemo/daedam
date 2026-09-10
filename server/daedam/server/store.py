@@ -81,6 +81,22 @@ class ApplicationSummary:
 
 
 @dataclass(frozen=True)
+class InterviewRecord:
+    """면접 한 판의 기록 — 홈의 기록 띠 한 칸. 점수가 있는 판만 이것이 된다."""
+
+    interview_id: str
+    session_id: str
+    company: str
+    #: 그 준비 데이터로 본 몇 번째 면접인가. 답변이 없는 판은 세지 않는다 —
+    #: 리포트 화면의 회차 번호와 같은 기준이다.
+    n: int
+    started_at: datetime
+    score: int
+    #: 코칭이 다음 면접까지 고치라고 한 것들. 회차를 가로질러 반복을 센다.
+    improvements: list[str]
+
+
+@dataclass(frozen=True)
 class SessionRecord:
     """면접 한 판이 남긴 것 전부 — 전사와 피드백까지."""
 
@@ -272,6 +288,41 @@ class InterviewStore:
                 .order_by(Application.updated_at.desc())
             ).all()
             return [self._summary(row) for row in rows]
+
+    def records_for_user(self, user_id: str) -> list[InterviewRecord]:
+        """이 사용자의 면접 기록 전부 — 회사를 가로질러 오래된 것부터.
+
+        점수가 있는 판만 기록이다. 답변이 없던 판은 면접이 아니고, 분석이 아직
+        없는 판은 셀 점수가 없다. 회차 번호는 답변이 있는 판만으로 매긴다 —
+        리포트 화면이 같은 기준으로 세므로 둘이 어긋나면 안 된다.
+        """
+        with self._db.session() as session:
+            rows = session.scalars(
+                select(Application)
+                .where(Application.user_id == user_id)
+                .options(selectinload(Application.sessions))
+            ).all()
+            records: list[InterviewRecord] = []
+            for row in rows:
+                # 관계가 시작 시각 순으로 정렬돼 온다(db/models.py Application.sessions).
+                answered = [s for s in row.sessions if has_answer(s.transcript)]
+                for n, item in enumerate(answered, start=1):
+                    if item.score is None:
+                        continue
+                    coaching = (item.feedback or {}).get("coaching") or {}
+                    records.append(
+                        InterviewRecord(
+                            interview_id=row.id,
+                            session_id=item.id,
+                            company=row.company,
+                            n=n,
+                            started_at=_as_utc(item.started_at),
+                            score=item.score,
+                            improvements=list(coaching.get("improvements") or []),
+                        )
+                    )
+            records.sort(key=lambda item: item.started_at)
+            return records
 
     # ── 면접 기록 ────────────────────────────────────────────────────────
 

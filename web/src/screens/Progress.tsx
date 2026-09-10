@@ -43,7 +43,7 @@ export function Regen() {
   }, [card.id, nav])
 
   return (
-    <main className="mx-auto flex max-w-(--container-reg1) flex-col items-center gap-4 px-8 py-[120px] text-center">
+    <main className="mx-auto flex max-w-(--container-reg1) flex-col items-center gap-4 px-5 py-[120px] text-center md:px-8">
       {!failed && (
         <span
           className="animate-dm-spin rounded-full border-line"

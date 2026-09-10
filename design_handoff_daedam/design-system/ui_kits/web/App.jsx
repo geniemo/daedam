@@ -26,6 +26,7 @@ function App() {
   const [screen, setScreen] = React.useState('home');
   const [card, setCard] = React.useState(CARDS[0]);
   const [notice, setNotice] = React.useState(null);
+  const [homeVariant, setHomeVariant] = React.useState('strip'); // 홈 비교: strip 기록 띠(추천) · rail 기록 레일 · dense 카드 밀도
   const go = s => { window.scrollTo(0, 0); setScreen(s); };
   // 문턱 → 무대: 어두운 띠의 자리에서 시작해 화면 전체로 커지는 판(.55s). 끝나면 면접 화면으로.
   const [expand, setExpand] = React.useState(null);
@@ -43,7 +44,10 @@ function App() {
     <div style={{ minHeight: '100vh' }}>
       {chrome && <Chrome name="김서연" credits={7} onHome={() => go('home')} />}
       {screen === 'home' && (<>
-        <window.DaedamHome cards={CARDS} notice={notice} onDismissNotice={() => setNotice(null)} onOpen={open} onStart={c => { setCard(c); go('ready'); }} onRegister={() => {}} />
+        <window.DaedamHome variant={homeVariant} cards={CARDS} notice={notice} onDismissNotice={() => setNotice(null)} onOpen={open} onStart={c => { setCard(c); go('ready'); }} onRegister={() => {}} onReport={() => { setCard(CARDS[2]); go('report'); }} />
+        <div style={{ position: 'fixed', right: 16, bottom: 80, zIndex: 99, display: 'flex', gap: 4, padding: 4, borderRadius: 6, background: 'var(--color-surface)', border: '1px solid var(--color-line)', boxShadow: 'var(--shadow-card)' }}>
+          {[['strip', 'A 기록 띠'], ['rail', 'B 기록 레일'], ['dense', 'C 카드 밀도']].map(([k, l]) => <button key={k} onClick={() => setHomeVariant(k)} style={{ fontSize: 12, fontWeight: 600, padding: '6px 11px', borderRadius: 4, background: homeVariant === k ? 'var(--color-ink)' : 'transparent', color: homeVariant === k ? '#fff' : 'var(--color-muted)' }}>{l}</button>)}
+        </div>
       </>)}
       {screen === 'ready' && <window.DaedamReady card={card} credits={{ balance: 7, interview: 3 }} onBack={() => go('home')} onReview={() => {}} onStart={enterStage} />}
       {screen === 'interview' && <window.DaedamInterview company={card.company} onEnd={() => go('analyzing')} />}

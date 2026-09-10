@@ -52,6 +52,7 @@ function Glow({ level, speaking, base = 1, gain = .16, minOp = .6, maxOp = 1, st
  * 타이핑이 끝나면 "듣고 있습니다"로 넘어가고 파형이 돈다.
  */
 function LiveDemo({ demo }) {
+  const narrow = useNarrow();
   const typed = useTyped(demo.question), done = typed.length >= demo.question.length, sp = !done;
   const level = React.useRef(0);
   React.useEffect(() => { let raf; const loop = () => { const s = performance.now() / 1000; level.current = Math.max(0, Math.sin(s * 5.3) * .5 + Math.sin(s * 9.1) * .3 + .3); raf = requestAnimationFrame(loop); }; raf = requestAnimationFrame(loop); return () => cancelAnimationFrame(raf); }, []);
@@ -59,7 +60,7 @@ function LiveDemo({ demo }) {
   React.useEffect(() => { let raf; const loop = () => { const t = performance.now() / 1000; bars.current.forEach((el, i) => { if (!el) return; const ph = Math.sin(t * 6 + i * .7) * .5 + .5; el.style.transform = 'scaleY(' + Math.min(1, .18 + level.current * (.35 + .65 * ph) * .82) + ')'; }); raf = requestAnimationFrame(loop); }; raf = requestAnimationFrame(loop); return () => cancelAnimationFrame(raf); }, []);
   const S = 150; // 구체 지름
   return (
-    <div style={{ position: 'relative', display: 'flex', minHeight: 440, width: '100%', maxWidth: 640, flexDirection: 'column', overflow: 'hidden', borderRadius: 'var(--radius-card)', border: '1px solid rgba(255,255,255,.08)', background: 'var(--stage-bg)', color: 'var(--stage-ink-warm)', boxSizing: 'border-box' }}>
+    <div style={{ position: 'relative', display: 'flex', minHeight: narrow ? 380 : 440, width: '100%', maxWidth: 640, flexDirection: 'column', overflow: 'hidden', borderRadius: 'var(--radius-card)', border: '1px solid rgba(255,255,255,.08)', background: 'var(--stage-bg)', color: 'var(--stage-ink-warm)', boxSizing: 'border-box' }}>
       {/* 키라이트 — 정지, 말할 때 조금 따뜻해진다 */}
       <div style={{ pointerEvents: 'none', position: 'absolute', left: '50%', top: '-30%', width: 760, height: 460, transform: 'translateX(-50%)', background: 'radial-gradient(ellipse at 50% 0%, rgba(var(--stage-keylight-rgb),' + (sp ? '.10' : '.06') + '), transparent 62%)', transition: 'background 1.4s ease' }} />
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center', padding: '18px 22px' }}>
@@ -78,7 +79,7 @@ function LiveDemo({ demo }) {
         {/* 질문 — 구체 바로 아래. 두 줄 높이를 늘 비워 둔다 */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, minHeight: 78, maxWidth: 520 }}>
           <span style={{ width: 24, height: 1, background: sp ? 'var(--stage-amber)' : 'var(--stage-mint)', transition: 'background 1s ease' }} />
-          <p style={{ margin: 0, textAlign: 'center', fontSize: 18, lineHeight: 1.6, fontWeight: 600, letterSpacing: '-.02em', color: 'var(--stage-paper)', wordBreak: 'keep-all' }}>{typed}{!done && <span style={{ marginLeft: 2, display: 'inline-block', width: 2, height: 16, verticalAlign: -2, background: 'var(--stage-amber)' }} />}</p>
+          <p style={{ margin: 0, textAlign: 'center', fontSize: narrow ? 16 : 18, lineHeight: 1.6, fontWeight: 600, letterSpacing: '-.02em', color: 'var(--stage-paper)', wordBreak: 'keep-all' }}>{typed}{!done && <span style={{ marginLeft: 2, display: 'inline-block', width: 2, height: 16, verticalAlign: -2, background: 'var(--stage-amber)' }} />}</p>
         </div>
       </div>
       <div style={{ position: 'relative', display: 'flex', height: 72, alignItems: 'center', justifyContent: 'center' }}>
@@ -89,11 +90,12 @@ function LiveDemo({ demo }) {
   );
 }
 function StepFrame({ label, title, body, children }) {
+  const narrow = useNarrow();
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '360px minmax(0,1fr)', alignItems: 'center', gap: 56, borderTop: '1px solid var(--color-line)', padding: '64px 0' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: narrow ? '1fr' : '360px minmax(0,1fr)', alignItems: 'center', gap: narrow ? 26 : 56, borderTop: '1px solid var(--color-line)', padding: narrow ? '44px 0' : '64px 0' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <span className="num" style={{ fontSize: 12, fontWeight: 600, letterSpacing: '.05em', color: 'var(--color-accent)' }}>{label}</span>
-        <h2 style={{ margin: 0, fontSize: 28, lineHeight: 1.3, fontWeight: 700, letterSpacing: '-.03em', color: 'var(--color-ink)', wordBreak: 'keep-all' }}>{title}</h2>
+        <h2 style={{ margin: 0, fontSize: narrow ? 23 : 28, lineHeight: 1.3, fontWeight: 700, letterSpacing: '-.03em', color: 'var(--color-ink)', wordBreak: 'keep-all' }}>{title}</h2>
         <p style={{ margin: 0, fontSize: 16, lineHeight: 1.8, color: 'var(--color-body-2)', wordBreak: 'keep-all' }}>{body}</p>
       </div>
       <div style={{ minWidth: 0 }}>{children}</div>
@@ -126,8 +128,9 @@ function ResearchLog() {
 }
 const DIALOGUE = [['면접관', '그 프로젝트에서 가장 어려웠던 판단은 무엇이었나요?'], ['나', '분류 기준을 바꾸는 게 가장 어려웠습니다. 팀원들은 기존 기준을 유지하자고 했는데…'], ['면접관', '팀원들을 어떤 근거로 설득하셨나요? 비교 자료가 있었습니까?'], ['나', '음… 3개월 데이터로 두 기준을 나눠 봤을 때 회전율 차이가…']];
 function Dialogue() {
+  const narrow = useNarrow();
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: narrow ? '1fr' : '1fr 1fr', gap: 12 }}>
       {DIALOGUE.map(([who, text], i) => { const iv = who === '면접관'; const c = iv ? 'var(--color-accent)' : 'var(--color-listening)'; return (
         <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 8, borderRadius: 'var(--radius-card)', border: '1px solid var(--color-line)', background: 'var(--color-surface)', padding: 18 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}><span style={{ width: 5, height: 5, borderRadius: '50%', background: c }} /><span style={{ fontSize: 11.5, fontWeight: 600, color: c }}>{who}</span>{i === 2 && <span style={{ marginLeft: 'auto', borderRadius: 'var(--radius-chip)', border: '1px solid var(--color-line-2)', padding: '2px 6px', fontSize: 10.5, color: 'var(--color-faint)' }}>꼬리질문</span>}</div>
@@ -140,7 +143,7 @@ function ScoreCard() {
   const Metric = window.DaedamMetric;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18, borderRadius: 'var(--radius-card)', border: '1px solid var(--color-line)', background: 'var(--color-surface)', padding: 22 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 12 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}><span style={{ fontSize: 12, color: 'var(--color-faint)' }}>18분 12초 · 답변 8개</span><span style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-.02em' }}>누리테크 · 서비스기획</span></div>
         <div style={{ flex: 1 }} />
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}><div style={{ display: 'flex', alignItems: 'baseline', gap: 3 }}><span className="num" style={{ fontSize: 40, lineHeight: 1, fontWeight: 700, letterSpacing: '-.05em' }}>80</span><span style={{ fontSize: 13, color: 'var(--color-faint)' }}>/ 100</span></div><span style={{ fontSize: 11, color: 'var(--color-faintest)' }}>답변 점수의 평균</span></div>
@@ -164,6 +167,7 @@ function CoachCard() {
   );
 }
 function Landing() {
+  const narrow = useNarrow();
   const [demo, setDemo] = React.useState(0);
   React.useEffect(() => { const t = setInterval(() => setDemo(i => (i + 1) % DEMOS.length), DEMO_INTERVAL_MS); return () => clearInterval(t); }, [demo]);
   const [co, setCo] = React.useState(0);
@@ -174,19 +178,19 @@ function Landing() {
   return (
     <main style={{ wordBreak: 'keep-all', animation: 'dm-fade .3s ease' }}>
       <header style={{ position: 'sticky', top: 0, zIndex: 40, height: 64, borderBottom: '1px solid var(--color-line)', background: 'var(--header-bg)', backdropFilter: 'blur(8px)' }}>
-        <div style={{ margin: '0 auto', display: 'flex', height: '100%', maxWidth: 1240, alignItems: 'center', padding: '0 32px', boxSizing: 'border-box' }}><Logo /><div style={{ flex: 1 }} /><button onClick={scrollToLogin} style={{ borderRadius: 'var(--radius-control)', border: '1px solid var(--color-field)', background: 'var(--color-surface)', padding: '9px 16px', fontSize: 13.5, fontWeight: 600, color: 'var(--color-ink)' }}>로그인</button></div>
+        <div style={{ margin: '0 auto', display: 'flex', height: '100%', maxWidth: 1240, alignItems: 'center', padding: narrow ? '0 20px' : '0 32px', boxSizing: 'border-box' }}><Logo /><div style={{ flex: 1 }} /><button onClick={scrollToLogin} style={{ borderRadius: 'var(--radius-control)', border: '1px solid var(--color-field)', background: 'var(--color-surface)', padding: '9px 16px', fontSize: 13.5, fontWeight: 600, color: 'var(--color-ink)' }}>로그인</button></div>
       </header>
-      <section style={{ margin: '0 auto', display: 'grid', maxWidth: 1240, gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', alignItems: 'center', gap: 56, padding: '72px 32px 80px', boxSizing: 'border-box' }}>
+      <section style={{ margin: '0 auto', display: 'grid', maxWidth: 1240, gridTemplateColumns: narrow ? '1fr' : 'minmax(0,1fr) minmax(0,1fr)', alignItems: 'center', gap: narrow ? 36 : 56, padding: narrow ? '40px 20px 56px' : '72px 32px 80px', boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <div style={{ marginBottom: 22, display: 'flex', alignItems: 'center', gap: 8 }}><AccentDot size={5} /><span style={{ fontSize: 12.5, fontWeight: 600, letterSpacing: '.04em', color: 'var(--color-accent)' }}>AI 음성 모의면접</span></div>
-          <h1 style={{ margin: 0, fontSize: 44, lineHeight: 1.22, fontWeight: 700, letterSpacing: '-.04em', color: 'var(--color-ink)' }}>
+          <h1 style={{ margin: 0, fontSize: narrow ? 30 : 44, lineHeight: 1.22, fontWeight: 700, letterSpacing: '-.04em', color: 'var(--color-ink)' }}>
             대담과 함께 미리<br />
             {/* 바뀌는 줄 — 회사와 "면접장에"가 한 줄에 있어야 명사구가 갈라지지 않는다. 높이 1.22em 고정, key 리마운트로 회사만 dm-fade. */}
             <span style={{ display: 'inline-flex', height: '1.22em', alignItems: 'center', gap: '0.27em', verticalAlign: 'top', whiteSpace: 'nowrap' }}><span key={company.name} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.22em', animation: 'dm-fade .4s ease' }}><Monogram mark={company.mark} />{company.name}</span>면접장에</span><br />
             들어가세요
           </h1>
           <p style={{ margin: '22px 0 0', maxWidth: 460, fontSize: 18, lineHeight: 1.7, color: 'var(--color-body-2)' }}>몇 번이든 다시 연습하세요.</p>
-          <div id="login" style={{ marginTop: 36, display: 'flex', flexWrap: 'wrap', gap: 10 }}><LoginButton provider="kakao" /><LoginButton provider="google" /></div>
+          <div id="login" style={{ marginTop: 36, display: 'flex', flexWrap: 'wrap', gap: 10, ...(narrow ? { flexDirection: 'column' } : {}) }}><LoginButton provider="kakao" /><LoginButton provider="google" /></div>
           <div style={{ marginTop: 40, display: 'flex', flexWrap: 'wrap', gap: 28 }}>{fact('4단계', '자기소개 · 직무역량 · 인성 · 마무리')}{fact('6가지', '음성 지표를 권장 범위와 비교')}{fact('답변마다', '녹음을 다시 듣고 문장을 고치기')}</div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -194,14 +198,14 @@ function Landing() {
           <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 6 }}>{DEMOS.map((item, i) => <button key={item.company} onClick={() => setDemo(i)} style={{ borderRadius: 9999, border: '1px solid ' + (i === demo ? 'var(--color-ink)' : 'var(--color-line)'), background: i === demo ? 'var(--color-ink)' : 'transparent', color: i === demo ? '#fff' : 'var(--color-muted)', padding: '6px 13px', fontSize: 13, transition: 'color .3s, background .3s, border-color .3s' }}>{item.company}</button>)}</div>
         </div>
       </section>
-      <section style={{ margin: '0 auto', maxWidth: 1240, padding: '0 32px 40px', boxSizing: 'border-box' }}>
+      <section style={{ margin: '0 auto', maxWidth: 1240, padding: narrow ? '0 20px 24px' : '0 32px 40px', boxSizing: 'border-box' }}>
         <StepFrame label="01 회사 조사" title="실제와 같은 면접관과 대화하세요" body="공신력 있는 근거를 통해 기업을 조사합니다. 실제 면접관이 할 법한 질문을 받아보세요."><ResearchLog /></StepFrame>
         <StepFrame label="02 음성 면접" title="얼버무린 자리를 먼저 들켜보세요" body="파고드는 꼬리질문을 받아보세요. 숫자가 빠지면 숫자를, 근거가 빠지면 근거를 되묻습니다. 모의면접에서 먼저 당황해보세요."><Dialogue /></StepFrame>
         <StepFrame label="03 답변 코칭" title="정확한 지표와 함께 리뷰하고 개선하세요" body="녹음을 다시 들으면서 답변마다 잘한 점과 빠진 것을 확인하고, 다음 면접장에서 그대로 말할 수 있게 고쳐 쓴 문장을 받으세요."><div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}><ScoreCard /><CoachCard /></div></StepFrame>
       </section>
       <section style={{ borderTop: '1px solid var(--color-line)', background: 'var(--color-surface)' }}>
-        <div style={{ margin: '0 auto', display: 'flex', maxWidth: 1240, flexDirection: 'column', alignItems: 'center', padding: '96px 32px', textAlign: 'center' }}><h2 style={{ margin: 0, fontSize: 34, lineHeight: 1.3, fontWeight: 700, letterSpacing: '-.04em', color: 'var(--color-ink)' }}>연습은 여기서 끝내고<br />합격 소식을 전하세요</h2></div>
-        <div style={{ margin: '0 auto', display: 'flex', maxWidth: 1240, flexWrap: 'wrap', gap: 16, padding: '0 32px 40px', fontSize: 13, color: 'var(--color-muted)' }}><span>면접 중 음성과 웹캠 영상이 기록되고, 답변 분석에 쓰입니다.</span><div style={{ flex: 1 }} /><a href="#" onClick={e => e.preventDefault()} style={{ color: 'var(--color-faint)' }}>이용약관</a><a href="#" onClick={e => e.preventDefault()} style={{ color: 'var(--color-faint)' }}>개인정보처리방침</a></div>
+        <div style={{ margin: '0 auto', display: 'flex', maxWidth: 1240, flexDirection: 'column', alignItems: 'center', padding: narrow ? '64px 20px' : '96px 32px', textAlign: 'center' }}><h2 style={{ margin: 0, fontSize: narrow ? 26 : 34, lineHeight: 1.3, fontWeight: 700, letterSpacing: '-.04em', color: 'var(--color-ink)' }}>연습은 여기서 끝내고<br />합격 소식을 전하세요</h2></div>
+        <div style={{ margin: '0 auto', display: 'flex', maxWidth: 1240, flexWrap: 'wrap', gap: 16, padding: narrow ? '0 20px 32px' : '0 32px 40px', fontSize: 13, color: 'var(--color-muted)' }}><span>면접 중 음성과 웹캠 영상이 기록되고, 답변 분석에 쓰입니다.</span><div style={{ flex: 1 }} /><a href="#" onClick={e => e.preventDefault()} style={{ color: 'var(--color-faint)' }}>이용약관</a><a href="#" onClick={e => e.preventDefault()} style={{ color: 'var(--color-faint)' }}>개인정보처리방침</a></div>
       </section>
     </main>
   );

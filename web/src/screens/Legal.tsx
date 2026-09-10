@@ -14,7 +14,7 @@ const EFFECTIVE = '2026년 9월 3일'
 
 function LegalPage({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <main className="mx-auto max-w-[720px] px-8 pt-[52px] pb-24 animate-dm-fade">
+    <main className="mx-auto max-w-[720px] px-5 pt-8 pb-24 animate-dm-fade md:px-8 md:pt-[52px]">
       <a href="/" className="text-[13px] text-faint hover:text-muted">
         ← 대담으로 돌아가기
       </a>

@@ -90,18 +90,15 @@ export function Research() {
   const elapsedLabel = `${Math.floor(elapsed / 60)}분 ${Math.floor(elapsed % 60)}초 경과`
 
   return (
-    <main className="mx-auto max-w-(--container-report) px-8 pt-[44px] pb-20 animate-dm-fade">
+    <main className="mx-auto max-w-(--container-report) px-4 pt-7 pb-[60px] animate-dm-fade md:px-8 md:pt-[44px] md:pb-20">
       <button onClick={() => nav('/')} className="mb-4 text-[13px] text-muted">
         ← 내 면접
       </button>
 
+      {/* 좁은 화면에서는 면접관이 위, 진행 로그가 아래로 쌓인다. */}
       <div
-        className="relative grid min-h-[360px] overflow-hidden rounded-card"
-        style={{
-          gridTemplateColumns: '300px minmax(0, 1fr)',
-          background: 'var(--stage-bg)',
-          color: 'var(--stage-ink-warm)',
-        }}
+        className="relative grid min-h-[360px] grid-cols-1 overflow-hidden rounded-card md:grid-cols-[300px_minmax(0,1fr)]"
+        style={{ background: 'var(--stage-bg)', color: 'var(--stage-ink-warm)' }}
       >
         <Keylight width={700} height={400} top="-40%" left="30%" alpha={0.07} />
 
@@ -121,7 +118,7 @@ export function Research() {
         </div>
 
         {/* 오른쪽 — 진행 로그. */}
-        <div className="relative flex flex-col pt-[26px] pr-7 pb-[26px]">
+        <div className="relative flex flex-col px-5 pb-[22px] md:pt-[26px] md:pr-7 md:pb-[26px] md:pl-0">
           <div className="mb-[14px] flex items-baseline">
             <span className="text-[17px] font-bold tracking-[-.02em]" style={{ color: 'var(--stage-paper)' }}>
               {card.company}

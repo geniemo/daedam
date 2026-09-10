@@ -5,6 +5,8 @@ export interface CardProps {
   /** px. 기본 20. 큰 카드 28, 문서 카드 '36px 40px' */
   padding?: number | string;
   style?: React.CSSProperties;
+  /** 바깥 div에 붙는 ref (크기 측정용) */
+  rootRef?: React.Ref<HTMLDivElement>;
   className?: string;
 }
 export function Card(props: CardProps): JSX.Element;

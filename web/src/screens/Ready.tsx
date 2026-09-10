@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { getCredits } from '@/api/credits'
 import { useNavigate } from 'react-router'
 import { useActiveCard, useAppStore } from '@/store/app'
+import { useNarrow } from '@/hooks/useNarrow'
 import { useCamera } from '@/video/useCamera'
 import { AccentDot, CheckDot, EmptyDot, OutlineButton, SectionLabel } from '@/components/ui'
 import { Avatar, Keylight } from '@/components/Stage'
@@ -166,8 +167,8 @@ function Preflight({ onReady }: { onReady: (ready: boolean) => void }) {
               ref={preview}
               muted
               playsInline
-              className="rounded-card border border-line bg-surface-2 object-cover"
-              style={{ width: 320, height: 240, transform: 'scaleX(-1)' }}
+              className="w-full max-w-[320px] rounded-card border border-line bg-surface-2 object-cover"
+              style={{ aspectRatio: '4 / 3', transform: 'scaleX(-1)' }}
             />
             <span className="text-[12px] text-faint">
               얼굴이 가운데에 오고 밝은지 확인해 주세요
@@ -224,6 +225,8 @@ function Threshold({
   onStart: () => void
 }) {
   const [confirming, setConfirming] = useState(false)
+  // 좁은 화면은 구체 88 + 문구 한 줄, 시작 버튼 열은 100% 폭으로 아래.
+  const narrow = useNarrow()
   const disabled = short || !ready
   const paperButton = { color: '#0C0F19', background: 'var(--stage-paper)' }
 
@@ -247,9 +250,9 @@ function Threshold({
         </span>
       </div>
 
-      <div className="relative flex flex-1 items-center gap-7 px-8 pt-[6px] pb-7">
-        <Avatar size={128} speaking glow={0.5} bloom={false} />
-        <div className="flex min-w-0 flex-1 flex-col gap-2 break-keep">
+      <div className="relative flex flex-1 flex-wrap items-center gap-[18px] px-5 py-[22px] md:flex-nowrap md:gap-7 md:px-8 md:pt-[6px] md:pb-7">
+        <Avatar size={narrow ? 88 : 128} speaking glow={0.5} bloom={false} />
+        <div className="flex min-w-0 flex-1 basis-[160px] flex-col gap-2 break-keep md:basis-0">
           <span className="text-[20px] font-bold tracking-[-.025em]" style={{ color: 'var(--stage-paper)' }}>
             지금 면접장에 들어갑니다
           </span>
@@ -257,7 +260,7 @@ function Threshold({
             면접은 15분 내외로 진행됩니다. 면접관에게 직무역량과 인성 · 컬처핏을 어필해보세요.
           </span>
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-[9px]">
+        <div className="flex shrink-0 basis-full flex-col items-stretch gap-[9px] md:basis-auto md:items-end">
           {disabled ? (
             <>
               <button
@@ -297,13 +300,13 @@ function Threshold({
             </>
           ) : (
             <div
-              className="flex flex-col items-end gap-[10px] rounded-card px-[18px] py-[14px]"
+              className="flex flex-col items-stretch gap-[10px] rounded-card px-[18px] py-[14px] md:items-end"
               style={{ border: '1px solid rgba(217,168,108,.35)', background: 'rgba(217,168,108,.10)' }}
             >
               <span className="text-[13.5px]">
                 면접을 시작하면 크레딧 <span className="num font-semibold">{cost}</span>개가 사용됩니다.
               </span>
-              <div className="flex gap-2">
+              <div className="flex justify-end gap-2">
                 <button
                   onClick={() => setConfirming(false)}
                   className="rounded-control px-4 py-[10px] text-[13.5px] font-semibold"
@@ -329,7 +332,7 @@ function Threshold({
       {/* 단계 줄 — 질문 개수와 소요 시간은 적지 않는다. 게이트가 매 턴 다시
           판정하므로 몇 개가 나갈지는 시작 전에 정해져 있지 않다. */}
       <div
-        className="relative flex items-center justify-center px-[22px] py-3"
+        className="relative flex flex-wrap items-center justify-center gap-x-4 gap-y-2 px-[22px] py-3 md:gap-x-0"
         style={{ borderTop: '1px solid rgba(255,255,255,.08)' }}
       >
         {STAGE_NAMES.map((name, i) => (
@@ -338,8 +341,9 @@ function Threshold({
               0{i + 1}
             </span>
             <span className="text-[13px] whitespace-nowrap">{name}</span>
+            {/* 연결선은 넓을 때만 — 좁으면 줄이 바뀌므로 선이 이어지지 않는다. */}
             {i < STAGE_NAMES.length - 1 && (
-              <span className="mx-[14px]" style={{ width: 28, height: 1, background: 'rgba(255,255,255,.08)' }} />
+              <span className="mx-[14px] hidden md:block" style={{ width: 28, height: 1, background: 'rgba(255,255,255,.08)' }} />
             )}
           </div>
         ))}
@@ -372,7 +376,7 @@ export function Ready() {
   }
 
   return (
-    <main className="mx-auto max-w-(--container-report) px-8 pt-[44px] pb-20 animate-dm-fade">
+    <main className="mx-auto max-w-(--container-report) px-4 pt-7 pb-[60px] animate-dm-fade md:px-8 md:pt-[44px] md:pb-20">
       <button onClick={() => nav('/')} className="mb-4 text-[13px] text-muted">
         ← 내 면접
       </button>
@@ -381,7 +385,7 @@ export function Ready() {
         <AccentDot />
         <span className="text-[12px] font-semibold tracking-[.05em] text-accent">면접 준비 완료</span>
       </div>
-      <h1 className="m-0 mb-[26px] text-[27px] font-bold tracking-[-.03em]">
+      <h1 className="m-0 mb-[26px] break-keep text-[23px] font-bold tracking-[-.03em] md:text-[27px]">
         {card.company} · {card.role}
       </h1>
 
@@ -404,7 +408,7 @@ export function Ready() {
           <span className="text-[11.5px] text-faintest">{card.date}</span>
         </div>
 
-        <div className="flex items-center border-t border-hair pt-[14px]">
+        <div className="flex flex-wrap items-center gap-3 border-t border-hair pt-[14px]">
           <div className="flex flex-col gap-[5px]">
             <span className="text-[14.5px] font-bold">
               {card.company} 면접 준비 리서치

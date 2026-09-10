@@ -1,12 +1,13 @@
 <!-- @dsCard group="대담 Web" viewport="1440x900" name="랜딩 (로그인 전 첫 화면)" subtitle="Landing.tsx 구현본 + 회사 로고 회전 제목(드래그로 실제 로고 넣기) · 라이브 데모 · 01·02·03" -->
 <!-- @startingPoint section="대담 Web" subtitle="Landing.tsx 구현본 — 회사가 바뀌면 질문이 바뀌는 라이브 데모, 01·02·03 단계, 마무리 띠" viewport="1440x900" -->
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>대담 — 랜딩 (로그인 전 첫 화면)</title><link rel="stylesheet" href="../../styles.css">
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<script>window.__DAEDAM_W=Number(new URLSearchParams(location.search).get('w'))||0;if(window.__DAEDAM_W)document.documentElement.style.setProperty('--kit-w',window.__DAEDAM_W+'px');</script><title>대담 — 랜딩 (로그인 전 첫 화면)</title><link rel="stylesheet" href="../../styles.css">
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7.26.10/babel.min.js"></script>
 <script src="./image-slot.js"></script>
 <script>Babel.registerPreset('classic',{presets:[[Babel.availablePresets.react,{runtime:'classic'}]]});</script>
-<style>*{box-sizing:border-box}body{margin:0;background:var(--color-bg);color:var(--color-ink);font-family:var(--font-sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+<style>#root{width:var(--kit-w,auto);margin:0 auto}*{box-sizing:border-box}body{margin:0;background:var(--color-bg);color:var(--color-ink);font-family:var(--font-sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
 button{font:inherit;color:inherit;cursor:pointer;background:none;border:0;padding:0}.num{font-variant-numeric:tabular-nums}a{color:var(--color-ink);text-decoration:none}
 /* 로고 슬롯: 비어 있으면 안 보이고(모노그램이 보인다) 파일이 들어오면 나타난다. 띠의 로고는 무채색. */
 image-slot:not([data-filled]){opacity:0}
@@ -17,16 +18,16 @@ image-slot[data-filled]{opacity:1;transition:opacity .3s}</style>
 // Loads the design-system component sources without a bundler: synchronous fetch, strip ESM
 // import/export, classic-runtime JSX (React.createElement). Each file registers on window.Daedam.
 (function(){
-  var root='../../', files=["components/core/Card.jsx","components/core/PrimaryButton.jsx","components/core/OutlineButton.jsx","components/core/TextField.jsx","components/core/TextArea.jsx","components/core/Label.jsx","components/core/SectionLabel.jsx","components/core/Chip.jsx","components/core/ProgressBar.jsx","components/core/IndeterminateBar.jsx","components/core/Dots.jsx","components/core/Caret.jsx","components/core/Icons.jsx","components/navigation/Chrome.jsx","components/stage/Avatar.jsx","components/stage/Waveform.jsx"];
+  var root='../../', files=["components/core/Card.jsx","components/core/PrimaryButton.jsx","components/core/OutlineButton.jsx","components/core/TextField.jsx","components/core/TextArea.jsx","components/core/Label.jsx","components/core/SectionLabel.jsx","components/core/Chip.jsx","components/core/ProgressBar.jsx","components/core/IndeterminateBar.jsx","components/core/Dots.jsx","components/core/Caret.jsx","components/core/Icons.jsx","components/core/useViewport.jsx","components/navigation/Chrome.jsx","components/stage/Avatar.jsx","components/stage/Waveform.jsx"];
   files.forEach(function(p){
     var x=new XMLHttpRequest();x.open('GET',root+p,false);x.send(null);
     if(x.status>=400){console.warn('missing',p);return;}
-    var src=x.responseText.replace(/^import[^\n]*\n/gm,'').replace(/^export function /gm,'function ');
+    var src=x.responseText.replace(/^import[^\n]*\n/gm,'').replace(/^export (const|let|function|class) /gm,'$1 ');
     (0,eval)(Babel.transform(src,{presets:['classic'],filename:p}).code);
   });
   // Screen files + app shell, in order. Each screen registers window.Daedam<Name>.
   var NS=window.Daedam||{};
-  var prelude="const { Card, PrimaryButton, OutlineButton, TextField, TextArea, Label, SectionLabel, Chip, ProgressBar, IndeterminateBar, AccentDot, CheckDot, EmptyDot, Spinner, Caret, Chrome, Avatar, Waveform, FlatWaveform, Icon } = window.Daedam;\n";
+  var prelude="const { Card, PrimaryButton, OutlineButton, TextField, TextArea, Label, SectionLabel, Chip, ProgressBar, IndeterminateBar, AccentDot, CheckDot, EmptyDot, Spinner, Caret, Chrome, Avatar, Waveform, FlatWaveform, Icon, useNarrow } = window.Daedam;\n";
   ['Report','Landing'].forEach(function(n){
     var x=new XMLHttpRequest();x.open('GET','./'+n+'.jsx',false);x.send(null);
     (0,eval)(Babel.transform(prelude+x.responseText,{presets:['classic'],filename:n+'.jsx'}).code);

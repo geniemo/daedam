@@ -72,9 +72,9 @@ export function Review() {
 
   return (
     <>
-      <div className="mx-auto flex max-w-(--container-review) items-start gap-9 px-8 pt-[34px] pb-[130px]">
+      <div className="mx-auto flex max-w-(--container-review) flex-col items-start gap-6 px-4 pt-7 pb-[130px] md:flex-row md:gap-9 md:px-8 md:pt-[34px]">
         {/* 좌측 사이드바 */}
-        <aside className="sticky top-[88px] flex w-[236px] shrink-0 flex-col gap-5">
+        <aside className="flex w-full shrink-0 flex-col gap-5 md:sticky md:top-[88px] md:w-[236px]">
           <div className="rounded-control border border-line bg-surface-2 px-3 py-[11px]">
             <div className="text-[12.5px] font-semibold">직접 고칠 수 있습니다</div>
             <div className="mt-[3px] text-[11.5px] leading-[1.55] text-faint">
@@ -101,7 +101,7 @@ export function Review() {
             내용의 min-content 폭 아래로 안 줄어듭니다. 편집란이
             field-sizing:content라 그 폭이 본문 길이만큼 부풀고, 문서가 통째로
             가로 스크롤이 됩니다(실측 1180px 컨테이너에 article 1458px). */}
-        <article className="min-w-0 flex-1 rounded-card border border-line bg-surface px-10 py-9">
+        <article className="w-full min-w-0 flex-1 rounded-card border border-line bg-surface px-5 py-6 md:px-10 md:py-9">
           <h1 className="mt-[6px] mb-[8px] text-[23px] leading-[1.4] font-bold tracking-[-.03em]">
             {card.company} 면접 준비 리서치
           </h1>
@@ -131,7 +131,7 @@ export function Review() {
         className="fixed inset-x-0 bottom-0 z-30 border-t border-line"
         style={{ background: 'rgba(255,255,255,.94)', backdropFilter: 'blur(8px)' }}
       >
-        <div className="mx-auto flex max-w-(--container-review) items-center px-8 py-[14px]">
+        <div className="mx-auto flex max-w-(--container-review) items-center px-4 py-[14px] md:px-8">
           <span className="text-[13px] text-muted">
             {edited ? '고친 내용이 있습니다' : '고친 내용이 없습니다'}
           </span>

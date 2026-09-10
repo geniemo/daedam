@@ -25,7 +25,7 @@ export function Register() {
 function TopBar({ step }: { step: 1 | 2 }) {
   const nav = useNavigate()
   return (
-    <div className="mx-auto max-w-(--container-home) px-8 pt-[26px] pb-[34px]">
+    <div className="mx-auto max-w-(--container-home) px-5 pt-[26px] pb-[34px] md:px-8">
       <div className="flex items-center">
         <button onClick={() => nav('/')} className="text-[13px] text-muted">
           ✕ 나가기
@@ -66,7 +66,7 @@ function StepHeading({
         STEP {step}
       </div>
       <div className="flex items-center gap-[10px]">
-        <h1 className="m-0 text-[25px] font-bold tracking-[-.03em]">{title}</h1>
+        <h1 className="m-0 break-keep text-[21px] font-bold tracking-[-.03em] md:text-[25px]">{title}</h1>
         {onHelp && (
           <button
             type="button"
@@ -113,7 +113,7 @@ function Step1() {
   }
 
   return (
-    <main className="mx-auto max-w-(--container-reg1) px-8 pb-20 animate-dm-fade">
+    <main className="mx-auto max-w-(--container-reg1) px-5 pb-20 animate-dm-fade md:px-8">
       <StepHeading
         step={1}
         title="어느 회사에 지원하시나요"
@@ -365,7 +365,7 @@ function Step2() {
   }
 
   return (
-    <main className="mx-auto max-w-(--container-doc) px-8 pb-20 animate-dm-fade">
+    <main className="mx-auto max-w-(--container-doc) px-5 pb-20 animate-dm-fade md:px-8">
       <StepHeading
         step={2}
         title="지원서를 넣어 주세요"

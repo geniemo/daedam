@@ -50,7 +50,7 @@ export function Landing() {
         className="sticky top-0 z-40 h-16 border-b border-line"
         style={{ background: 'var(--header-bg)', backdropFilter: 'blur(8px)' }}
       >
-        <div className="mx-auto flex h-full max-w-(--container-landing) items-center px-8">
+        <div className="mx-auto flex h-full max-w-(--container-landing) items-center px-5 md:px-8">
           <Logo size={26} wordmark={20} />
           <div className="flex-1" />
           <button
@@ -63,8 +63,11 @@ export function Landing() {
         </div>
       </header>
 
-      {/* 히어로 — 왼쪽 카피, 오른쪽 데모 창. 1000px 아래에서는 카피가 위. */}
-      <section className="mx-auto grid max-w-(--container-landing) grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-[56px] px-8 pt-[72px] pb-20 max-[1000px]:grid-cols-1">
+      {/* 히어로 — 왼쪽 카피, 오른쪽 데모 창. 두 열은 1000px부터다 — 다른 화면의
+          분기(720)보다 넓은 이유는 제목 둘째 줄이다. 44px "회사 면접장에"가 한 줄에
+          서려면 반 폭이 460은 돼야 한다. 단계 프레임도 같은 선을 쓴다(아래).
+          여백·글자 크기는 다른 화면과 같이 720에서 갈린다. */}
+      <section className="mx-auto grid max-w-(--container-landing) grid-cols-1 items-center gap-9 px-5 pt-10 pb-14 md:gap-[56px] md:px-8 md:pt-[72px] md:pb-20 min-[1000px]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="flex flex-col">
           <div className="mb-[22px] flex items-center gap-2">
             <AccentDot size={5} />
@@ -72,7 +75,7 @@ export function Landing() {
               AI 음성 모의면접
             </span>
           </div>
-          <h1 className="m-0 text-[44px] leading-[1.22] font-bold tracking-[-.04em] text-ink">
+          <h1 className="m-0 text-[30px] leading-[1.22] font-bold tracking-[-.04em] text-ink md:text-[44px]">
             대담과 함께
             <br />
             {/* 바뀌는 줄 — 회사와 "면접장에"가 한 줄에 있어야 명사구가 갈라지지
@@ -91,7 +94,8 @@ export function Landing() {
             몇 번이든 다시 연습하세요.
           </p>
 
-          <div id="login" className="mt-9 flex flex-wrap gap-[10px]">
+          {/* 좁은 화면에서는 버튼이 세로로 100% 폭. */}
+          <div id="login" className="mt-9 flex flex-col gap-[10px] md:flex-row md:flex-wrap">
             {(providers ?? []).map((provider) => (
               <LoginButton key={provider} provider={provider} />
             ))}
@@ -141,7 +145,7 @@ export function Landing() {
       </section>
 
       {/* 단계 셋 — 각각 실제 화면의 조각으로 증명한다. */}
-      <section className="mx-auto max-w-(--container-landing) px-8 pb-10">
+      <section className="mx-auto max-w-(--container-landing) px-5 pb-6 md:px-8 md:pb-10">
         <StepFrame
           label="01 회사 조사"
           title="실제와 같은 면접관과 대화하세요"
@@ -170,14 +174,14 @@ export function Landing() {
 
       {/* 마무리 띠와 푸터 — 부제도 버튼도 없다. 로그인은 위에서 이미 청했다. */}
       <section className="border-t border-line bg-surface">
-        <div className="mx-auto flex max-w-(--container-landing) flex-col items-center px-8 py-24 text-center">
-          <h2 className="m-0 text-[34px] leading-[1.3] font-bold tracking-[-.04em] text-ink">
+        <div className="mx-auto flex max-w-(--container-landing) flex-col items-center px-5 py-16 text-center md:px-8 md:py-24">
+          <h2 className="m-0 text-[26px] leading-[1.3] font-bold tracking-[-.04em] text-ink md:text-[34px]">
             연습은 여기서 끝내고
             <br />
             합격 소식을 전하세요
           </h2>
         </div>
-        <div className="mx-auto flex max-w-(--container-landing) flex-wrap gap-4 px-8 pb-10 text-[13px] text-muted">
+        <div className="mx-auto flex max-w-(--container-landing) flex-wrap gap-4 px-5 pb-8 text-[13px] text-muted md:px-8 md:pb-10">
           <span>면접 중 음성과 웹캠 영상이 기록되고, 답변 분석에 쓰입니다.</span>
           <div className="flex-1" />
           <a href="/terms" className="text-faint hover:text-muted">
@@ -202,7 +206,7 @@ function LoginButton({ provider }: { provider: string }) {
   return (
     <a
       href={loginUrl(provider)}
-      className={`relative flex h-[50px] min-w-[236px] items-center justify-center rounded-control pr-5 pl-11 text-[14.5px] font-semibold ${
+      className={`relative flex h-[50px] w-full items-center justify-center rounded-control pr-5 pl-11 text-[14.5px] font-semibold md:w-auto md:min-w-[236px] ${
         kakao ? 'bg-kakao text-kakao-ink' : 'border border-field bg-surface text-ink'
       }`}
     >
@@ -359,7 +363,7 @@ function LiveDemo({ demo }: { demo: (typeof DEMOS)[number] }) {
 
   return (
     <div
-      className="relative flex min-h-[440px] w-full max-w-[640px] flex-col overflow-hidden rounded-card"
+      className="relative flex min-h-[380px] w-full max-w-[640px] flex-col overflow-hidden rounded-card md:min-h-[440px]"
       style={{
         border: '1px solid rgba(255,255,255,.08)',
         background: 'var(--stage-bg)',
@@ -384,7 +388,7 @@ function LiveDemo({ demo }: { demo: (typeof DEMOS)[number] }) {
         <div className="flex min-h-[78px] max-w-[520px] flex-col items-center gap-[14px]">
           <span style={{ width: 24, height: 1, background: light, transition: 'background 1s ease' }} />
           <p
-            className="m-0 text-center text-[18px] leading-[1.6] font-semibold tracking-[-.02em]"
+            className="m-0 text-center text-[16px] leading-[1.6] font-semibold tracking-[-.02em] md:text-[18px]"
             style={{ color: 'var(--stage-paper)' }}
           >
             {typed}
@@ -432,10 +436,13 @@ function StepFrame({
   children: ReactNode
 }) {
   return (
-    <div className="grid grid-cols-[360px_minmax(0,1fr)] items-center gap-14 border-t border-line py-16 max-[900px]:grid-cols-1">
+    /* 두 열은 1000px부터 — 360px 카피 옆에 대화 카드 두 장·지표 카드 세 장이
+       서려면 오른쪽이 520은 돼야 한다. 768(세로 태블릿)에서 두 열로 하면 카드가
+       130px로 구겨진다(실측). */
+    <div className="grid grid-cols-1 items-center gap-[26px] border-t border-line py-11 md:gap-14 md:py-16 min-[1000px]:grid-cols-[360px_minmax(0,1fr)]">
       <div className="flex flex-col gap-3">
         <span className="num text-[12px] font-semibold tracking-[.05em] text-accent">{label}</span>
-        <h2 className="m-0 text-[28px] leading-[1.3] font-bold tracking-[-.03em] text-ink">{title}</h2>
+        <h2 className="m-0 text-[23px] leading-[1.3] font-bold tracking-[-.03em] text-ink md:text-[28px]">{title}</h2>
         <p className="m-0 text-[16px] leading-[1.8] text-body-2">{body}</p>
       </div>
       <div className="min-w-0">{children}</div>
@@ -520,7 +527,7 @@ const DIALOGUE = [
 
 function Dialogue() {
   return (
-    <div className="grid grid-cols-2 gap-3 max-[600px]:grid-cols-1">
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
       {DIALOGUE.map(([who, text], i) => {
         const interviewer = who === '면접관'
         return (
@@ -556,7 +563,7 @@ function Dialogue() {
 function ScoreCard() {
   return (
     <div className="flex flex-col gap-[18px] rounded-card border border-line bg-surface p-[22px]">
-      <div className="flex items-start">
+      <div className="flex flex-wrap items-start gap-3">
         <div className="flex flex-col gap-[5px]">
           <span className="text-[12px] text-faint">18분 12초 · 답변 8개</span>
           <span className="text-[17px] font-bold tracking-[-.02em] text-ink">누리테크 · 서비스기획</span>

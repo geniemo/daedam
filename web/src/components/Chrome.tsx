@@ -24,7 +24,8 @@ export function Chrome() {
           className="sticky top-0 z-40 h-16 border-b border-line"
           style={{ background: 'var(--header-bg)', backdropFilter: 'blur(8px)' }}
         >
-          <div className="mx-auto flex h-full max-w-(--container-home) items-center gap-8 px-8">
+          {/* 좁은 화면은 여백 16, 이름 글자를 숨기고 아바타만 남긴다. */}
+          <div className="mx-auto flex h-full max-w-(--container-home) items-center gap-4 px-4 md:gap-8 md:px-8">
             <Link to="/" className="flex items-center gap-[9px]">
               <Symbol size={22} />
               <span className="text-[17px] font-bold tracking-[-.02em] text-ink">대담</span>
@@ -45,7 +46,7 @@ export function Chrome() {
                   크레딧 <span className="num font-semibold">{credits.balance}</span>
                 </Link>
               )}
-              <Link to="/account" className="text-[13px] text-muted">
+              <Link to="/account" className="hidden text-[13px] text-muted md:inline">
                 {name}
               </Link>
               {/* 로그아웃은 [내 정보] 안으로 옮겼다 — 헤더에 두면 로그인·탈퇴·

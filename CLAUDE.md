@@ -10,7 +10,7 @@ AI 음성 모의면접 서비스. KindredPM voice AI agent 부트캠프 프로�
 | `~/refs/adk-docs/docs/` | **ADK 공식 문서 전문** (google/adk-docs, 마크다운 232개) |
 | `~/refs/adk-docs/docs/live/` | Live API 툴킷 — `dev-guide/part1~5.md`가 핵심 |
 | `design_handoff_daedam/README.md` | 디자인 핸드오프 616줄. 화면 10개 스펙 + 디자인 토큰 |
-| `design_handoff_daedam/design-system/` | **확정 디자인 시스템(2026-09-06)**. `HANDOFF.md`가 구현 지도, 값의 정본은 `tokens/*.css`와 `ui_kits/web/*.jsx` |
+| `design_handoff_daedam/design-system/` | **확정 디자인 시스템(2026-09-10)**. `HANDOFF.md`가 구현 지도, 값의 정본은 `tokens/*.css`와 `ui_kits/web/*.jsx`. 좁은 화면 미리 보기는 `ui_kits/mobile.html` |
 
 ADK 관련 질문은 `~/refs/adk-docs`를 grep하십시오. adk.dev는 리다이렉트가 많고
 WebFetch가 요약하면서 코드 예제를 잘라먹습니다. 로컬 마크다운에는 소스 링크까지

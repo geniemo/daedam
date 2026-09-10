@@ -23,6 +23,18 @@ const FINISH_NOTICE: Record<string, string> = {
 const SPHERE_MAX = 216
 const SPHERE_MIN = 150
 const PIP = 92
+/**
+ * 좁은 무대 — 무대 영역 폭이 이보다 작으면 셀프뷰 132×99, PiP 64, 질문 18px,
+ * 여백 16. 창이 아니라 무대 영역의 폭으로 가른다(ResizeObserver로 재는 값이라
+ * 창 폭보다 정확하다). 규격: design-system/ui_kits/web/Interview.jsx
+ */
+const NARROW_W = 600
+const SPHERE_MIN_NARROW = 120
+const PIP_NARROW = 64
+const SELF_W = 240
+const SELF_H = 180
+const SELF_W_NARROW = 132
+const SELF_H_NARROW = 99
 /** 초점(구체 또는 웹캠)과 질문 사이. 질문은 구체 바로 아래 붙는다. */
 const GAP = 44
 /** 질문 자리 — 두 줄 높이를 늘 비워 둔다. 자막 길이에 따라 위가 튀면 안 된다. */
@@ -129,12 +141,26 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
   }, [])
 
   const speaking = phase === 'speaking'
+  const narrow = box.w < NARROW_W
+  const pip = narrow ? PIP_NARROW : PIP
+  const edge = narrow ? 16 : 30
   // 가운데 덩이 = 초점(구체 또는 웹캠) + 44 + 질문. 세로 중앙.
-  const sphere = Math.max(SPHERE_MIN, Math.min(SPHERE_MAX, Math.round(box.h * 0.4)))
-  const mirrorH = Math.max(160, Math.min(420, box.h - 60 - GAP - QUESTION_H))
-  const mirrorW = Math.round((mirrorH * 4) / 3)
+  // 구체는 세로의 40%이되 좁은 무대에서는 가로의 절반을 넘지 않는다.
+  const sphere = Math.max(
+    narrow ? SPHERE_MIN_NARROW : SPHERE_MIN,
+    Math.min(SPHERE_MAX, Math.round(box.h * 0.4), Math.round(box.w * 0.5)),
+  )
+  // 거울은 세로에서 정한 높이의 4:3이되 가로 여백을 남기고 폭에 맞춘다.
+  const mirrorW = Math.max(
+    0,
+    Math.min(
+      Math.round((Math.max(160, Math.min(420, box.h - 60 - GAP - QUESTION_H)) * 4) / 3),
+      box.w - edge * 2,
+    ),
+  )
+  const mirrorH = Math.round((mirrorW * 3) / 4)
   const focusH = mirror ? mirrorH : sphere
-  const blockTop = Math.max(60, Math.round((box.h - (focusH + GAP + QUESTION_H)) / 2))
+  const blockTop = Math.max(narrow ? 32 : 60, Math.round((box.h - (focusH + GAP + QUESTION_H)) / 2))
   const questionTop = blockTop + focusH + GAP
   const clock = <span className="num text-[13px]" style={{ color: 'var(--stage-dim)' }}>{formatClock(elapsed)}</span>
 
@@ -148,7 +174,7 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
 
       {/* 상단 — 상태 문장과 시계. 거울 배치에서는 우상단에 면접관이 들어오므로
           시계가 상태 문장 옆으로 온다. */}
-      <div className="relative z-5 flex items-center px-[30px] py-[22px]">
+      <div className="relative z-5 flex items-center" style={{ padding: narrow ? '14px 16px' : '22px 30px' }}>
         <span
           className="rounded-full"
           style={{
@@ -179,7 +205,7 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
 
       {/* 무대 — 구체·웹캠·질문이 절대 좌표로 놓인다. */}
       <div ref={area} className="relative min-h-0 flex-1">
-        {/* 면접관 — 기본 가운데, 거울이면 우상단 92. */}
+        {/* 면접관 — 기본 가운데, 거울이면 우상단 92(좁은 무대 64). */}
         <div
           className="absolute"
           style={{
@@ -190,9 +216,9 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
             zIndex: mirror ? 4 : 1,
             ...(mirror
               ? {
-                  left: `calc(100% - 30px - ${PIP}px)`,
-                  top: 14,
-                  transform: `translate(0, 0) scale(${PIP / sphere})`,
+                  left: `calc(100% - ${edge}px - ${pip}px)`,
+                  top: narrow ? 8 : 14,
+                  transform: `translate(0, 0) scale(${pip / sphere})`,
                 }
               : { left: '50%', top: blockTop, transform: 'translate(-50%, 0) scale(1)' }),
           }}
@@ -203,10 +229,11 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
         <SelfView
           camera={camera}
           mirror={mirror}
+          narrow={narrow}
           visible={selfVisible}
           top={blockTop}
-          width={mirror ? mirrorW : 240}
-          height={mirror ? mirrorH : 180}
+          width={mirror ? mirrorW : narrow ? SELF_W_NARROW : SELF_W}
+          height={mirror ? mirrorH : narrow ? SELF_H_NARROW : SELF_H}
           onMirror={() => setMirror((m) => !m)}
           onHide={() => setSelfVisible((v) => !v)}
           onStop={camera.stop}
@@ -220,7 +247,7 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
             left: '50%',
             top: questionTop,
             transform: 'translateX(-50%)',
-            width: 'min(680px, calc(100% - 64px))',
+            width: narrow ? 'calc(100% - 32px)' : 'min(680px, calc(100% - 64px))',
             minHeight: QUESTION_H,
             transition: 'top .45s ease-in-out',
           }}
@@ -238,7 +265,7 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
               key={askedCount}
               className="m-0 break-keep text-center leading-[1.55] font-semibold tracking-[-.02em]"
               style={{
-                fontSize: 'clamp(20px, 2.7vh, 25px)',
+                fontSize: narrow ? 18 : 'clamp(20px, 2.7vh, 25px)',
                 color: 'var(--stage-paper)',
                 animation: 'dm-fade .6s ease',
               }}
@@ -250,7 +277,7 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
       </div>
 
       {/* 하단 상태 영역 — 들을 때 파형, 말할 때 안내 한 줄. */}
-      <div className="relative flex h-[104px] items-center justify-center">
+      <div className="relative flex items-center justify-center" style={{ height: narrow ? 84 : 104 }}>
         {phase === 'listening' ? (
           <Waveform levels={levels} height={40} />
         ) : (
@@ -262,7 +289,7 @@ export function Interview({ showCaption = true }: { showCaption?: boolean }) {
 
       {/* 하단 컨트롤 — 종료 버튼 하나. 질문 번호·단계·남은 시간 같은 진행
           표시는 두지 않는다. 실제 면접에서 지원자가 보는 것은 면접관뿐이다. */}
-      <div className="relative flex justify-end px-[30px] pb-[26px]">
+      <div className="relative flex justify-end" style={{ padding: narrow ? '0 16px 20px' : '0 30px 26px' }}>
         {/* 멈췄다 이어가는 길은 두지 않는다 — 면접은 한 번에 끝까지 간다.
             중간에 그만두면 그때까지의 답변으로 리포트를 받는다. */}
         <button

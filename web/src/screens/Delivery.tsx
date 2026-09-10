@@ -255,7 +255,7 @@ export function Delivery({
         <SectionLabel>전달력</SectionLabel>
       </div>
       {/* 두 카드의 바닥이 맞아야 한 층으로 읽힌다 — 기본 stretch를 그대로 쓴다. */}
-      <div className="grid grid-cols-2 gap-[14px]">
+      <div className="grid grid-cols-1 gap-[14px] md:grid-cols-2">
         <GazeCard gaze={gaze} />
         <ExpressionCard expression={expression} />
       </div>

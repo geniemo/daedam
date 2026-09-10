@@ -10,7 +10,7 @@
 (function(){
   ['components/stage/Avatar.jsx','components/stage/Waveform.jsx'].forEach(function(p){
     var x=new XMLHttpRequest();x.open('GET','../../'+p,false);x.send(null);
-    var src=x.responseText.replace(/^import[^\n]*\n/gm,'').replace(/^export function /gm,'function ');
+    var src=x.responseText.replace(/^import[^\n]*\n/gm,'').replace(/^export (const|let|function|class) /gm,'$1 ');
     (0,eval)(Babel.transform(src,{presets:['classic'],filename:p}).code);
   });
   var demo = `
