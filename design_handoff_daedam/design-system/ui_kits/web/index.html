@@ -1,11 +1,12 @@
 <!-- @dsCard group="대담 Web" viewport="1280x800" name="대담 web — 전체 플로우" subtitle="홈 → 준비 완료 → 면접 → 분석 → 리포트, 클릭으로 이어짐" -->
 <!-- @startingPoint section="대담 Web" subtitle="홈 → 준비 완료 → 면접 → 분석 → 리포트, 클릭으로 이어짐" viewport="1280x800" -->
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>대담 — 전체 플로우</title><link rel="stylesheet" href="../../styles.css">
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<script>window.__DAEDAM_W=Number(new URLSearchParams(location.search).get('w'))||0;if(window.__DAEDAM_W)document.documentElement.style.setProperty('--kit-w',window.__DAEDAM_W+'px');</script><title>대담 — 전체 플로우</title><link rel="stylesheet" href="../../styles.css">
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7.26.10/babel.min.js"></script>
 <script>Babel.registerPreset('classic',{presets:[[Babel.availablePresets.react,{runtime:'classic'}]]});</script>
-<style>*{box-sizing:border-box}body{margin:0;background:var(--color-bg);color:var(--color-ink);font-family:var(--font-sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+<style>#root{width:var(--kit-w,auto);margin:0 auto}*{box-sizing:border-box}body{margin:0;background:var(--color-bg);color:var(--color-ink);font-family:var(--font-sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
 button{font:inherit;color:inherit;cursor:pointer;background:none;border:0;padding:0}.num{font-variant-numeric:tabular-nums}a{color:var(--color-ink);text-decoration:none}</style>
 </head>
 <body><div id="root"></div>
@@ -13,16 +14,16 @@ button{font:inherit;color:inherit;cursor:pointer;background:none;border:0;paddin
 // Loads the design-system component sources without a bundler: synchronous fetch, strip ESM
 // import/export, classic-runtime JSX (React.createElement). Each file registers on window.Daedam.
 (function(){
-  var root='../../', files=["components/core/Card.jsx","components/core/PrimaryButton.jsx","components/core/OutlineButton.jsx","components/core/TextField.jsx","components/core/TextArea.jsx","components/core/Label.jsx","components/core/SectionLabel.jsx","components/core/Chip.jsx","components/core/ProgressBar.jsx","components/core/IndeterminateBar.jsx","components/core/Dots.jsx","components/core/Caret.jsx","components/core/Icons.jsx","components/navigation/Chrome.jsx","components/stage/Avatar.jsx","components/stage/Waveform.jsx"];
+  var root='../../', files=["components/core/Card.jsx","components/core/PrimaryButton.jsx","components/core/OutlineButton.jsx","components/core/TextField.jsx","components/core/TextArea.jsx","components/core/Label.jsx","components/core/SectionLabel.jsx","components/core/Chip.jsx","components/core/ProgressBar.jsx","components/core/IndeterminateBar.jsx","components/core/Dots.jsx","components/core/Caret.jsx","components/core/Icons.jsx","components/core/useViewport.jsx","components/navigation/Chrome.jsx","components/stage/Avatar.jsx","components/stage/Waveform.jsx"];
   files.forEach(function(p){
     var x=new XMLHttpRequest();x.open('GET',root+p,false);x.send(null);
     if(x.status>=400){console.warn('missing',p);return;}
-    var src=x.responseText.replace(/^import[^\n]*\n/gm,'').replace(/^export function /gm,'function ');
+    var src=x.responseText.replace(/^import[^\n]*\n/gm,'').replace(/^export (const|let|function|class) /gm,'$1 ');
     (0,eval)(Babel.transform(src,{presets:['classic'],filename:p}).code);
   });
   // Screen files + app shell, in order. Each screen registers window.Daedam<Name>.
   var NS=window.Daedam||{};
-  var prelude="const { Card, PrimaryButton, OutlineButton, TextField, TextArea, Label, SectionLabel, Chip, ProgressBar, IndeterminateBar, AccentDot, CheckDot, EmptyDot, Spinner, Caret, Chrome, Avatar, Waveform, FlatWaveform, Icon } = window.Daedam;\n";
+  var prelude="const { Card, PrimaryButton, OutlineButton, TextField, TextArea, Label, SectionLabel, Chip, ProgressBar, IndeterminateBar, AccentDot, CheckDot, EmptyDot, Spinner, Caret, Chrome, Avatar, Waveform, FlatWaveform, Icon, useNarrow } = window.Daedam;\n";
   ['Home','Ready','Interview','Report','App'].forEach(function(n){
     var x=new XMLHttpRequest();x.open('GET','./'+n+'.jsx',false);x.send(null);
     (0,eval)(Babel.transform(prelude+x.responseText,{presets:['classic'],filename:n+'.jsx'}).code);

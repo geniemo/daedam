@@ -73,10 +73,11 @@ function ApplicationGuide() {
 /** 리서치 진행 — 구체가 어둡게 "읽고 있는" 무대 위에 진행 로그. 기다림이 면접관의 준비로 읽힌다. */
 const RSTEPS = [['채용공고와 직무기술서 분석', '요구 역량 12개를 추출하고 우선순위를 매겼습니다.'], ['최근 1년 뉴스 · IR · 기술 블로그 수집', '파트너 정산 서비스 공개(3월)와 물류 자회사 설립(7월)을 확인했습니다.'], ['인재상 · 조직문화 정리', ''], ['지원서와 대조 · 검증이 필요한 항목 추출', ''], ['질문 준비', '']];
 function ResearchStage() {
+  const narrow = useNarrow();
   const [at, setAt] = React.useState(2);
   React.useEffect(() => { const t = setInterval(() => setAt(v => (v >= RSTEPS.length ? 0 : v + 1)), 2200); return () => clearInterval(t); }, []);
   return (
-    <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 'var(--radius-card)', background: 'var(--stage-bg)', color: 'var(--stage-ink-warm)', display: 'grid', gridTemplateColumns: '300px minmax(0,1fr)', minHeight: 360 }}>
+    <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 'var(--radius-card)', background: 'var(--stage-bg)', color: 'var(--stage-ink-warm)', display: 'grid', gridTemplateColumns: narrow ? '1fr' : '300px minmax(0,1fr)', minHeight: 360 }}>
       <div style={{ pointerEvents: 'none', position: 'absolute', left: '30%', top: '-40%', width: 700, height: 400, transform: 'translateX(-50%)', background: 'radial-gradient(ellipse at 50% 0%, rgba(var(--stage-keylight-rgb),.07), transparent 62%)' }} />
       <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 22, padding: 28 }}>
         <div style={{ position: 'relative', width: 128, height: 128 }}>
@@ -86,7 +87,7 @@ function ResearchStage() {
         </div>
         <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 6 }}><span style={{ fontSize: 15, fontWeight: 600, color: 'var(--stage-paper)' }}>면접관이 준비하고 있습니다</span><span className="num" style={{ fontSize: 12, color: 'var(--stage-dim)' }}>3분 40초 경과 · 창을 닫아도 계속됩니다</span></div>
       </div>
-      <div style={{ position: 'relative', padding: '26px 28px 26px 0', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ position: 'relative', padding: narrow ? '0 20px 22px' : '26px 28px 26px 0', display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', marginBottom: 14 }}><span style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-.02em', color: 'var(--stage-paper)' }}>누리테크</span><span style={{ marginLeft: 8, fontSize: 12.5, color: 'var(--stage-dim)' }}>서비스기획 · 신입</span></div>
         <div style={{ height: 2, background: 'rgba(255,255,255,.08)', overflow: 'hidden', marginBottom: 14 }}><div style={{ width: '25%', height: '100%', background: 'var(--stage-amber)', animation: 'dm-slide 1.6s ease-in-out infinite' }} /></div>
         {RSTEPS.map(([t, r], i) => { const s = i < at ? 'done' : i === at ? 'now' : 'wait'; return (
@@ -99,17 +100,18 @@ function ResearchStage() {
   );
 }
 function Gallery() {
+  const narrow = useNarrow();
   const cap = t => <div style={{ fontSize: 12, color: 'var(--color-muted)', marginBottom: 10 }}>{t}</div>;
   return (
-    <main style={{ maxWidth: 1160, margin: '0 auto', padding: '40px 32px 80px', display: 'flex', flexDirection: 'column', gap: 40 }}>
+    <main style={{ maxWidth: 1160, margin: '0 auto', padding: narrow ? '28px 16px 60px' : '40px 32px 80px', display: 'flex', flexDirection: 'column', gap: 40 }}>
       <div><h1 style={{ margin: 0, fontSize: 27, fontWeight: 700, letterSpacing: '-.03em' }}>전환 화면과 빈 상태</h1><p style={{ margin: '6px 0 0', fontSize: 14, color: 'var(--color-muted)' }}>Progress.tsx · ApplicationGuide.tsx. 실제로는 전체 화면(fixed inset 0)이지만 여기서는 카드 크기로 줄였다.</p></div>
       <div>{cap('리서치 진행 — v2: 면접관이 준비하는 무대. 구체는 어둡게, 진행 로그는 오른쪽')}<ResearchStage /></div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))', gap: 16 }}>
         <div>{cap('분석 중 — 진행률 없음, 불확정 막대')}<Analyzing /></div>
         <div>{cap('분석 중 → 답변이 녹음되지 않았습니다 (크레딧 반환)')}<Analyzing stopped={{ silent: true, refunded: true }} /></div>
         <div>{cap('분석 중 → 분석 결과를 만들지 못했습니다')}<Analyzing stopped={{ silent: false }} /></div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))', gap: 16 }}>
         <div>{cap('질문 재생성 — 검토에서 리포트를 고쳤을 때만')}<Regen /></div>
         <div>{cap('질문 재생성 실패')}<Regen failed /></div>
       </div>

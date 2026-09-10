@@ -7,6 +7,7 @@ const givenName = name => { const t = name.trim(); return /^[가-힣]{3,}$/.test
 const h1S = { margin: '10px 0 0', fontSize: 30, lineHeight: 1.3, fontWeight: 700, letterSpacing: '-.035em', color: 'var(--color-ink)' };
 const pS = { fontSize: 14.5, lineHeight: 1.7, color: 'var(--color-body-2)' };
 function Onboarding({ onDone }) {
+  const narrow = useNarrow();
   const [step, setStep] = React.useState(0);
   const [name, setName] = React.useState('');
   const [terms, setTerms] = React.useState(false);
@@ -17,12 +18,12 @@ function Onboarding({ onDone }) {
   const submit = () => { if (!agreed || sending) return; setSending(true); setTimeout(() => onDone && onDone(name), 900); };
   return (
     <main style={{ display: 'flex', minHeight: '100vh', flexDirection: 'column', wordBreak: 'keep-all' }}>
-      <div style={{ display: 'flex', alignItems: 'center', padding: '26px 32px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', padding: narrow ? '18px 20px' : '26px 32px' }}>
         <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}><path d="M9 3.51A9 9 0 0 0 9 20.49Z" fill="var(--color-ink)" /><path d="M10.6 3.11A9 9 0 1 1 10.6 20.89Z" fill="var(--color-accent)" /></svg>
         <div style={{ flex: 1 }} />
         <div style={{ display: 'flex', gap: 5 }}>{[0, 1].map(i => <span key={i} style={{ height: 2.5, width: 22, background: i <= step ? 'var(--color-ink)' : 'var(--color-field-2)', transition: 'background .3s' }} />)}</div>
       </div>
-      <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', padding: '0 32px 96px' }}>
+      <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', padding: narrow ? '0 20px 64px' : '0 32px 96px' }}>
         {step === 0 ? (
           <div key="name" style={{ width: 460, maxWidth: '100%', animation: 'dm-fade .3s ease' }}>
             <StepMark>1 / 2</StepMark>

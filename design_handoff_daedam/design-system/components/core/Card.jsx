@@ -1,8 +1,9 @@
 import React from 'react';
 /** 카드. 4px 라운드, 1px #E2E6ED 테두리, 흰 배경. 그림자 없음. onClick이 있으면 커서만 바뀐다. */
-export function Card({ children, onClick, padding = 20, style, className }) {
+export function Card({ children, onClick, padding = 20, style, className, rootRef }) {
   return (
     <div
+      ref={rootRef}
       onClick={onClick}
       className={className}
       style={{

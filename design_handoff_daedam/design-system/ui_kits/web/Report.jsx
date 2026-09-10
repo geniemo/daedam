@@ -144,10 +144,11 @@ function ExpressionCard({ expression }) {
   );
 }
 function Delivery({ gaze, expression }) {
+  const narrow = useNarrow();
   return (
     <section style={{ borderBottom: '1px solid var(--color-line)', padding: '30px 0' }}>
       <div style={{ marginBottom: 18 }}><SectionLabel>전달력</SectionLabel></div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}><GazeCard gaze={gaze} /><ExpressionCard expression={expression} /></div>
+      <div style={{ display: 'grid', gridTemplateColumns: narrow ? '1fr' : '1fr 1fr', gap: 14 }}><GazeCard gaze={gaze} /><ExpressionCard expression={expression} /></div>
     </section>
   );
 }
@@ -194,6 +195,7 @@ const Rule = ({ color, titleColor, title, children }) => (
   </div>
 );
 function Report({ card, hasVideo = true, sessions = SESSIONS, feedback = FEEDBACK, onBack, onAgain }) {
+  const narrow = useNarrow();
   const [openQ, setOpenQ] = React.useState(0);
   const [sessionId, setSessionId] = React.useState(sessions[0] && sessions[0].id);
   const { coaching, voice } = feedback;
@@ -201,29 +203,29 @@ function Report({ card, hasVideo = true, sessions = SESSIONS, feedback = FEEDBAC
   const minutes = Math.floor(fb.durationS / 60), seconds = Math.round(fb.durationS % 60);
   const Section = ({ label, children, last }) => (<section style={{ padding: '30px 0', borderBottom: last ? 0 : '1px solid var(--color-line)' }}><div style={{ marginBottom: 18 }}><SectionLabel>{label}</SectionLabel></div>{children}</section>);
   return (
-    <main style={{ maxWidth: 'var(--container-report)', margin: '0 auto', padding: '40px 32px 90px', animation: 'dm-fade .3s ease' }}>
+    <main style={{ maxWidth: 'var(--container-report)', margin: '0 auto', padding: narrow ? '28px 16px 60px' : '40px 32px 90px', animation: 'dm-fade .3s ease' }}>
       <div style={{ marginBottom: 30 }}><button onClick={onBack} style={{ fontSize: 13, color: 'var(--color-muted)' }}>← 내 면접</button></div>
       <SessionPicker sessions={sessions} current={sessionId} onPick={setSessionId} />
       {/* 무대 띠 — 이 리포트가 어느 면접장에서 나왔는지. 점수와 총평이 어두운 판 위에 */}
-      <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 'var(--radius-card)', background: 'var(--stage-bg)', color: 'var(--stage-ink-warm)', padding: '30px 32px', marginBottom: 30, display: 'flex', alignItems: 'flex-start', gap: 34 }}>
+      <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 'var(--radius-card)', background: 'var(--stage-bg)', color: 'var(--stage-ink-warm)', padding: narrow ? '22px 20px' : '30px 32px', marginBottom: 30, display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: narrow ? 16 : 34 }}>
         <div style={{ pointerEvents: 'none', position: 'absolute', left: '50%', top: '-60%', width: 900, height: 420, transform: 'translateX(-50%)', background: 'radial-gradient(ellipse at 50% 0%, rgba(var(--stage-keylight-rgb),.09), transparent 62%)' }} />
         <div style={{ position: 'relative', width: 72, height: 72, flexShrink: 0, marginTop: 2 }}>
           <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'var(--gradient-sphere)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.10), inset 0 -10px 18px rgba(0,0,0,.42)' }} />
           <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', opacity: .55, background: 'var(--gradient-voice-amber)' }} />
         </div>
-        <div style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', gap: 9, minWidth: 0 }}>
+        <div style={{ position: 'relative', flex: narrow ? '1 1 200px' : 1, display: 'flex', flexDirection: 'column', gap: 9, minWidth: 0 }}>
           <div className="num" style={{ fontSize: 12.5, color: 'var(--stage-dim)' }}>{minutes}분 {seconds}초 · 답변 {coaching.answers.length}개</div>
-          <h1 style={{ margin: 0, fontSize: 25, fontWeight: 700, letterSpacing: '-.03em', color: 'var(--stage-paper)' }}>{card.company} · {card.role}</h1>
+          <h1 style={{ margin: 0, fontSize: narrow ? 21 : 25, fontWeight: 700, letterSpacing: '-.03em', color: 'var(--stage-paper)', wordBreak: 'keep-all' }}>{card.company} · {card.role}</h1>
           <p style={{ margin: '6px 0 0', maxWidth: 520, fontSize: 14, lineHeight: 1.7, color: 'var(--stage-ink-warm)', wordBreak: 'keep-all' }}>{coaching.summary}</p>
         </div>
-        <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}><span className="num" style={{ fontSize: 56, lineHeight: 1, fontWeight: 700, letterSpacing: '-.05em', color: 'var(--stage-paper)' }}>{coaching.score ?? '—'}</span><span style={{ fontSize: 15, color: 'var(--stage-dim)' }}>/ 100</span></div>
+        <div style={{ position: 'relative', display: 'flex', flexDirection: narrow ? 'row' : 'column', alignItems: narrow ? 'baseline' : 'flex-end', justifyContent: 'space-between', gap: narrow ? 12 : 4, ...(narrow ? { width: '100%', borderTop: '1px solid rgba(255,255,255,.08)', paddingTop: 14 } : {}) }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}><span className="num" style={{ fontSize: narrow ? 44 : 56, lineHeight: 1, fontWeight: 700, letterSpacing: '-.05em', color: 'var(--stage-paper)' }}>{coaching.score ?? '—'}</span><span style={{ fontSize: 15, color: 'var(--stage-dim)' }}>/ 100</span></div>
           <span style={{ fontSize: 12, color: 'var(--stage-dim-2)' }}>답변 점수의 평균</span>
         </div>
       </div>
       {fb.voice && (
         <Section label="음성 지표">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: narrow ? 'repeat(2, minmax(0, 1fr))' : 'repeat(3, 1fr)', gap: narrow ? 8 : 12 }}>
             <Metric label="말하기 속도" value={Math.round(fb.voice.syllablesPerMinute)} unit="음절/분" low={280} high={360} range="280~360 권장" />
             <Metric label="답변 길이" value={Math.round(fb.voice.meanAnswerS)} unit="초 평균" low={30} high={90} range="30~90초 권장" />
             <Metric label="필러 워드" value={fb.voice.spokenS > 0 ? Math.round((coaching.fillers / fb.voice.spokenS) * 600) / 10 : 0} unit="회/분" high={3} range="분당 3회 이하 권장" />
@@ -236,7 +238,7 @@ function Report({ card, hasVideo = true, sessions = SESSIONS, feedback = FEEDBAC
       {(fb.gaze || fb.expression) && <Delivery gaze={fb.gaze} expression={fb.expression} />}
       {(coaching.strengths.length > 0 || coaching.improvements.length > 0) && (
         <Section label="종합 평가">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: narrow ? '1fr' : '1fr 1fr', gap: narrow ? 22 : 14 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}><div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-positive)' }}>잘한 점</div>{coaching.strengths.map(t => <div key={t} style={{ display: 'flex', gap: 8 }}><span style={{ display: 'flex', marginTop: 3 }}><Icon name="check" size={13} color="var(--color-positive)" /></span><span style={{ fontSize: 13.5, lineHeight: 1.65, color: 'var(--color-body-2)' }}>{t}</span></div>)}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}><div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-accent)' }}>보완할 점</div>{coaching.improvements.map(t => <div key={t} style={{ display: 'flex', gap: 8 }}><span style={{ display: 'flex', marginTop: 3 }}><Icon name="arrow-right" size={13} color="var(--color-accent)" /></span><span style={{ fontSize: 13.5, lineHeight: 1.65, color: 'var(--color-body-2)' }}>{t}</span></div>)}</div>
           </div>
@@ -249,19 +251,19 @@ function Report({ card, hasVideo = true, sessions = SESSIONS, feedback = FEEDBAC
             const dominant = ex && ex.frames >= 2 ? IMPRESSIONS.reduce((b, im) => ((ex.impressions[im.key] ?? 0) > (ex.impressions[b.key] ?? 0) ? im : b)) : null;
             return (
               <div key={i} style={{ borderRadius: 'var(--radius-card)', background: 'var(--color-surface)', border: '1px solid ' + (open ? 'var(--color-field)' : 'var(--color-line)') }}>
-                <div onClick={() => setOpenQ(open ? -1 : i)} style={{ display: 'flex', alignItems: 'center', gap: 13, padding: '15px 18px', cursor: 'pointer' }}>
+                <div onClick={() => setOpenQ(open ? -1 : i)} style={{ display: 'flex', alignItems: 'center', gap: narrow ? 10 : 13, padding: narrow ? '13px 14px' : '15px 18px', cursor: 'pointer' }}>
                   <span className="num" style={{ width: 22, fontSize: 11.5, fontWeight: 600, color: 'var(--color-faintest)' }}>Q{i + 1}</span>
-                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13.5, fontWeight: 600 }}>{open ? '' : a.question}</span>
-                  {dominant && <span style={{ borderRadius: 'var(--radius-chip)', background: 'var(--color-surface-2)', padding: '2px 8px', fontSize: 11, color: 'var(--color-body-2)' }}>{dominant.label} 우세</span>}
-                  {span && <span className="num" style={{ fontSize: 11.5, color: 'var(--color-faintest)' }}>{(span.endS - span.startS).toFixed(1)}초</span>}
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, ...(narrow ? { lineHeight: 1.5, wordBreak: 'keep-all' } : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }) }}>{open ? '' : a.question}</span>
+                  {dominant && !narrow && <span style={{ borderRadius: 'var(--radius-chip)', background: 'var(--color-surface-2)', padding: '2px 8px', fontSize: 11, color: 'var(--color-body-2)' }}>{dominant.label} 우세</span>}
+                  {span && !narrow && <span className="num" style={{ fontSize: 11.5, color: 'var(--color-faintest)' }}>{(span.endS - span.startS).toFixed(1)}초</span>}
                   <span className="num" style={{ width: 28, textAlign: 'right', fontSize: 15, fontWeight: 700 }}>{a.score}</span>
                   <span style={{ width: 16, display: 'flex' }}><Caret open={open} size={12} /></span>
                 </div>
                 {open && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '4px 18px 20px', animation: 'dm-fade .25s ease' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: narrow ? '4px 14px 18px' : '4px 18px 20px', animation: 'dm-fade .25s ease' }}>
                     <div style={{ borderTop: '1px solid var(--color-hair)', paddingTop: 16, fontSize: 15, lineHeight: 1.6, fontWeight: 600 }}>{a.question}</div>
                     {span && (
-                      <div style={hasVideo ? { display: 'grid', gridTemplateColumns: '1fr 248px', gap: 14 } : undefined}>
+                      <div style={hasVideo ? { display: 'grid', gridTemplateColumns: narrow ? '1fr' : '1fr 248px', gap: 14 } : undefined}>
                         <div style={{ display: 'flex', minWidth: 0, flexDirection: 'column', gap: 6, borderRadius: 'var(--radius-control)', background: 'var(--color-surface-2)', padding: '12px 14px' }}>
                           <span className="num" style={{ fontSize: 11.5, color: 'var(--color-faint)' }}>({fmtAt(span.startS)})</span>
                           <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.85, color: 'var(--color-body-2)' }}>{span.text}</p>
@@ -279,7 +281,7 @@ function Report({ card, hasVideo = true, sessions = SESSIONS, feedback = FEEDBAC
           })}
         </div>
       </Section>
-      <div style={{ display: 'flex', alignItems: 'center' }}><button onClick={onBack} style={{ fontSize: 13, color: 'var(--color-muted)' }}>내 면접으로</button><div style={{ flex: 1 }} /><PrimaryButton onClick={onAgain} style={{ padding: '13px 28px' }}>이 회사로 다시 면접 보기</PrimaryButton></div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}><button onClick={onBack} style={{ fontSize: 13, color: 'var(--color-muted)' }}>내 면접으로</button><div style={{ flex: 1 }} /><PrimaryButton onClick={onAgain} style={{ padding: '13px 28px' }}>이 회사로 다시 면접 보기</PrimaryButton></div>
     </main>
   );
 }

@@ -14,7 +14,7 @@
   files.forEach(function(p){
     var x=new XMLHttpRequest();x.open('GET',root+p,false);x.send(null);
     if(x.status>=400){console.warn('missing',p);return;}
-    var src=x.responseText.replace(/^import[^\n]*\n/gm,'').replace(/^export function /gm,'function ');
+    var src=x.responseText.replace(/^import[^\n]*\n/gm,'').replace(/^export (const|let|function|class) /gm,'$1 ');
     var out=Babel.transform(src,{presets:['classic'],filename:p}).code;
     (0,eval)(out);
   });

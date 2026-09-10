@@ -3,9 +3,10 @@ branch: main
 path: web/src
 
 ## Last sync
-date: 2026-09-06T02:40:00Z
+date: 2026-09-10T03:12:00Z
 
 ### Updated in this project
+- 홈 기록 띠(면접 횟수·평균·최근·회차 막대·반복된 보완점) 추가, 전 화면 반응형(720 분기, useNarrow) 적용, ui_kits/mobile.html
 - 디자인 확정: 종이 바탕 + 앰버 빛, 무대 D 구체, 심볼 C3, 선 아이콘, 카드 그림자
 - 비교용 스냅샷(v0·v1)·팔레트 토글·탐색 파일·옛 핸드오프 삭제
 - HANDOFF.md에 코드와 다른 부분만 정리 — 이것이 구현 대상
@@ -20,6 +21,7 @@ date: 2026-09-06T02:40:00Z
 | tokens/*.css, styles.css | web/src/index.css |
 | components/core/* | web/src/components/ui.tsx |
 | components/navigation/Chrome.jsx | web/src/components/Chrome.tsx |
+| components/core/useViewport.jsx | (신규) — Tailwind md: 분기에 대응 |
 | components/stage/* | web/src/components/Stage.tsx |
 | ui_kits/web/Home.jsx | web/src/screens/Home.tsx |
 | ui_kits/web/Ready.jsx | web/src/screens/Ready.tsx |
