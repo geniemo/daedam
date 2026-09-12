@@ -33,6 +33,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from daedam.db import Database, async_url, database_url
 from daedam.db.migrate import upgrade_to_head
 from daedam.interview.stages import DEFAULT_PROFILE
+from daedam.logctx import SessionTag
 from daedam.research.service import FixtureResearch, LiveResearch, ResearchService
 from daedam.settings import SERVER_DIR
 from daedam.settings import data_root as default_data_root
@@ -182,11 +183,16 @@ def create_app() -> FastAPI:
     # 패키지만 INFO로 올린다 — 서드파티 INFO까지 켜면 로그가 묻힌다.
     # 시각이 없으면 로그로 간격을 못 읽는다 — 재연결 루프와 사용자가 직접
     # 들락거린 것을 구분하지 못한다.
-    logging.basicConfig(
-        level=logging.WARNING,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        datefmt="%H:%M:%S",
+    # 면접 안에서 찍힌 줄에는 세션 id가 붙는다(daedam.logctx) — 동시 면접의 로그를
+    # 사후에 가르는 유일한 단서다.
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s %(levelname)s %(name)s: %(message)s%(session_tag)s", datefmt="%H:%M:%S"
+        )
     )
+    handler.addFilter(SessionTag())
+    logging.basicConfig(level=logging.WARNING, handlers=[handler])
     for package in ("daedam", "interviewer"):
         logging.getLogger(package).setLevel(logging.INFO)
 
