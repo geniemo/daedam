@@ -365,6 +365,11 @@ def _probe_response(probe: dict[str, Any]) -> dict:
     """열린 파볼 곳을 모델에게 건넨다. 두 번째부터는 재시도 지시가 붙는다."""
     probe["asked"] = True
     retry = int(probe.get("attempts", 0)) > 0
+    # 이 줄이 게이트 준수율의 근거다(scripts/agent_metrics.py). 뼈대질문 배달과
+    # 파볼 곳 추출은 로그가 있었지만 파볼 곳을 **건네는** 응답은 없어서, 두
+    # 번째 파볼 곳·재시도 질문이 전부 "툴 없이 물은 것"으로 잡혔다(실측 3건이
+    # 모두 이 경우였다).
+    logger.info("파볼 곳 질문: %s (%s)", probe["topic"], "재시도" if retry else "첫 질문")
     return {
         "probe": probe["topic"],
         "hint": probe["hint"],

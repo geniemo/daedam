@@ -44,6 +44,7 @@ from google.genai import types
 
 from daedam.interview.stages import DEFAULT_PROFILE, SessionFlow
 from daedam.interview.vocabulary import interview_vocabulary
+from daedam.logctx import current_session
 from daedam.research.report import search_sections_from_report
 from interviewer.agent import VOICE
 from interviewer.instruction import STATE_CANDIDATE, STATE_COMPANY, STATE_ROLE
@@ -470,6 +471,10 @@ def create_live_router(
                 return
             logger.info("면접 시작 (card=%s, session=%s)", card, session_id)
 
+        # 이 커넥션에서 나오는 로그마다 세션 id가 붙는다(daedam.logctx). 펌프
+        # 태스크와 툴의 to_thread까지 컨텍스트가 따라간다.
+        current_session.set(session_id)
+
         session = await runner.session_service.get_session(
             app_name=runner.app_name, user_id=_USER_ID, session_id=session_id
         )
@@ -760,6 +765,16 @@ def create_live_router(
                                 logger.info("추적: 오디오 %d프레임", audio_run)
                                 audio_run = 0
                             logger.info("추적: %s", line)
+                    # 툴 호출과 오류 응답은 추적을 끄고도 남긴다. 툴 함수 안의 로그만으로는
+                    # 함수에 닿기 전에 실패한 호출(인자 누락·없는 툴)이 안 보인다 — 실측:
+                    # 모델이 "툴 호출에 오류가 있었습니다"라고 말한 뒤 툴 없이 질문했는데
+                    # 로그에 아무것도 없었다.
+                    for part in (event.content.parts if event.content else None) or []:
+                        if part.function_call is not None:
+                            logger.info("툴 호출: %s(%s)", part.function_call.name, part.function_call.args)
+                        response = part.function_response
+                        if response is not None and isinstance(response.response, dict) and response.response.get("error"):
+                            logger.warning("툴 오류 응답: %s — %s", response.name, str(response.response["error"])[:160])
                     if event.usage_metadata is not None:
                         usage.add(event.usage_metadata)
                     collect_applicant(event.input_transcription)
